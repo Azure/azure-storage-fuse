@@ -103,32 +103,14 @@ type mountOptions struct {
 
 var options mountOptions
 
-func mountTracef(format string, args ...any) {
-	if os.Getenv("BLOBFUSE2_MOUNT_TRACE") == "" {
-		return
-	}
-
-	fmt.Fprintf(
-		os.Stderr,
-		"BLOBFUSE2_MOUNT_TRACE time=%s pid=%d %s\n",
-		time.Now().UTC().Format(time.RFC3339Nano),
-		os.Getpid(),
-		fmt.Sprintf(format, args...),
-	)
-}
-
 func (opt *mountOptions) validate(skipNonEmptyMount bool) error {
-	mountTracef("options.validate: begin mount-path=%q skip-non-empty=%t", opt.MountPath, skipNonEmptyMount)
-
 	if opt.MountPath == "" {
 		return fmt.Errorf("mount path not provided")
 	}
 
-	mountTracef("options.validate: checking mount path")
 	if _, err := os.Stat(opt.MountPath); os.IsNotExist(err) {
 		return fmt.Errorf("mount directory does not exist")
 	} else if common.IsDirectoryMounted(opt.MountPath) {
-		mountTracef("options.validate: mount path is already mounted")
 		// Try to cleanup the stale mount
 		log.Info("Mount::validate : Mount directory is already mounted, trying to cleanup")
 		active, err := common.IsMountActive(opt.inputMountPath)
@@ -145,15 +127,12 @@ func (opt *mountOptions) validate(skipNonEmptyMount bool) error {
 	} else if !skipNonEmptyMount && !common.IsDirectoryEmpty(opt.MountPath) {
 		return fmt.Errorf("mount directory is not empty")
 	}
-	mountTracef("options.validate: mount path accepted")
 
-	mountTracef("options.validate: parsing log level %q", opt.Logging.LogLevel)
 	if err := common.ELogLevel.Parse(opt.Logging.LogLevel); err != nil {
 		return fmt.Errorf("invalid log level [%s]", err.Error())
 	}
 
 	if opt.DefaultWorkingDir != "" {
-		mountTracef("options.validate: applying default working directory %q", opt.DefaultWorkingDir)
 		common.DefaultWorkDir = opt.DefaultWorkingDir
 
 		if opt.Logging.LogFilePath == common.DefaultLogFilePath {
@@ -165,7 +144,6 @@ func (opt *mountOptions) validate(skipNonEmptyMount bool) error {
 		common.DefaultLogFilePath = filepath.Join(common.DefaultWorkDir, "blobfuse2.log")
 	}
 
-	mountTracef("options.validate: checking default working directory %q", common.DefaultWorkDir)
 	f, err := os.Stat(common.ExpandPath(common.DefaultWorkDir))
 	if err == nil && !f.IsDir() {
 		return fmt.Errorf("default work dir '%s' is not a directory", common.DefaultWorkDir)
@@ -179,7 +157,6 @@ func (opt *mountOptions) validate(skipNonEmptyMount bool) error {
 	}
 
 	opt.Logging.LogFilePath = common.ExpandPath(opt.Logging.LogFilePath)
-	mountTracef("options.validate: checking log path %q", opt.Logging.LogFilePath)
 	if !common.DirectoryExists(filepath.Dir(opt.Logging.LogFilePath)) {
 		err := os.MkdirAll(filepath.Dir(opt.Logging.LogFilePath), os.FileMode(0776)|os.ModeDir)
 		if err != nil {
@@ -196,7 +173,6 @@ func (opt *mountOptions) validate(skipNonEmptyMount bool) error {
 		opt.Logging.LogFileCount = common.DefaultLogFileCount
 	}
 
-	mountTracef("options.validate: complete")
 	return nil
 }
 
@@ -276,25 +252,14 @@ var mountCmd = &cobra.Command{
 	Long:       "Mounts the azure container as a filesystem",
 	SuggestFor: []string{"mnt", "mout"},
 	Args:       cobra.ExactArgs(1),
-	RunE: func(_ *cobra.Command, args []string) (runErr error) {
-		mountTracef("mount.RunE: entered args=%q", args)
-		defer func() {
-			if runErr != nil {
-				mountTracef("mount.RunE: returning error=%q", runErr.Error())
-			} else {
-				mountTracef("mount.RunE: completed successfully")
-			}
-		}()
-
+	RunE: func(_ *cobra.Command, args []string) error {
 		options.inputMountPath = args[0]
 		options.MountPath = common.ExpandPath(args[0])
 		common.MountPath = options.MountPath
-		mountTracef("mount.RunE: mount path resolved input=%q expanded=%q", options.inputMountPath, options.MountPath)
 
 		configFileExists := true
 		directIO := false
 
-		mountTracef("mount.RunE: selecting config file requested=%q", options.ConfigFile)
 		if options.ConfigFile == "" {
 			// Config file is not set in cli parameters
 			// Blobfuse2 defaults to config.yaml in current directory
@@ -307,35 +272,27 @@ var mountCmd = &cobra.Command{
 				options.ConfigFile = common.DefaultConfigFilePath
 			}
 		}
-		mountTracef("mount.RunE: config selection complete exists=%t path=%q", configFileExists, options.ConfigFile)
 
 		if configFileExists {
-			mountTracef("mount.RunE: parseConfig begin")
 			err := parseConfig()
 			if err != nil {
 				return err
 			}
-			mountTracef("mount.RunE: parseConfig complete")
 		}
 
-		mountTracef("mount.RunE: config.Unmarshal mount options begin")
 		err := config.Unmarshal(&options)
 		if err != nil {
 			return fmt.Errorf("failed to unmarshal config [%s]", err.Error())
 		}
-		mountTracef("mount.RunE: config.Unmarshal complete components=%v foreground=%t", options.Components, options.Foreground)
 
 		// Reject mixed dist_cache/L1 configs and fan out dist_cache tuning
 		// knobs onto block_cache. Runs before synthesis so it sees the user's
 		// original components list.
-		mountTracef("mount.RunE: normalizeDistCacheConfig begin components=%v", options.Components)
 		if err = normalizeDistCacheConfig(options.Components); err != nil {
 			return err
 		}
-		mountTracef("mount.RunE: normalizeDistCacheConfig complete")
 
 		if !configFileExists || len(options.Components) == 0 {
-			mountTracef("mount.RunE: synthesizing component pipeline")
 			pipeline := []string{"libfuse"}
 
 			if config.IsSet("streaming") && options.Streaming {
@@ -359,24 +316,20 @@ var mountCmd = &cobra.Command{
 			pipeline = append(pipeline, "azstorage")
 			options.Components = pipeline
 		}
-		mountTracef("mount.RunE: component pipeline before dist-cache injection=%v", options.Components)
 
 		// Splice block_cache in before dist_cache if the user listed
 		// dist_cache in components: without block_cache. Idempotent.
 		options.Components = injectBlockCacheForDistCache(options.Components)
-		mountTracef("mount.RunE: component pipeline after dist-cache injection=%v", options.Components)
 
 		if config.IsSet("entry_cache.timeout-sec") || options.EntryCacheTimeout > 0 {
 			options.Components = append(options.Components[:1], append([]string{"entry_cache"}, options.Components[1:]...)...)
 		}
-		mountTracef("mount.RunE: validating component pipeline=%v", options.Components)
 
 		if err = common.ValidatePipeline(options.Components); err != nil {
 			// file-cache, block-cache and xload are mutually exclusive
 			log.Err("mount: invalid pipeline components [%s]", err.Error())
 			return fmt.Errorf("invalid pipeline components [%s]", err.Error())
 		}
-		mountTracef("mount.RunE: component pipeline validation complete")
 
 		// either passed in CLI or in config file
 		if options.BlockCache || common.ComponentInPipeline(options.Components, "block_cache") {
@@ -389,10 +342,8 @@ var mountCmd = &cobra.Command{
 			options.Components = common.UpdatePipeline(options.Components, "xload")
 			config.Set("read-only", "true") // preload is only supported in read-only mode
 		}
-		mountTracef("mount.RunE: CLI component overrides complete pipeline=%v", options.Components)
 
 		if config.IsSet("libfuse-options") {
-			mountTracef("mount.RunE: processing libfuse options count=%d", len(options.LibfuseOptions))
 			for _, v := range options.LibfuseOptions {
 				parameter := strings.Split(v, "=")
 				if len(parameter) > 2 || len(parameter) <= 0 {
@@ -447,7 +398,6 @@ var mountCmd = &cobra.Command{
 				}
 			}
 		}
-		mountTracef("mount.RunE: libfuse options complete")
 
 		// Check if direct-io is enabled in the config file.
 		if !directIO {
@@ -456,7 +406,6 @@ var mountCmd = &cobra.Command{
 				config.Set("direct-io", "true")
 			}
 		}
-		mountTracef("mount.RunE: direct-io resolved enabled=%t", directIO)
 
 		if config.IsSet("disable-kernel-cache") && directIO {
 			// Both flag shall not be enable together
@@ -470,22 +419,17 @@ var mountCmd = &cobra.Command{
 		if !config.IsSet("logging.level") {
 			options.Logging.LogLevel = "LOG_WARNING"
 		}
-		mountTracef("mount.RunE: logging defaults resolved type=%q level=%q path=%q", options.Logging.Type, options.Logging.LogLevel, options.Logging.LogFilePath)
 
-		mountTracef("mount.RunE: options.validate begin")
 		err = options.validate(options.NonEmpty)
 		if err != nil {
 			return err
 		}
-		mountTracef("mount.RunE: options.validate complete")
 
 		var logLevel common.LogLevel
-		mountTracef("mount.RunE: log level parse begin")
 		err = logLevel.Parse(options.Logging.LogLevel)
 		if err != nil {
 			return fmt.Errorf("invalid log level [%s]", err.Error())
 		}
-		mountTracef("mount.RunE: log level parse complete value=%s", logLevel.String())
 
 		// If goroutine-id is not set in config file, then set it based on log level.
 		// For LOG_DEBUG level, enable goroutine-id by default.
@@ -497,7 +441,6 @@ var mountCmd = &cobra.Command{
 			}
 		}
 
-		mountTracef("mount.RunE: log.SetDefaultLogger begin")
 		err = log.SetDefaultLogger(options.Logging.Type, common.LogConfig{
 			FilePath:       options.Logging.LogFilePath,
 			MaxFileSize:    options.Logging.MaxLogFileSize,
@@ -509,25 +452,18 @@ var mountCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("failed to initialize logger [%s]", err.Error())
 		}
-		mountTracef("mount.RunE: log.SetDefaultLogger complete")
 
 		// It's best to destroy the logger before we return to the caller, as caller may abruptly exit on error and we
 		// might lose some logs in the channel which are not yet flushed to the file in case of not destroying the logger
 		defer func() {
-			mountTracef("mount.RunE: log.Destroy begin")
 			_ = log.Destroy()
-			mountTracef("mount.RunE: log.Destroy complete")
 		}()
 
 		if !disableVersionCheck {
-			mountTracef("mount.RunE: VersionCheck begin")
 			err := VersionCheck()
 			if err != nil {
 				log.Err("%s", err.Error())
 			}
-			mountTracef("mount.RunE: VersionCheck complete")
-		} else {
-			mountTracef("mount.RunE: VersionCheck skipped")
 		}
 
 		if config.IsSet("invalidate-on-sync") {
@@ -546,10 +482,8 @@ var mountCmd = &cobra.Command{
 		if slices.Contains(options.MonitorOpt.DisableList, common.BfuseStats) {
 			common.BfsDisabled = true
 		}
-		mountTracef("mount.RunE: monitoring options applied enabled=%t bfs-disabled=%t", common.EnableMonitoring, common.BfsDisabled)
 
 		config.Set("mount-path", options.MountPath)
-		mountTracef("mount.RunE: mount path stored in config")
 
 		var pipeline *internal.Pipeline
 
@@ -565,7 +499,6 @@ var mountCmd = &cobra.Command{
 		// those spawned by libfuse callbacks. Called after the first log.Crit so that in syslog mode rsyslog has
 		// already created /var/log/blobfuse2.log.
 		log.SetupCrashOutput(options.Logging.Type, options.Logging.LogFilePath)
-		mountTracef("mount.RunE: crash output setup complete")
 
 		if directIO {
 			// Direct IO is enabled, so remove the attr-cache from the pipeline
@@ -580,26 +513,21 @@ var mountCmd = &cobra.Command{
 
 		// Clean up any cache directory if cleanup-on-start is set from the cli parameter or specified in parameter in
 		// config file for a specific component for file-cache, block-cache, xload.
-		mountTracef("mount.RunE: temp cache cleanup begin")
 		err = options.tempCacheCleanup()
 		if err != nil {
 			return err
 		}
-		mountTracef("mount.RunE: temp cache cleanup complete")
 
 		common.ForegroundMount = options.Foreground
-		mountTracef("mount.RunE: creating pipeline components=%v is-parent=%t", options.Components, !daemon.WasReborn())
 
 		pipeline, err = internal.NewPipeline(options.Components, !daemon.WasReborn())
 		if err != nil {
 			log.Err("mount : failed to initialize new pipeline [%v]", err)
 			return fmt.Errorf("failed to initialize new pipeline [%s]", err.Error())
 		}
-		mountTracef("mount.RunE: pipeline creation complete")
 
 		log.Info("mount: Mounting blobfuse2 on %s", options.MountPath)
 		if !options.Foreground {
-			mountTracef("mount.RunE: entering background mount flow")
 			pidFile := strings.ReplaceAll(options.MountPath, "/", "_") + ".pid"
 			pidFileName := filepath.Join(os.ExpandEnv(common.DefaultWorkDir), pidFile)
 
@@ -711,7 +639,6 @@ var mountCmd = &cobra.Command{
 
 			}
 		} else {
-			mountTracef("mount.RunE: entering foreground mount flow")
 			if options.CPUProfile != "" {
 				os.Remove(options.CPUProfile)
 				f, err := os.Create(options.CPUProfile)
@@ -726,16 +653,13 @@ var mountCmd = &cobra.Command{
 			}
 
 			setGOConfig()
-			mountTracef("mount.RunE: Go runtime configuration applied")
 			go startDynamicProfiler()
 
 			log.Debug("mount: foreground enabled")
-			mountTracef("mount.RunE: runPipeline begin")
 			err = runPipeline(pipeline, context.Background())
 			if err != nil {
 				return err
 			}
-			mountTracef("mount.RunE: runPipeline complete")
 
 			if options.MemProfile != "" {
 				os.Remove(options.MemProfile)
@@ -791,32 +715,24 @@ func ignoreFuseOptions(opt string) bool {
 }
 
 func runPipeline(pipeline *internal.Pipeline, ctx context.Context) error {
-	mountTracef("runPipeline: entered")
 	pid := fmt.Sprintf("%v", os.Getpid())
 	common.TransferPipe += "_" + pid
 	common.PollingPipe += "_" + pid
 	log.Debug("Mount::runPipeline : blobfuse2 pid = %v, transfer pipe = %v, polling pipe = %v", pid, common.TransferPipe, common.PollingPipe)
 
 	go startMonitor(os.Getpid())
-	mountTracef("runPipeline: monitor goroutine started")
 
-	mountTracef("runPipeline: pipeline.Start begin")
 	err := pipeline.Start(ctx)
 	if err != nil {
-		mountTracef("runPipeline: pipeline.Start error=%q", err.Error())
 		log.Err("mount: error unable to start pipeline [%s]", err.Error())
 		return fmt.Errorf("unable to start pipeline [%s]", err.Error())
 	}
-	mountTracef("runPipeline: pipeline.Start complete")
 
-	mountTracef("runPipeline: pipeline.Stop begin")
 	err = pipeline.Stop()
 	if err != nil {
-		mountTracef("runPipeline: pipeline.Stop error=%q", err.Error())
 		log.Err("mount: error unable to stop pipeline [%s]", err.Error())
 		return fmt.Errorf("unable to stop pipeline [%s]", err.Error())
 	}
-	mountTracef("runPipeline: pipeline.Stop complete")
 
 	return nil
 }

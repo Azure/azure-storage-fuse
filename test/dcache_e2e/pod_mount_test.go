@@ -61,8 +61,6 @@ type podMounter struct {
 	logSequence int
 }
 
-const blobfuseDiagnosticLogPath = "/var/log/blobfuse2/blobfuse2-block-logs.txt"
-
 // podRolloutTimeout includes the deployment's probe delay.
 const podRolloutTimeout = 120 * time.Second
 
@@ -94,7 +92,7 @@ func newTestPodMounter(t *testing.T) *podMounter {
 	return m
 }
 
-// collectBlobfuseLogs copies each live pod's file log to the pipeline artifact
+// collectBlobfuseLogs copies each live pod's container log to the pipeline artifact
 // staging directory. Collection is best-effort and disabled outside CI unless
 // DCACHE_LOG_DIR is set explicitly.
 func (m *podMounter) collectBlobfuseLogs(t *testing.T, phase string) {
@@ -120,8 +118,9 @@ func (m *podMounter) collectBlobfuseLogs(t *testing.T, phase string) {
 	for _, pod := range pods {
 		out, err := exec.Command(testCfg.kubectlBin,
 			"-n", m.namespace,
-			"exec", pod,
-			"--", "cat", blobfuseDiagnosticLogPath,
+			"logs", pod,
+			"--container=blobfuse2",
+			"--timestamps=true",
 		).CombinedOutput()
 		fileName := fmt.Sprintf("%02d-%s-%s.log", m.logSequence, phase, pod)
 		filePath := filepath.Join(outDir, fileName)

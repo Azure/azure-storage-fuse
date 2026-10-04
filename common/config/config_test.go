@@ -36,8 +36,10 @@ package config
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/fsnotify/fsnotify"
@@ -99,10 +101,50 @@ func TestWatchConfigWatcherFailureIsNonFatal(t *testing.T) {
 		ResetConfig()
 	}()
 
-	SetConfigFile("/tmp/blobfuse2-config-test.yaml")
-	WatchConfig()
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	err := os.WriteFile(configPath, []byte("name: loaded\n"), 0600)
+	assert.NoError(t, err)
 
+	err = ReadFromConfigFile(configPath)
+	assert.NoError(t, err)
 	assert.Nil(t, userOptions.watcher)
+
+	var name string
+	err = UnmarshalKey("name", &name)
+	assert.NoError(t, err)
+	assert.Equal(t, "loaded", name)
+}
+
+func TestWatchConfigReloadsChangedFile(t *testing.T) {
+	ResetConfig()
+	defer ResetConfig()
+
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	err := os.WriteFile(configPath, []byte("name: initial\n"), 0600)
+	assert.NoError(t, err)
+
+	reloaded := make(chan struct{}, 1)
+	AddConfigChangeEventListener(ConfigChangeEventHandlerFunc(func() {
+		reloaded <- struct{}{}
+	}))
+
+	err = ReadFromConfigFile(configPath)
+	assert.NoError(t, err)
+	assert.NotNil(t, userOptions.watcher)
+
+	err = os.WriteFile(configPath, []byte("name: updated\n"), 0600)
+	assert.NoError(t, err)
+
+	select {
+	case <-reloaded:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for config reload")
+	}
+
+	var name string
+	err = UnmarshalKey("name", &name)
+	assert.NoError(t, err)
+	assert.Equal(t, "updated", name)
 }
 
 var config1 = `

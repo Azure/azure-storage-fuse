@@ -44,7 +44,7 @@ stringData:
       # block_cache is auto-injected as dist_cache's L1. Tune it here;
       # normalizeDistCacheConfig fans these onto block_cache.* at mount time.
       block-size-mb: 16
-      mem-size-mb: 4096
+      mem-size-mb: 1024
       prefetch: 32
       parallelism: 128
 
@@ -91,16 +91,15 @@ spec:
           image: ${BLOBFUSE2_IMAGE}
           # Image is side-loaded into kind nodes by deploy-blobfuse2.sh.
           imagePullPolicy: IfNotPresent
-          # Diagnostic run: keep the container alive so deploy-blobfuse2.sh
-          # can execute the mount command interactively and capture its exact
-          # exit status without CrashLoopBackOff hiding the error.
           command:
-            - sleep
+            - blobfuse2
           args:
-            - infinity
-          env:
-            - name: BLOBFUSE2_MOUNT_TRACE
-              value: "1"
+            - mount
+            - /mnt/blobfuse_mnt
+            - --config-file=/usr/share/blobfuse2/config.yaml
+            - --ignore-open-flags
+            - --foreground=true
+            - --disable-version-check=true
           securityContext:
             # Required for SYS_ADMIN + /dev/fuse access.
             privileged: true
@@ -112,6 +111,25 @@ spec:
               mountPath: /usr/share/blobfuse2/config.yaml
               subPath: config.yaml
               readOnly: true
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - mount | grep -q ' on /mnt/blobfuse_mnt '
+            periodSeconds: 2
+            timeoutSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - mount | grep -q ' on /mnt/blobfuse_mnt '
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
           resources:
             requests:
               cpu: "500m"

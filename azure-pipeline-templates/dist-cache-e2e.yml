@@ -81,13 +81,6 @@ steps:
       tag="azure-blobfuse2-x86_64.${ver}"
       echo "Built blobfuse2 container image: ${tag}"
       docker images "${tag}"
-      echo ""
-      echo "Pre-kind container binary diagnostic:"
-      set +e
-      timeout 15s docker run --rm --entrypoint /usr/local/bin/blobfuse2 "${tag}" --version
-      prekind_rc=$?
-      set -e
-      echo "Pre-kind blobfuse2 --version exit code: ${prekind_rc}"
       echo "##vso[task.setvariable variable=BLOBFUSE2_IMAGE]${tag}"
     displayName: 'DistCache [${{ parameters.run_idstring }}]: Build blobfuse2 container image'
     timeoutInMinutes: 20
@@ -142,9 +135,12 @@ steps:
       blobfuse_dir="$out_dir/blobfuse2/surviving-pods"
       mkdir -p "$blobfuse_dir"
       for pod in $(kubectl get pods -n blobfuse2-dist-cache -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
-        kubectl exec -n blobfuse2-dist-cache "$pod" -- \
-          cat /var/log/blobfuse2/blobfuse2-block-logs.txt \
+        kubectl logs -n blobfuse2-dist-cache "$pod" \
+          --all-containers=true --prefix --timestamps \
           > "$blobfuse_dir/${pod}.log" 2>&1 || true
+        kubectl logs -n blobfuse2-dist-cache "$pod" \
+          --all-containers=true --prefix --timestamps --previous \
+          > "$blobfuse_dir/${pod}.previous.log" 2>&1 || true
       done
       find "$out_dir" -maxdepth 4 -type f -print || true
     displayName: 'DistCache [${{ parameters.run_idstring }}]: Collect distributed cache logs'
