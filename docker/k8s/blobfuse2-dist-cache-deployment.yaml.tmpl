@@ -98,6 +98,9 @@ spec:
             - sleep
           args:
             - infinity
+          env:
+            - name: BLOBFUSE2_MOUNT_TRACE
+              value: "1"
           securityContext:
             # Required for SYS_ADMIN + /dev/fuse access.
             privileged: true

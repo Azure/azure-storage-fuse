@@ -262,13 +262,36 @@ echo ""
 echo "--- executing blobfuse2 mount (90s diagnostic timeout) ---"
 set +e
 kubectl -n "$BLOBFUSE2_NAMESPACE" exec "$POD_NAME" -- \
-    timeout 90s blobfuse2 mount /mnt/blobfuse_mnt \
-        --config-file=/usr/share/blobfuse2/config.yaml \
-        --ignore-open-flags \
-        --foreground=true \
-        --disable-version-check=true
+    sh -c '
+        timeout 90s blobfuse2 mount /mnt/blobfuse_mnt \
+            --config-file=/usr/share/blobfuse2/config.yaml \
+            --ignore-open-flags \
+            --foreground=true \
+            --disable-version-check=true \
+            > /tmp/blobfuse2-mount.stdout \
+            2> /tmp/blobfuse2-mount.stderr
+    '
 MOUNT_RC=$?
 set -e
+
+echo ""
+echo "--- mount stdout ---"
+kubectl -n "$BLOBFUSE2_NAMESPACE" exec "$POD_NAME" -- \
+    sh -c 'cat /tmp/blobfuse2-mount.stdout 2>/dev/null || true'
+
+echo ""
+echo "--- mount stderr + direct lifecycle trace ---"
+kubectl -n "$BLOBFUSE2_NAMESPACE" exec "$POD_NAME" -- \
+    sh -c 'cat /tmp/blobfuse2-mount.stderr 2>/dev/null || true'
+
+echo ""
+echo "--- Blobfuse log files ---"
+kubectl -n "$BLOBFUSE2_NAMESPACE" exec "$POD_NAME" -- \
+    sh -c '
+        find /tmp /root/.blobfuse2 /var/log -maxdepth 2 -type f \
+            \( -name "*blobfuse*" -o -name "*.trace" \) \
+            -print 2>/dev/null || true
+    '
 
 echo ""
 if [[ "$MOUNT_RC" -eq 124 ]]; then
