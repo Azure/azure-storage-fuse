@@ -114,7 +114,7 @@ func registerFlags() {
 			"cache-server: label selector used to enumerate cache-server pods")
 	}
 	if flag.Lookup("cacheserver-statefulset") == nil {
-		flag.StringVar(&testCfg.cacheserverStatefulSet, "cacheserver-statefulset", "cacheserver",
+		flag.StringVar(&testCfg.cacheserverStatefulSet, "cacheserver-statefulset", "cache-sample",
 			"cache-server: name of the Tachyon StatefulSet (waited on after a pod is deleted)")
 	}
 	if flag.Lookup("cacheserver-metrics-port") == nil {
@@ -146,6 +146,9 @@ func ensurePodMountArgs() error {
 	}
 	if testCfg.dockerBin == "" {
 		return fmt.Errorf("kind fault injection requires -docker-bin")
+	}
+	if testCfg.cacheserverStatefulSet == "" {
+		return fmt.Errorf("cache-server recovery requires -cacheserver-statefulset")
 	}
 	return nil
 }
@@ -181,13 +184,15 @@ func TestMain(m *testing.M) {
 		"  docker-bin              = %s\n"+
 		"  cacheserver-namespace   = %s\n"+
 		"  cacheserver-selector    = %s\n"+
+		"  cacheserver-statefulset = %s\n"+
 		"  cacheserver-metrics-port= %d\n"+
 		"  storage-account         = %s\n"+
 		"  storage-endpoint        = %s\n"+
 		"  storage-container       = %s\n",
 		testCfg.podNamespace, testCfg.podDeployment, testCfg.podMountPath,
 		testCfg.dockerBin,
-		testCfg.cacheserverNamespace, testCfg.cacheserverSelector, testCfg.cacheserverMetricsPort,
+		testCfg.cacheserverNamespace, testCfg.cacheserverSelector,
+		testCfg.cacheserverStatefulSet, testCfg.cacheserverMetricsPort,
 		testCfg.storageAccount, testCfg.storageEndpoint, testCfg.storageContainer)
 
 	os.Exit(m.Run())

@@ -87,6 +87,9 @@ If pod discovery or the in-pod `curl` fails, the metric-based
 assertions are skipped and only data integrity is enforced. Override the
 pod-local Prometheus port with `-cacheserver-metrics-port` if your
 Tachyon Helm chart exposes it somewhere other than 9096.
+The node-failure test waits for StatefulSet `cache-sample` to recover by
+default; override it with `-cacheserver-statefulset` when using a different
+Cache resource name.
 
 ## Pipeline integration
 
