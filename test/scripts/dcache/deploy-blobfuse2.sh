@@ -201,4 +201,58 @@ if ! kubectl -n "$BLOBFUSE2_NAMESPACE" rollout status \
     exit 1
 fi
 
-echo "blobfuse2 pod deployed."
+echo ""
+echo "=========================================="
+echo "Manual blobfuse2 mount diagnostic"
+echo "=========================================="
+
+POD_NAME="$(kubectl -n "$BLOBFUSE2_NAMESPACE" get pods \
+    -l "app=$BLOBFUSE2_DEPLOYMENT" \
+    -o jsonpath='{.items[0].metadata.name}')"
+
+if [[ -z "$POD_NAME" ]]; then
+    echo "ERROR: no blobfuse2 pod found for deployment/$BLOBFUSE2_DEPLOYMENT" >&2
+    exit 1
+fi
+
+echo "Pod: $POD_NAME"
+echo ""
+echo "--- binary identity + linkage ---"
+kubectl -n "$BLOBFUSE2_NAMESPACE" exec "$POD_NAME" -- \
+    sh -c 'sha256sum /usr/local/bin/blobfuse2; ldd /usr/local/bin/blobfuse2 | grep -E "fuse|crypto" || true'
+
+echo ""
+echo "--- mount directory ---"
+kubectl -n "$BLOBFUSE2_NAMESPACE" exec "$POD_NAME" -- \
+    sh -c 'ls -ld /mnt/blobfuse_mnt; find /mnt/blobfuse_mnt -mindepth 1 -maxdepth 1 -printf "%f\n"'
+
+echo ""
+echo "--- rendered config (account key redacted) ---"
+kubectl -n "$BLOBFUSE2_NAMESPACE" exec "$POD_NAME" -- \
+    sh -c 'sed -E "s/^([[:space:]]*account-key:).*/\1 \"<redacted>\"/" /usr/share/blobfuse2/config.yaml'
+
+echo ""
+echo "--- executing blobfuse2 mount (90s diagnostic timeout) ---"
+set +e
+kubectl -n "$BLOBFUSE2_NAMESPACE" exec "$POD_NAME" -- \
+    timeout 90s blobfuse2 mount /mnt/blobfuse_mnt \
+        --config-file=/usr/share/blobfuse2/config.yaml \
+        --ignore-open-flags \
+        --foreground=true \
+        --disable-version-check=true
+MOUNT_RC=$?
+set -e
+
+echo ""
+if [[ "$MOUNT_RC" -eq 124 ]]; then
+    echo "DIAGNOSTIC RESULT: blobfuse2 remained running for 90s and was stopped by timeout."
+    echo "The immediate exit does not reproduce when invoked manually in the same kind pod."
+else
+    echo "DIAGNOSTIC RESULT: blobfuse2 exited with code $MOUNT_RC."
+    echo "The command output above is the direct startup failure from inside the kind pod."
+fi
+
+# This temporary diagnostic deployment intentionally runs sleep as PID 1, so
+# cloned E2E Deployments would not mount blobfuse2. Stop here after collecting
+# the direct result instead of allowing misleading test failures.
+exit 1
