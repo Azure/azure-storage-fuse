@@ -127,7 +127,7 @@ func TestReadPath_L2MissPopulatesAndHits(t *testing.T) {
 		t.Fatalf("L2-hit read: content mismatch (md5 got=%s want=%s)",
 			secondReadMD5, originalMD5)
 	}
-	t.Logf("L2-hit read: %d bytes, md5 matches (data returned from dist_cache is identical to what was uploaded)",
+	t.Logf("L2-hit read: %d bytes, md5 matches (data returned from distributed_cache is identical to what was uploaded)",
 		len(secondRead))
 
 	afterHit, ok := scrapeCacheServerMetrics(t)

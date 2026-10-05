@@ -29,7 +29,7 @@ stringData:
 
     components:
       - libfuse
-      - dist_cache
+      - distributed_cache
       - attr_cache
       - azstorage
 
@@ -39,9 +39,9 @@ stringData:
       negative-entry-expiration-sec: 0
       ignore-open-flags: true
 
-    dist_cache:
+    distributed_cache:
       discovery-endpoint: "${DCACHE_DISCOVERY_ENDPOINT}"
-      # block_cache is auto-injected as dist_cache's L1. Tune it here;
+      # block_cache is auto-injected as distributed_cache's L1. Tune it here;
       # normalizeDistCacheConfig fans these onto block_cache.* at mount time.
       block-size-mb: 16
       mem-size-mb: 1024

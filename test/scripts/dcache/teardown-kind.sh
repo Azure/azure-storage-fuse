@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Best-effort teardown for the dist_cache nightly E2E stage. Intended to be
+# Best-effort teardown for the distributed_cache nightly E2E stage. Intended to be
 # called from an ADO step with condition: always(), so it MUST NOT abort on
 # any single failure -- hence `set +e` instead of `set -euo pipefail`.
 

@@ -145,6 +145,15 @@ func waitKindNodeReady(node string, wantReady bool) error {
 }
 
 // waitCacheserverStatefulSetReady restores cluster health after fault tests.
+//
+// `kubectl rollout status` alone is not enough here: for a StatefulSet with a
+// partitioned update strategy it exits 0 as soon as the pods have been
+// *updated*, printing "partitioned roll out complete" even while it is still
+// "Waiting for N pods to be ready". A test that mounts in that window races
+// the cache servers re-registering with discovery: reads still return correct
+// bytes via blob fallback, but nothing is populated into or served from L2,
+// so the next test fails its metric assertions for no visible reason.
+// Gate on readyReplicas == replicas instead.
 func waitCacheserverStatefulSetReady(t *testing.T) {
 	t.Helper()
 	args := []string{
@@ -158,5 +167,29 @@ func waitCacheserverStatefulSetReady(t *testing.T) {
 			err, strings.TrimSpace(string(out)))
 		return
 	}
-	t.Logf("cacheserver: rollout complete (%s)", strings.TrimSpace(string(out)))
+	t.Logf("cacheserver: rollout reported (%s)", strings.TrimSpace(string(out)))
+
+	deadline := time.Now().Add(cacheserverRolloutTimeout)
+	var desired, ready string
+	for time.Now().Before(deadline) {
+		o, err := exec.Command(testCfg.kubectlBin,
+			"-n", testCfg.cacheserverNamespace,
+			"get", "statefulset", testCfg.cacheserverStatefulSet,
+			"-o", "jsonpath={.status.replicas}/{.status.readyReplicas}",
+		).CombinedOutput()
+		if err == nil {
+			// readyReplicas is omitted entirely when zero, so the right
+			// hand side can legitimately come back empty.
+			desired, ready, _ = strings.Cut(strings.TrimSpace(string(o)), "/")
+			if desired != "" && desired == ready {
+				t.Logf("cacheserver: all %s replicas ready", desired)
+				return
+			}
+		}
+		time.Sleep(2 * time.Second)
+	}
+
+	t.Errorf("cacheserver: statefulset %s not fully ready after %s (replicas=%q readyReplicas=%q); "+
+		"mounts scheduled next are likely to race discovery and see an incomplete cache ring",
+		testCfg.cacheserverStatefulSet, cacheserverRolloutTimeout, desired, ready)
 }

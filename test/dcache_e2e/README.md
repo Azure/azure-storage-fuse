@@ -1,7 +1,7 @@
-# dist_cache E2E tests (`test/dcache_e2e/`)
+# distributed_cache E2E tests (`test/dcache_e2e/`)
 
-Read-path E2E tests focused on the `dist_cache` component. These tests assert
-`dist_cache` *behaviour* — L2 miss populates, L2 hit serves the same bytes
+Read-path E2E tests focused on the `distributed_cache` component. These tests assert
+`distributed_cache` *behaviour* — L2 miss populates, L2 hit serves the same bytes
 we wrote, and cache-server metrics move in the expected direction.
 
 ## Design
