@@ -573,14 +573,14 @@ func ValidatePipeline(pipeline []string) error {
 		return fmt.Errorf("mount: block-cache and xload cannot be used together")
 	}
 
-	if ComponentInPipeline(pipeline, "dist_cache") &&
+	if ComponentInPipeline(pipeline, "distributed_cache") &&
 		ComponentInPipeline(pipeline, "xload") {
-		return fmt.Errorf("mount: dist-cache and xload cannot be used together")
+		return fmt.Errorf("mount: distributed-cache and xload cannot be used together")
 	}
 
-	if ComponentInPipeline(pipeline, "dist_cache") &&
+	if ComponentInPipeline(pipeline, "distributed_cache") &&
 		ComponentInPipeline(pipeline, "file_cache") {
-		return fmt.Errorf("mount: file-cache and dist-cache cannot be used together")
+		return fmt.Errorf("mount: file-cache and distributed-cache cannot be used together")
 	}
 	return nil
 }

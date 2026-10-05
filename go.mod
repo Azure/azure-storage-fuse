@@ -31,7 +31,7 @@ require (
 )
 
 require (
-	github.com/nearora-msft/dist-cache-client-go v0.1.1-0.20260803230709-f185a58df051
+	github.com/nearora-msft/dist-cache-client-go v0.1.1-0.20261005042240-31b283f65e46
 	google.golang.org/protobuf v1.36.11
 )
 
