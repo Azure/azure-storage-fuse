@@ -886,14 +886,14 @@ func TestConfigure_NoServers_ReturnsError(t *testing.T) {
 	assert.Contains(t, err.Error(), "no server discovery configured")
 }
 
-// --- Test: Start() fails fast on unreachable servers ---
+// --- Test: Start() continues with fallback on unreachable servers ---
 //
 // Failure is driven by an unroutable discovery-endpoint (loopback port 1 ->
-// ECONNREFUSED); with no fallback, dcache.New() fails.
+// ECONNREFUSED). The client starts empty and retries discovery in the background.
 //
 // Standalone (not suite-based) to avoid corrupting shared config state.
 
-func TestStart_UnreachableServers_FailsFast(t *testing.T) {
+func TestStart_UnreachableServers_ContinuesWithFallback(t *testing.T) {
 	err := log.SetDefaultLogger("silent", common.LogConfig{Level: common.ELogLevel.LOG_DEBUG()})
 	require.NoError(t, err)
 
@@ -922,9 +922,12 @@ func TestStart_UnreachableServers_FailsFast(t *testing.T) {
 	require.NoError(t, dc.Configure(true))
 
 	err = dc.Start(context.Background())
-	require.Error(t, err, "Start() must fail fast when servers are unreachable")
-	assert.Contains(t, err.Error(), "distributed_cache: failed to start")
-	assert.Nil(t, dc.client, "client should remain nil after failed Start()")
+	require.NoError(t, err, "Start() should continue while the client retries discovery in the background")
+	t.Cleanup(func() {
+		require.NoError(t, dc.Stop())
+	})
+	require.NotNil(t, dc.client)
+	assert.Empty(t, dc.client.Servers())
 }
 
 // --- Test: Chunk size resolution from config ---
