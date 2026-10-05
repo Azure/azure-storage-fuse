@@ -116,7 +116,7 @@ spec:
               command:
                 - sh
                 - -c
-                - mount | grep -q ' on /mnt/blobfuse_mnt '
+                - mount | grep -q ' on /mnt/blobfuse_mnt ' && ls -d /mnt/blobfuse_mnt/. >/dev/null
             periodSeconds: 2
             timeoutSeconds: 2
             failureThreshold: 30
@@ -125,7 +125,7 @@ spec:
               command:
                 - sh
                 - -c
-                - mount | grep -q ' on /mnt/blobfuse_mnt '
+                - mount | grep -q ' on /mnt/blobfuse_mnt ' && ls -d /mnt/blobfuse_mnt/. >/dev/null
             initialDelaySeconds: 30
             periodSeconds: 30
             timeoutSeconds: 5

@@ -60,6 +60,18 @@ type podMounter struct {
 	logSequence int
 }
 
+type podList struct {
+	Items []struct {
+		Metadata struct {
+			Name              string  `json:"name"`
+			DeletionTimestamp *string `json:"deletionTimestamp"`
+		} `json:"metadata"`
+		Status struct {
+			Phase string `json:"phase"`
+		} `json:"status"`
+	} `json:"items"`
+}
+
 // podRolloutTimeout includes the deployment's probe delay.
 const podRolloutTimeout = 120 * time.Second
 
@@ -356,31 +368,47 @@ func (m *podMounter) ListPods(t *testing.T) []string {
 
 // listLivePodsE returns live (non-terminating) Running pod names, or an error.
 func (m *podMounter) listLivePodsE() ([]string, error) {
+	pods, _, err := m.listPodStateE()
+	return pods, err
+}
+
+// listPodStateE returns live Running pod names and the number of active pods.
+// Active includes terminating pods that may still hold cache memory, but not
+// historical Succeeded or Failed pod objects.
+func (m *podMounter) listPodStateE() ([]string, int, error) {
 	out, err := exec.Command(testCfg.kubectlBin,
 		"-n", m.namespace,
 		"get", "pod",
 		"-l", m.selector,
-		"--field-selector=status.phase=Running",
-		"-o", `jsonpath={range .items[*]}{.metadata.name}{"\t"}{.metadata.deletionTimestamp}{"\n"}{end}`,
+		"-o", "json",
 	).CombinedOutput()
 	if err != nil {
-		return nil, fmt.Errorf("kubectl get pod: %w (out: %s)", err, strings.TrimSpace(string(out)))
+		return nil, 0, fmt.Errorf("kubectl get pod: %w (out: %s)", err, strings.TrimSpace(string(out)))
 	}
-	var pods []string
-	for _, line := range strings.Split(string(out), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
+	pods, total, err := parsePodState(out)
+	if err != nil {
+		return nil, 0, fmt.Errorf("decode pod list: %w", err)
+	}
+	return pods, total, nil
+}
+
+func parsePodState(data []byte) ([]string, int, error) {
+	var list podList
+	if err := json.Unmarshal(data, &list); err != nil {
+		return nil, 0, err
+	}
+	pods := make([]string, 0, len(list.Items))
+	active := 0
+	for _, pod := range list.Items {
+		terminal := pod.Status.Phase == "Succeeded" || pod.Status.Phase == "Failed"
+		if pod.Metadata.DeletionTimestamp != nil || !terminal {
+			active++
 		}
-		name, delTS, _ := strings.Cut(line, "\t")
-		if strings.TrimSpace(delTS) != "" {
-			continue
-		}
-		if name = strings.TrimSpace(name); name != "" {
-			pods = append(pods, name)
+		if pod.Metadata.DeletionTimestamp == nil && pod.Status.Phase == "Running" {
+			pods = append(pods, pod.Metadata.Name)
 		}
 	}
-	return pods, nil
+	return pods, active, nil
 }
 
 // ConcurrentReadFile fires one goroutine per pod, released together through
@@ -500,16 +528,16 @@ func (m *podMounter) WaitDeploymentReady(t *testing.T) {
 		ready := deployment.Status.ReadyReplicas
 		total := deployment.Status.Replicas
 
-		livePods, listErr := m.listLivePodsE()
+		livePods, activePods, listErr := m.listPodStateE()
 		live := len(livePods)
 
-		if listErr == nil && spec == ready && total == spec && live == spec {
+		if listErr == nil && spec == ready && total == spec && live == spec && activePods == spec {
 			t.Logf("pod: deployment ready at replicas=%d (live pods=%d)", spec, live)
 			return
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("pod: deployment not ready after %s (spec=%d ready=%d total=%d live=%d listErr=%v)",
-				scaleWaitTimeout, spec, ready, total, live, listErr)
+			t.Fatalf("pod: deployment not ready after %s (spec=%d ready=%d statusTotal=%d live=%d activePods=%d listErr=%v)",
+				scaleWaitTimeout, spec, ready, total, live, activePods, listErr)
 		}
 		time.Sleep(2 * time.Second)
 	}
