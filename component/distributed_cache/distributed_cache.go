@@ -133,6 +133,7 @@ type DistCache struct {
 type dcacheClient interface {
 	DownloadChunk(ctx context.Context, filename, etag string, offset int64, buf []byte, opts ...dcache.DownloadOption) (int, error)
 	UploadChunk(ctx context.Context, filename, etag string, offset int64, data []byte, opts ...dcache.UploadOption) error
+	Servers() []string
 	Close() error
 }
 
@@ -316,13 +317,21 @@ func (dc *DistCache) Start(ctx context.Context) error {
 	opts = append(opts, dcache.WithCachePrefix(dc.cachePrefix))
 
 	client, err := dcache.New(opts...)
+	return dc.completeStart(client, err)
+}
+
+func (dc *DistCache) completeStart(client dcacheClient, err error) error {
 	if err != nil {
 		log.Err("DistCache::Start : Failed to connect to distributed cache: %v", err)
 		return fmt.Errorf("distributed_cache: failed to start: %w", err)
 	}
 
+	if len(client.Servers()) == 0 {
+		log.Warn("DistCache::Start : no distributed-cache servers were discovered; mount will continue using block cache and Azure Storage fallback")
+	} else {
+		log.Info("DistCache::Start : connected to distributed cache cluster")
+	}
 	dc.client = client
-	log.Info("DistCache::Start : connected to distributed cache cluster")
 
 	return nil
 }
