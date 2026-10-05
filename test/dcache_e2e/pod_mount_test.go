@@ -143,6 +143,25 @@ func (m *podMounter) collectBlobfuseLogs(t *testing.T, phase string) {
 			t.Logf("logs: write %s: %v", filePath, writeErr)
 		}
 	}
+
+	// `kubectl logs` shows what blobfuse2 did, never where it ran or why the
+	// kubelet acted on it. Node placement, restart counts and probe events are
+	// what separate a crashing mount from a pod stranded on a broken node, and
+	// this Deployment is about to be deleted, so capture them now.
+	describe, err := exec.Command(testCfg.kubectlBin,
+		"-n", m.namespace,
+		"describe", "pod",
+		"-l", m.selector,
+	).CombinedOutput()
+	describePath := filepath.Join(outDir,
+		fmt.Sprintf("%02d-%s-describe.txt", m.logSequence, phase))
+	if err != nil {
+		describePath += ".error"
+		t.Logf("logs: describe blobfuse2 pods before %s: %v", phase, err)
+	}
+	if writeErr := os.WriteFile(describePath, describe, 0644); writeErr != nil {
+		t.Logf("logs: write %s: %v", describePath, writeErr)
+	}
 }
 
 // uniqueDeploymentName returns a DNS-1123 label derived from t.Name plus a

@@ -129,6 +129,14 @@ steps:
       mkdir -p "$out_dir"
       kubectl get pods -n "$NAMESPACE" -o wide > "$out_dir/pods.txt" 2>&1 || true
       kubectl describe pods -n "$NAMESPACE" > "$out_dir/pods-describe.txt" 2>&1 || true
+      # Per-test Deployments are deleted in t.Cleanup, so anything left here is
+      # incidental. Capture the namespace state anyway: node placement, restart
+      # counts and probe events are what distinguish a crashing mount from a
+      # broken node, and the Go suite cannot record them after deletion.
+      kubectl get pods -n blobfuse2-dist-cache -o wide > "$out_dir/blobfuse2-pods.txt" 2>&1 || true
+      kubectl describe pods -n blobfuse2-dist-cache > "$out_dir/blobfuse2-pods-describe.txt" 2>&1 || true
+      kubectl get nodes -o wide > "$out_dir/nodes.txt" 2>&1 || true
+      kubectl get events -A --sort-by=.lastTimestamp > "$out_dir/events.txt" 2>&1 || true
       for pod in $(kubectl get pods -n "$NAMESPACE" -l app=cacheserver -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
         kubectl logs -n "$NAMESPACE" "$pod" --all-containers --prefix > "$out_dir/${pod}.log" 2>&1 || true
       done
