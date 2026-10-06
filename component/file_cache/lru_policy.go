@@ -93,10 +93,10 @@ const (
 
 	// Check for disk usage in below number of minutes
 	DiskUsageCheckInterval = 1
-
-	// Retry deleting files whose lock was busy
-	purgeRetryInterval = 250 * time.Millisecond
 )
+
+// Retry deleting files whose lock was busy. This is a variable so tests can change it.
+var purgeRetryInterval = 250 * time.Millisecond
 
 var _ cachePolicy = &lruPolicy{}
 
@@ -221,23 +221,14 @@ func (p *lruPolicy) queuePurge(name string) {
 	}
 }
 
-// processPurges deletes queued files. Files whose lock is busy stay queued, and it returns true so they are retried.
-func (p *lruPolicy) processPurges() bool {
+// takePurges returns the files queued for deletion since the last call.
+func (p *lruPolicy) takePurges() map[string]struct{} {
 	p.purgeLock.Lock()
+	defer p.purgeLock.Unlock()
+
 	batch := p.purgePending
 	p.purgePending = make(map[string]struct{})
-	p.purgeLock.Unlock()
-
-	busy := false
-	for name := range batch {
-		if !p.deleteItem(name) {
-			busy = true
-			p.purgeLock.Lock()
-			p.purgePending[name] = struct{}{}
-			p.purgeLock.Unlock()
-		}
-	}
-	return busy
+	return batch
 }
 
 func (p *lruPolicy) IsCached(name string) bool {
@@ -324,20 +315,26 @@ func (p *lruPolicy) clearCache() {
 	log.Trace("lruPolicy::ClearCache")
 	defer p.wg.Done()
 
-	// The retry timer runs only while busy files are queued, so an idle mount has no periodic wakeups.
+	// Files whose lock was busy wait here and are retried only when the timer fires, so new
+	// requests do not rescan them. The timer runs only while files are waiting.
+	busy := make(map[string]struct{})
 	var retry <-chan time.Time
 
 	for {
 		select {
 		case <-p.purgeSignal:
-			if p.processPurges() && retry == nil {
-				retry = time.After(purgeRetryInterval)
+			for name := range p.takePurges() {
+				if _, waiting := busy[name]; !waiting && !p.deleteItem(name) {
+					busy[name] = struct{}{}
+				}
 			}
 
 		case <-retry:
 			retry = nil
-			if p.processPurges() {
-				retry = time.After(purgeRetryInterval)
+			for name := range busy {
+				if p.deleteItem(name) {
+					delete(busy, name)
+				}
 			}
 
 		case <-p.cacheTimeoutMonitor:
@@ -371,6 +368,10 @@ func (p *lruPolicy) clearCache() {
 
 		case <-p.closeSignal:
 			return
+		}
+
+		if len(busy) > 0 && retry == nil {
+			retry = time.After(purgeRetryInterval)
 		}
 	}
 }
