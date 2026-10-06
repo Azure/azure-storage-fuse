@@ -185,6 +185,29 @@ func (suite *lruPolicyTestSuite) TestCachePurge() {
 	suite.assert.Nil(n)
 }
 
+func (suite *lruPolicyTestSuite) TestPurgeRetriesBusyFile() {
+	defer suite.cleanupTest()
+
+	name := filepath.Join(cache_path, "busy")
+	suite.Require().NoError(os.WriteFile(name, []byte("content"), 0600))
+
+	flock := suite.policy.fileLocks.Get("busy")
+	flock.Lock()
+	suite.False(suite.policy.deleteItem(name), "deleteItem must not wait for a busy file lock")
+
+	suite.policy.CachePurge(name)
+	suite.Never(func() bool {
+		_, err := os.Stat(name)
+		return os.IsNotExist(err)
+	}, 300*time.Millisecond, 10*time.Millisecond)
+
+	flock.Unlock()
+	suite.Eventually(func() bool {
+		_, err := os.Stat(name)
+		return os.IsNotExist(err)
+	}, 5*time.Second, 10*time.Millisecond)
+}
+
 func (suite *lruPolicyTestSuite) TestIsCached() {
 	defer suite.cleanupTest()
 	suite.policy.CacheValid("temp")
