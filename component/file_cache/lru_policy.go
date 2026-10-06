@@ -69,8 +69,10 @@ type lruPolicy struct {
 	closeSignal         chan int
 	closeSignalValidate chan int
 
-	// Channel to contain files that needs to be deleted immediately
-	deleteEvent chan string
+	// Files waiting to be deleted. Queuing never blocks, so callers may hold file locks.
+	purgeLock    sync.Mutex
+	purgePending map[string]struct{}
+	purgeSignal  chan struct{}
 
 	// Channel to contain files that are in use so push them up in lru list
 	validateChan chan string
@@ -92,6 +94,9 @@ const (
 	// Check for disk usage in below number of minutes
 	DiskUsageCheckInterval = 1
 )
+
+// Retry deleting files whose lock was busy. This is a variable so tests can change it.
+var purgeRetryInterval = 250 * time.Millisecond
 
 var _ cachePolicy = &lruPolicy{}
 
@@ -124,7 +129,8 @@ func (p *lruPolicy) StartPolicy() error {
 	p.closeSignal = make(chan int)
 	p.closeSignalValidate = make(chan int)
 
-	p.deleteEvent = make(chan string, 1000)
+	p.purgePending = make(map[string]struct{})
+	p.purgeSignal = make(chan struct{}, 1)
 	p.validateChan = make(chan string, 10000)
 
 	_, err := common.GetUsage(p.tmpPath)
@@ -201,11 +207,35 @@ func (p *lruPolicy) CachePurge(name string) {
 	log.Trace("lruPolicy::CachePurge : %s", name)
 
 	p.removeNode(name)
-	p.deleteEvent <- name
+	p.queuePurge(name)
+}
+
+func (p *lruPolicy) queuePurge(name string) {
+	p.purgeLock.Lock()
+	p.purgePending[name] = struct{}{}
+	p.purgeLock.Unlock()
+
+	select {
+	case p.purgeSignal <- struct{}{}:
+	default:
+	}
+}
+
+// takePurges returns the files queued for deletion since the last call.
+func (p *lruPolicy) takePurges() map[string]struct{} {
+	p.purgeLock.Lock()
+	defer p.purgeLock.Unlock()
+
+	batch := p.purgePending
+	p.purgePending = make(map[string]struct{})
+	return batch
 }
 
 func (p *lruPolicy) IsCached(name string) bool {
 	log.Trace("lruPolicy::IsCached : %s", name)
+
+	p.Lock()
+	defer p.Unlock()
 
 	val, found := p.nodeMap.Load(name)
 	if found {
@@ -285,12 +315,27 @@ func (p *lruPolicy) clearCache() {
 	log.Trace("lruPolicy::ClearCache")
 	defer p.wg.Done()
 
+	// Files whose lock was busy wait here and are retried only when the timer fires, so new
+	// requests do not rescan them. The timer runs only while files are waiting.
+	busy := make(map[string]struct{})
+	var retry <-chan time.Time
+
 	for {
 		select {
-		case name := <-p.deleteEvent:
-			log.Trace("lruPolicy::Clear-delete")
-			// we are asked to delete file explicitly
-			p.deleteItem(name)
+		case <-p.purgeSignal:
+			for name := range p.takePurges() {
+				if _, waiting := busy[name]; !waiting && !p.deleteItem(name) {
+					busy[name] = struct{}{}
+				}
+			}
+
+		case <-retry:
+			retry = nil
+			for name := range busy {
+				if p.deleteItem(name) {
+					delete(busy, name)
+				}
+			}
 
 		case <-p.cacheTimeoutMonitor:
 			log.Trace("lruPolicy::Clear-timeout monitor")
@@ -323,6 +368,10 @@ func (p *lruPolicy) clearCache() {
 
 		case <-p.closeSignal:
 			return
+		}
+
+		if len(busy) > 0 && retry == nil {
+			retry = time.After(purgeRetryInterval)
 		}
 	}
 }
@@ -418,6 +467,11 @@ func (p *lruPolicy) deleteExpiredNodes() {
 	if node != nil {
 		node.prev = p.lastMarker
 	}
+	// Detach the evicted batch from the nodes that remain. Otherwise, removing the last evicted
+	// node below would clear the back link of the first remaining node.
+	if len(delItems) > 0 {
+		delItems[len(delItems)-1].next = nil
+	}
 	p.Unlock()
 
 	log.Debug("lruPolicy::deleteExpiredNodes : List generated %d items", count)
@@ -425,20 +479,23 @@ func (p *lruPolicy) deleteExpiredNodes() {
 	for _, item := range delItems {
 		if item.deleted {
 			p.removeNode(item.name)
-			p.deleteItem(item.name)
+			if !p.deleteItem(item.name) {
+				p.queuePurge(item.name)
+			}
 		}
 	}
 
 	log.Debug("lruPolicy::deleteExpiredNodes : Ends")
 }
 
-func (p *lruPolicy) deleteItem(name string) {
+// deleteItem never waits for a file lock. It returns false if the lock is busy and deletion must be retried.
+func (p *lruPolicy) deleteItem(name string) bool {
 	log.Trace("lruPolicy::deleteItem : Deleting %s", name)
 
 	azPath := strings.TrimPrefix(name, p.tmpPath)
 	if azPath == "" {
 		log.Err("lruPolicy::DeleteItem : Empty file name formed name : %s, tmpPath : %s", name, p.tmpPath)
-		return
+		return true
 	}
 
 	if azPath[0] == '/' {
@@ -446,20 +503,17 @@ func (p *lruPolicy) deleteItem(name string) {
 	}
 
 	flock := p.fileLocks.Get(azPath)
-	if p.fileLocks.Locked(azPath) {
-		log.Warn("lruPolicy::DeleteItem : File in under download %s", azPath)
-		p.CacheValid(name)
-		return
+	if !flock.TryLock() {
+		log.Debug("lruPolicy::DeleteItem : File is busy %s", azPath)
+		return false
 	}
-
-	flock.Lock()
 	defer flock.Unlock()
 
 	// Check if there are any open handles to this file or not
 	if flock.Count() > 0 {
 		log.Warn("lruPolicy::DeleteItem : File in use %s", name)
 		p.CacheValid(name)
-		return
+		return true
 	}
 
 	// There are no open handles for this file so its safe to remove this
@@ -471,6 +525,7 @@ func (p *lruPolicy) deleteItem(name string) {
 	// File was deleted so try clearing its parent directory
 	// TODO: Delete directories up the path recursively that are "safe to delete". Ensure there is no race between this code and code that creates directories (like OpenFile)
 	// This might require something like hierarchical locking.
+	return true
 }
 
 func (p *lruPolicy) printNodes() {
