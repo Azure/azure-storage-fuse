@@ -1690,8 +1690,6 @@ func (suite *fileCacheTestSuite) TestRenameFileInCache() {
 	// Path in fake storage and file cache should be updated
 	_, err = os.Stat(suite.cache_path + "/" + src) // Src does not exist
 	suite.assert.True(os.IsNotExist(err))
-	_, err = os.Stat(suite.cache_path + "/" + dst) // Dst shall exists in cache
-	suite.assert.True(err == nil || os.IsExist(err))
 	_, err = os.Stat(suite.fake_storage_path + "/" + src) // Src does not exist
 	suite.assert.True(os.IsNotExist(err))
 	_, err = os.Stat(suite.fake_storage_path + "/" + dst) // Dst does exist
@@ -1699,6 +1697,12 @@ func (suite *fileCacheTestSuite) TestRenameFileInCache() {
 
 	err = suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: openHandle})
 	suite.assert.NoError(err)
+
+	// With a zero timeout, rename queues the cached destination for deletion.
+	suite.assert.Eventually(func() bool {
+		_, err := os.Stat(suite.cache_path + "/" + dst)
+		return os.IsNotExist(err)
+	}, 5*time.Second, 10*time.Millisecond)
 }
 
 func (suite *fileCacheTestSuite) TestRenameFileCase2() {
@@ -1799,8 +1803,6 @@ func (suite *fileCacheTestSuite) TestRenameFileAndCacheCleanupWithNoTimeout() {
 	// Path in fake storage and file cache should be updated
 	_, err = os.Stat(suite.cache_path + "/" + src) // Src does not exist
 	suite.assert.True(os.IsNotExist(err))
-	_, err = os.Stat(suite.cache_path + "/" + dst) // Dst shall exists in cache
-	suite.assert.True(err == nil || os.IsExist(err))
 	_, err = os.Stat(suite.fake_storage_path + "/" + src) // Src does not exist
 	suite.assert.True(os.IsNotExist(err))
 	_, err = os.Stat(suite.fake_storage_path + "/" + dst) // Dst does exist
@@ -1809,9 +1811,178 @@ func (suite *fileCacheTestSuite) TestRenameFileAndCacheCleanupWithNoTimeout() {
 	err = suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: openHandle})
 	suite.assert.NoError(err)
 
-	time.Sleep(1 * time.Second)                    // Wait for the cache cleanup to occur
-	_, err = os.Stat(suite.cache_path + "/" + dst) // Dst shall not exists in cache
-	suite.assert.True(err == nil || os.IsNotExist(err))
+	// With a zero timeout, rename queues the cached destination for deletion.
+	suite.assert.Eventually(func() bool {
+		_, err := os.Stat(suite.cache_path + "/" + dst)
+		return os.IsNotExist(err)
+	}, 5*time.Second, 10*time.Millisecond)
+}
+
+// TestLateFsyncedReleaseKeepsReusedFile covers the kernel delivering a release after the application has
+// renamed the fsynced file and created a new file with the same name.
+func (suite *fileCacheTestSuite) TestLateFsyncedReleaseKeepsReusedFile() {
+	defer suite.cleanupTest()
+	fc := suite.fileCache
+	tmp, final := "file_temp", "file"
+
+	h0, err := fc.CreateFile(internal.CreateFileOptions{Name: tmp, Mode: 0644})
+	suite.Require().NoError(err)
+	_, err = fc.WriteFile(&internal.WriteFileOptions{Handle: h0, Data: []byte("round 1")})
+	suite.Require().NoError(err)
+	suite.Require().NoError(fc.SyncFile(internal.SyncFileOptions{Handle: h0}))
+	suite.Require().NoError(fc.FlushFile(internal.FlushFileOptions{Handle: h0}))
+	suite.Require().NoError(fc.RenameFile(internal.RenameFileOptions{Src: tmp, Dst: final}))
+
+	h1, err := fc.CreateFile(internal.CreateFileOptions{Name: tmp, Mode: 0644})
+	suite.Require().NoError(err)
+	_, err = fc.WriteFile(&internal.WriteFileOptions{Handle: h1, Data: []byte("round 2")})
+	suite.Require().NoError(err)
+	suite.Require().NoError(fc.ReleaseFile(internal.ReleaseFileOptions{Handle: h0}))
+	suite.Require().NoError(fc.ReleaseFile(internal.ReleaseFileOptions{Handle: h1}))
+
+	for name, want := range map[string]string{final: "round 1", tmp: "round 2"} {
+		data, err := os.ReadFile(filepath.Join(suite.fake_storage_path, name))
+		suite.NoError(err)
+		suite.Equal(want, string(data), name)
+	}
+}
+
+func (suite *fileCacheTestSuite) TestConcurrentCloseRenamePurge() {
+	defer suite.cleanupTest()
+
+	fc := suite.fileCache
+	const closeCount = 1050
+	const renameWorkers = 8
+	const renameRounds = 12
+	const openWorkers = 12
+
+	stable := "stable"
+	handle, err := fc.CreateFile(internal.CreateFileOptions{Name: stable, Mode: 0600})
+	suite.Require().NoError(err)
+	_, err = fc.WriteFile(&internal.WriteFileOptions{Handle: handle, Data: []byte("stable")})
+	suite.Require().NoError(err)
+	suite.Require().NoError(fc.ReleaseFile(internal.ReleaseFileOptions{Handle: handle}))
+
+	handles := make([]*handlemap.Handle, closeCount)
+	for i := range handles {
+		handles[i], err = fc.OpenFile(internal.OpenFileOptions{Name: stable, Flags: os.O_RDONLY, Mode: 0600})
+		suite.Require().NoError(err)
+	}
+
+	// Queue a backlog first so cleanup is still busy when the burst of closes and renames starts.
+	for i := 0; i < 1000; i++ {
+		fc.policy.CachePurge(filepath.Join(suite.cache_path, fmt.Sprintf("unused-%d", i)))
+	}
+
+	start := make(chan struct{})
+	errs := make(chan error, closeCount+renameWorkers+openWorkers)
+	var wg sync.WaitGroup
+	run := func(fn func() error) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			if err := fn(); err != nil {
+				errs <- err
+			}
+		}()
+	}
+
+	for _, h := range handles {
+		h := h
+		run(func() error {
+			return fc.ReleaseFile(internal.ReleaseFileOptions{Handle: h})
+		})
+	}
+
+	for worker := 0; worker < renameWorkers; worker++ {
+		src := fmt.Sprintf("file_temp_%d", worker)
+		dst := fmt.Sprintf("file_%d", worker)
+		run(func() error {
+			for round := 0; round < renameRounds; round++ {
+				data := []byte(fmt.Sprintf("small file %d/%d", worker, round))
+				h, err := fc.CreateFile(internal.CreateFileOptions{Name: src, Mode: 0600})
+				if err != nil {
+					return fmt.Errorf("create %s: %w", src, err)
+				}
+				if _, err := fc.WriteFile(&internal.WriteFileOptions{Handle: h, Data: data}); err != nil {
+					return fmt.Errorf("write %s: %w", src, err)
+				}
+				if err := fc.FlushFile(internal.FlushFileOptions{Handle: h}); err != nil {
+					return fmt.Errorf("flush %s: %w", src, err)
+				}
+				if err := fc.SyncFile(internal.SyncFileOptions{Handle: h}); err != nil {
+					return fmt.Errorf("sync %s: %w", src, err)
+				}
+				if err := fc.ReleaseFile(internal.ReleaseFileOptions{Handle: h}); err != nil {
+					return fmt.Errorf("release %s: %w", src, err)
+				}
+				if err := fc.RenameFile(internal.RenameFileOptions{Src: src, Dst: dst}); err != nil {
+					return fmt.Errorf("rename %s to %s: %w", src, dst, err)
+				}
+				h, err = fc.OpenFile(internal.OpenFileOptions{Name: dst, Flags: os.O_RDONLY, Mode: 0600})
+				if err != nil {
+					return fmt.Errorf("open %s: %w", dst, err)
+				}
+				buf := make([]byte, len(data))
+				n, readErr := fc.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Data: buf})
+				releaseErr := fc.ReleaseFile(internal.ReleaseFileOptions{Handle: h})
+				if readErr != nil || n != len(data) || !bytes.Equal(buf, data) {
+					return fmt.Errorf("read %s: got %q (%d bytes), error %v", dst, buf, n, readErr)
+				}
+				if releaseErr != nil {
+					return fmt.Errorf("release %s: %w", dst, releaseErr)
+				}
+			}
+			return nil
+		})
+	}
+
+	for worker := 0; worker < openWorkers; worker++ {
+		run(func() error {
+			for i := 0; i < renameRounds; i++ {
+				h, err := fc.OpenFile(internal.OpenFileOptions{Name: stable, Flags: os.O_RDONLY, Mode: 0600})
+				if err != nil {
+					return err
+				}
+				buf := make([]byte, len("stable"))
+				n, readErr := fc.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Data: buf})
+				releaseErr := fc.ReleaseFile(internal.ReleaseFileOptions{Handle: h})
+				if readErr != nil || n != len(buf) || string(buf) != "stable" {
+					return fmt.Errorf("stable read: got %q (%d bytes), error %v", buf, n, readErr)
+				}
+				if releaseErr != nil {
+					return releaseErr
+				}
+			}
+			return nil
+		})
+	}
+
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+	close(start)
+	select {
+	case <-done:
+	case <-time.After(90 * time.Second):
+		suite.FailNow("close, rename, or open blocked behind cache eviction")
+	}
+	close(errs)
+	for err := range errs {
+		suite.NoError(err)
+	}
+
+	flock := fc.fileLocks.Get(stable)
+	flock.Lock()
+	suite.Equal(uint32(0), flock.Count())
+	flock.Unlock()
+	suite.Eventually(func() bool {
+		_, err := os.Stat(filepath.Join(suite.cache_path, stable))
+		return os.IsNotExist(err)
+	}, 10*time.Second, 10*time.Millisecond)
 }
 
 func (suite *fileCacheTestSuite) TestTruncateFileNotInCache() {
