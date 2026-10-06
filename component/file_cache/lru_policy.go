@@ -418,6 +418,11 @@ func (p *lruPolicy) deleteExpiredNodes() {
 	if node != nil {
 		node.prev = p.lastMarker
 	}
+	// Detach the evicted batch from the nodes that remain. Otherwise, removing the last evicted
+	// node below would clear the back link of the first remaining node.
+	if len(delItems) > 0 {
+		delItems[len(delItems)-1].next = nil
+	}
 	p.Unlock()
 
 	log.Debug("lruPolicy::deleteExpiredNodes : List generated %d items", count)
