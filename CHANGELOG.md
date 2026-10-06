@@ -4,7 +4,7 @@
 **Bug Fixes**
 - Return `EINVAL` instead of `EIO` when Azure Storage rejects an attribute lookup with `InvalidUri` or `InvalidQueryParameterValue`, such as for an unsupported blob or path name. ([PR #2342](https://github.com/Azure/azure-storage-fuse/pull/2342))
 - Fix an out-of-bounds write in `readlink` when a symlink blob's content is longer than the buffer supplied by libfuse. Symlink targets longer than 4095 bytes now fail with `ENAMETOOLONG`, and no more than 4095 bytes of a symlink blob are downloaded. Custom components that call `ReadLink` must set `ReadLinkOptions.Size` to the target length from `GetAttr`, because a size of 0 now means an empty target instead of reading the whole blob. ([PR #2367](https://github.com/Azure/azure-storage-fuse/pull/2367))
-- Fix file-cache eviction after a single expiry pass stops at `max-eviction` (5,000 files by default), which can happen with a nonzero file-cache timeout. The files left in the LRU list could lose their links, so recently used files could be evicted early, older files could stop being evicted, and `policy-trace` could loop forever while printing the list.
+- Fix file-cache eviction after a single expiry pass stops at `max-eviction` (5,000 files by default), which can happen with a nonzero file-cache timeout. The files left in the LRU list could lose their links, so recently used files could be evicted early, older files could stop being evicted, and `policy-trace` could loop forever while printing the list. ([PR #2384](https://github.com/Azure/azure-storage-fuse/pull/2384))
 
 **Other Changes**
 - Run the ADLS DFS and Blob pre-mount validation concurrently to reduce mount latency ([PR #2341](https://github.com/Azure/azure-storage-fuse/pull/2341))
