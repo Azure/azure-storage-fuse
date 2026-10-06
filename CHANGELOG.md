@@ -4,8 +4,8 @@
 **Bug Fixes**
 - Return `EINVAL` instead of `EIO` when Azure Storage rejects an attribute lookup with `InvalidUri` or `InvalidQueryParameterValue`, such as for an unsupported blob or path name. ([PR #2342](https://github.com/Azure/azure-storage-fuse/pull/2342))
 - Fix an out-of-bounds write in `readlink` when a symlink blob's content is longer than the buffer supplied by libfuse. Symlink targets longer than 4095 bytes now fail with `ENAMETOOLONG`, and no more than 4095 bytes of a symlink blob are downloaded. Custom components that call `ReadLink` must set `ReadLinkOptions.Size` to the target length from `GetAttr`, because a size of 0 now means an empty target instead of reading the whole blob. ([PR #2367](https://github.com/Azure/azure-storage-fuse/pull/2367))
-- Fix a file-cache hang under highly concurrent file closes and renames, most likely with `direct_io` or a file-cache timeout of 0. Queuing local cache cleanup no longer blocks file operations, and the cleanup worker retries busy files instead of waiting for their locks.
-- Fix `close()` failing with `EIO`, and the file not being uploaded, when an fsynced file is renamed and its name is reused right away. The first file's delayed release no longer deletes the new file's local copy.
+- Fix a file-cache hang under highly concurrent file closes and renames, most likely with `direct_io` or a file-cache timeout of 0. Queuing local cache cleanup no longer blocks file operations, and the cleanup worker retries busy files instead of waiting for their locks. ([PR #2383](https://github.com/Azure/azure-storage-fuse/pull/2383))
+- Fix `close()` failing with `EIO`, and the file not being uploaded, when an fsynced file is renamed and its name is reused right away. The first file's delayed release no longer deletes the new file's local copy. ([PR #2383](https://github.com/Azure/azure-storage-fuse/pull/2383))
 
 **Other Changes**
 - Run the ADLS DFS and Blob pre-mount validation concurrently to reduce mount latency ([PR #2341](https://github.com/Azure/azure-storage-fuse/pull/2341))
