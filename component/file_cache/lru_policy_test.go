@@ -185,6 +185,71 @@ func (suite *lruPolicyTestSuite) TestCachePurge() {
 	suite.assert.Nil(n)
 }
 
+func (suite *lruPolicyTestSuite) TestPurgeRetriesBusyFile() {
+	defer suite.cleanupTest()
+
+	name := filepath.Join(cache_path, "busy")
+	suite.Require().NoError(os.WriteFile(name, []byte("content"), 0600))
+
+	flock := suite.policy.fileLocks.Get("busy")
+	flock.Lock()
+	suite.False(suite.policy.deleteItem(name), "deleteItem must not wait for a busy file lock")
+
+	suite.policy.CachePurge(name)
+	suite.Never(func() bool {
+		_, err := os.Stat(name)
+		return os.IsNotExist(err)
+	}, 300*time.Millisecond, 10*time.Millisecond)
+
+	flock.Unlock()
+	suite.Eventually(func() bool {
+		_, err := os.Stat(name)
+		return os.IsNotExist(err)
+	}, 5*time.Second, 10*time.Millisecond)
+}
+
+// A busy file must wait for the retry timer instead of being retried on every new cleanup request.
+func (suite *lruPolicyTestSuite) TestNewPurgesDoNotRetryBusyFile() {
+	interval := purgeRetryInterval
+	defer func() { purgeRetryInterval = interval }()
+	defer suite.cleanupTest()
+	suite.cleanupTest()
+
+	purgeRetryInterval = time.Hour
+	suite.setupTestHelper(cachePolicyConfig{
+		tmpPath:       cache_path,
+		maxEviction:   defaultMaxEviction,
+		highThreshold: defaultMaxThreshold,
+		lowThreshold:  defaultMinThreshold,
+		fileLocks:     &common.LockMap{},
+	})
+	suite.Require().NoError(os.MkdirAll(cache_path, 0777))
+
+	purgeAndWait := func(name string) {
+		path := filepath.Join(cache_path, name)
+		suite.Require().NoError(os.WriteFile(path, []byte("content"), 0600))
+		suite.policy.CachePurge(path)
+		suite.Require().Eventually(func() bool {
+			_, err := os.Stat(path)
+			return os.IsNotExist(err)
+		}, 5*time.Second, 10*time.Millisecond)
+	}
+
+	busy := filepath.Join(cache_path, "busy")
+	suite.Require().NoError(os.WriteFile(busy, []byte("content"), 0600))
+	flock := suite.policy.fileLocks.Get("busy")
+	flock.Lock()
+	suite.policy.CachePurge(busy)
+	// The worker handles one batch at a time, so once two later requests are done it has tried the busy file.
+	purgeAndWait("first")
+	purgeAndWait("second")
+	flock.Unlock()
+
+	purgeAndWait("third")
+	_, err := os.Stat(busy)
+	suite.NoError(err, "a new cleanup request retried the busy file before its retry timer")
+}
+
 func (suite *lruPolicyTestSuite) TestIsCached() {
 	defer suite.cleanupTest()
 	suite.policy.CacheValid("temp")
