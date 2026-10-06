@@ -100,20 +100,46 @@ steps:
       STO_ACC_CONTAINER: $(containerName)
 
   # -------------------------------------------------------------------------
-  # 6. Run only the distributed-cache-specific pod suite.
+  # 6. Run the distributed-cache pod suite in two passes.
+  #
+  # TestNodeFailure kills a kind node container. On this agent's kernel
+  # kube-proxy cannot complete startup inside the restarted container and
+  # crash-loops, so that node permanently loses every Service ClusterIP -
+  # including kube-dns. Any blobfuse2 pod later scheduled there cannot resolve
+  # the storage endpoint, hangs before mounting and is killed by its liveness
+  # probe, which fails whichever test happened to run next.
+  #
+  # Splitting the run pins the destructive test last without relying on Go's
+  # file-name ordering, and makes the dependency visible here rather than
+  # implicit in the source layout. A test added later joins the first pass and
+  # so runs against an undamaged cluster by default.
   - script: |
-      set -e
+      set +e
       cd $(WORK_DIR)
-      go test -v -timeout=30m -tags=fuse3 ./test/dcache_e2e/... -args \
-        -pod-namespace=blobfuse2-dist-cache \
-        -pod-deployment=blobfuse2-dist-cache \
-        -pod-mount-path=/mnt/blobfuse_mnt \
-        -kubectl-bin=kubectl \
-        -docker-bin=docker \
-        -storage-account=${{ parameters.account_name }} \
-        -storage-key=${{ parameters.account_key }} \
-        -storage-endpoint=https://${{ parameters.account_name }}.blob.core.windows.net \
+      common_args=(
+        -pod-namespace=blobfuse2-dist-cache
+        -pod-deployment=blobfuse2-dist-cache
+        -pod-mount-path=/mnt/blobfuse_mnt
+        -kubectl-bin=kubectl
+        -docker-bin=docker
+        -storage-account=${{ parameters.account_name }}
+        -storage-key=${{ parameters.account_key }}
+        -storage-endpoint=https://${{ parameters.account_name }}.blob.core.windows.net
         -storage-container=$(containerName)
+      )
+
+      echo "=== pass 1/2: non-destructive tests ==="
+      go test -v -timeout=30m -tags=fuse3 ./test/dcache_e2e/... \
+        -skip 'TestNodeFailure' -args "${common_args[@]}"
+      rc_main=$?
+
+      echo "=== pass 2/2: TestNodeFailure (destructive, runs last) ==="
+      go test -v -timeout=30m -tags=fuse3 ./test/dcache_e2e/... \
+        -run 'TestNodeFailure' -args "${common_args[@]}"
+      rc_nodefail=$?
+
+      echo "exit codes: non-destructive=$rc_main node-failure=$rc_nodefail"
+      [ $rc_main -eq 0 ] && [ $rc_nodefail -eq 0 ]
     displayName: 'DistCache: dcache_e2e Go tests'
     timeoutInMinutes: 60
     continueOnError: false
@@ -137,6 +163,16 @@ steps:
       kubectl describe pods -n blobfuse2-dist-cache > "$out_dir/blobfuse2-pods-describe.txt" 2>&1 || true
       kubectl get nodes -o wide > "$out_dir/nodes.txt" 2>&1 || true
       kubectl get events -A --sort-by=.lastTimestamp > "$out_dir/events.txt" 2>&1 || true
+      # kube-proxy fails to restart on a node whose container was restarted by
+      # TestNodeFailure, which is what strands that node without Service
+      # ClusterIPs. Its fatal startup message is not recoverable anywhere else.
+      kube_dir="$out_dir/kube-system"
+      mkdir -p "$kube_dir"
+      kubectl describe pods -n kube-system -l k8s-app=kube-proxy > "$kube_dir/kube-proxy-describe.txt" 2>&1 || true
+      for pod in $(kubectl get pods -n kube-system -l k8s-app=kube-proxy -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
+        kubectl logs -n kube-system "$pod" --timestamps > "$kube_dir/${pod}.log" 2>&1 || true
+        kubectl logs -n kube-system "$pod" --timestamps --previous > "$kube_dir/${pod}.previous.log" 2>&1 || true
+      done
       for pod in $(kubectl get pods -n "$NAMESPACE" -l app=cacheserver -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
         kubectl logs -n "$NAMESPACE" "$pod" --all-containers --prefix > "$out_dir/${pod}.log" 2>&1 || true
       done
