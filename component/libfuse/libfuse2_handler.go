@@ -630,8 +630,6 @@ func libfuse_create(path *C.char, mode C.mode_t, fi *C.fuse_file_info_t) C.int {
 			return -C.EACCES
 		} else if errors.Is(err, syscall.EINVAL) {
 			return -C.EINVAL
-		} else if errors.Is(err, syscall.ENAMETOOLONG) {
-			return -C.ENAMETOOLONG
 		} else {
 			return -C.EIO
 		}

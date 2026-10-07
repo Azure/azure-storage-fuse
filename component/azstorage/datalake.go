@@ -278,9 +278,6 @@ func (dl *Datalake) CreateFile(name string, mode os.FileMode) error {
 	err = dl.changeMod(name, mode, etag)
 	if err != nil {
 		log.Err("Datalake::CreateFile : Failed to set permissions on file %s [%s]", name, err.Error())
-		if datalakeerror.HasCode(err, datalakeerror.InvalidURI, datalakeerror.OutOfRangeInput) {
-			err = errors.Join(syscall.EINVAL, err)
-		}
 		if cleanupErr := dl.BlockBlob.deleteFileIfMatch(name, etag); cleanupErr != nil {
 			log.Err("Datalake::CreateFile : Failed to remove partially created file %s [%s]", name, cleanupErr.Error())
 			return errors.Join(err, fmt.Errorf("failed to remove partially created file %s: %w", name, cleanupErr))
@@ -636,6 +633,11 @@ func (dl *Datalake) changeMod(name string, mode os.FileMode, etag *azcore.ETag) 
 	_, err := fileClient.SetAccessControl(context.Background(), options)
 	if err != nil {
 		log.Err("Datalake::ChangeMod : Failed to change mode of file %s to %s [%s]", name, mode, err.Error())
+		// The DFS endpoint can reject a path that the Blob endpoint accepted. Match the SDK
+		// error code before conversion so this mapping does not depend on storeDatalakeErrToErr.
+		if datalakeerror.HasCode(err, datalakeerror.InvalidURI, datalakeerror.OutOfRangeInput) {
+			return errors.Join(syscall.EINVAL, err)
+		}
 		e := storeDatalakeErrToErr(err)
 		switch e {
 		case ErrFileNotFound:

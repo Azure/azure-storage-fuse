@@ -236,16 +236,6 @@ func testCreateInvalidArgument(suite *libfuseTestSuite) {
 	suite.assert.Equal(C.int(-C.EINVAL), err)
 }
 
-func testCreateNameTooLong(suite *libfuseTestSuite) {
-	defer suite.cleanupTest()
-	path := C.CString("/path")
-	defer C.free(unsafe.Pointer(path))
-	suite.mock.EXPECT().CreateFile(internal.CreateFileOptions{Name: "path", Mode: 0600}).Return(nil, syscall.ENAMETOOLONG)
-
-	err := libfuse_create(path, 0600, &C.fuse_file_info_t{})
-	suite.assert.Equal(C.int(-C.ENAMETOOLONG), err)
-}
-
 func testGetAttrInvalidArgument(suite *libfuseTestSuite) {
 	defer suite.cleanupTest()
 

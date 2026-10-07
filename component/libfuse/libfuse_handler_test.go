@@ -223,10 +223,6 @@ func (suite *libfuseTestSuite) TestCreateInvalidArgument() {
 	testCreateInvalidArgument(suite)
 }
 
-func (suite *libfuseTestSuite) TestCreateNameTooLong() {
-	testCreateNameTooLong(suite)
-}
-
 func (suite *libfuseTestSuite) TestGetAttrInvalidArgument() {
 	testGetAttrInvalidArgument(suite)
 }
