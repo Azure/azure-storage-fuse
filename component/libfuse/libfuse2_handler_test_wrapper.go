@@ -226,6 +226,16 @@ func testCreateError(suite *libfuseTestSuite) {
 	suite.assert.Equal(C.int(-C.EIO), err)
 }
 
+func testCreateInvalidArgument(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	path := C.CString("/path")
+	defer C.free(unsafe.Pointer(path))
+	suite.mock.EXPECT().CreateFile(internal.CreateFileOptions{Name: "path", Mode: 0600}).Return(nil, errors.Join(syscall.EINVAL, errors.New("DFS rejected permissions")))
+
+	err := libfuse_create(path, 0600, &C.fuse_file_info_t{})
+	suite.assert.Equal(C.int(-C.EINVAL), err)
+}
+
 func testGetAttrInvalidArgument(suite *libfuseTestSuite) {
 	defer suite.cleanupTest()
 

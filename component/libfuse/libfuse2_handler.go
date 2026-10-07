@@ -628,6 +628,8 @@ func libfuse_create(path *C.char, mode C.mode_t, fi *C.fuse_file_info_t) C.int {
 			return -C.EEXIST
 		} else if os.IsPermission(err) {
 			return -C.EACCES
+		} else if errors.Is(err, syscall.EINVAL) {
+			return -C.EINVAL
 		} else {
 			return -C.EIO
 		}

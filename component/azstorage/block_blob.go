@@ -52,6 +52,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/streaming"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/bloberror"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blockblob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/container"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/service"
@@ -294,6 +295,32 @@ func (bb *BlockBlob) CreateFile(name string, mode os.FileMode) error {
 	log.Trace("BlockBlob::CreateFile : name %s", name)
 	var data []byte
 	return bb.WriteFromBuffer(name, nil, data)
+}
+
+func (bb *BlockBlob) createFileIfAbsent(name string) (*azcore.ETag, error) {
+	etag, err := bb.uploadBuffer(name, nil, nil, &blob.AccessConditions{
+		ModifiedAccessConditions: &blob.ModifiedAccessConditions{IfNoneMatch: to.Ptr(azcore.ETagAny)},
+	})
+	if bloberror.HasCode(err, bloberror.BlobAlreadyExists, bloberror.ConditionNotMet) {
+		return nil, syscall.EEXIST
+	}
+	if err != nil {
+		return nil, err
+	}
+	if etag == nil || *etag == "" {
+		return nil, fmt.Errorf("blob upload returned no ETag for %s; cannot safely set permissions or remove the blob", name)
+	}
+	return etag, nil
+}
+
+func (bb *BlockBlob) deleteFileIfMatch(name string, etag *azcore.ETag) error {
+	blobClient := bb.Container.NewBlobClient(filepath.Join(bb.Config.prefixPath, name))
+	_, err := blobClient.Delete(context.Background(), &blob.DeleteOptions{
+		AccessConditions: &blob.AccessConditions{
+			ModifiedAccessConditions: &blob.ModifiedAccessConditions{IfMatch: etag},
+		},
+	})
+	return err
 }
 
 // CreateDirectory : Create a new directory in the container/virtual directory
@@ -1215,16 +1242,22 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]*string, fi 
 
 // WriteFromBuffer : Upload from a buffer to a blob
 func (bb *BlockBlob) WriteFromBuffer(name string, metadata map[string]*string, data []byte) error {
-	log.Trace("BlockBlob::WriteFromBuffer : name %s", name)
+	_, err := bb.uploadBuffer(name, metadata, data, nil)
+	return err
+}
+
+func (bb *BlockBlob) uploadBuffer(name string, metadata map[string]*string, data []byte, conditions *blob.AccessConditions) (*azcore.ETag, error) {
+	log.Trace("BlockBlob::uploadBuffer : name %s", name)
 	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
 
-	defer log.TimeTrack(time.Now(), "BlockBlob::WriteFromBuffer", name)
+	defer log.TimeTrack(time.Now(), "BlockBlob::uploadBuffer", name)
 
-	_, err := blobClient.UploadBuffer(context.Background(), data, &blockblob.UploadBufferOptions{
-		BlockSize:   bb.Config.blockSize,
-		Concurrency: bb.Config.maxConcurrency,
-		Metadata:    metadata,
-		AccessTier:  bb.Config.defaultTier,
+	resp, err := blobClient.UploadBuffer(context.Background(), data, &blockblob.UploadBufferOptions{
+		BlockSize:        bb.Config.blockSize,
+		Concurrency:      bb.Config.maxConcurrency,
+		Metadata:         metadata,
+		AccessTier:       bb.Config.defaultTier,
+		AccessConditions: conditions,
 		HTTPHeaders: &blob.HTTPHeaders{
 			BlobContentType: to.Ptr(getContentType(name)),
 		},
@@ -1232,11 +1265,11 @@ func (bb *BlockBlob) WriteFromBuffer(name string, metadata map[string]*string, d
 	})
 
 	if err != nil {
-		log.Err("BlockBlob::WriteFromBuffer : Failed to upload blob %s [%s]", name, err.Error())
-		return err
+		log.Err("BlockBlob::uploadBuffer : Failed to upload blob %s [%s]", name, err.Error())
+		return nil, err
 	}
 
-	return nil
+	return resp.ETag, nil
 }
 
 // GetFileBlockOffsets: store blocks ids and corresponding offsets
