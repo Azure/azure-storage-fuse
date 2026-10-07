@@ -219,6 +219,18 @@ func (suite *libfuseTestSuite) TestCreate() {
 	testCreate(suite)
 }
 
+func (suite *libfuseTestSuite) TestCreateNativeIO() {
+	testCreateNativeIO(suite)
+}
+
+func (suite *libfuseTestSuite) TestNativeWriteDirty() {
+	testNativeWriteDirty(suite)
+}
+
+func (suite *libfuseTestSuite) TestFlushNativeDirty() {
+	testFlushNativeDirty(suite)
+}
+
 func (suite *libfuseTestSuite) TestCreateError() {
 	testCreateError(suite)
 }
