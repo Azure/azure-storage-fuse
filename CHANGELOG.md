@@ -2,6 +2,7 @@
 **Features**
 
 **Bug Fixes**
+- On HNS accounts, attempt an ETag-conditional rollback if setting permissions after file creation fails, without deleting a pre-existing or concurrently replaced blob. Return `EINVAL` for DFS `InvalidUri` or `OutOfRangeInput` during file creation instead of `EIO`; no client-side name limit is imposed. ([PR #2369](https://github.com/Azure/azure-storage-fuse/pull/2369))
 - Return `EINVAL` instead of `EIO` when Azure Storage rejects an attribute lookup with `InvalidUri` or `InvalidQueryParameterValue`, such as for an unsupported blob or path name. ([PR #2342](https://github.com/Azure/azure-storage-fuse/pull/2342))
 - Fix an out-of-bounds write in `readlink` when a symlink blob's content is longer than the buffer supplied by libfuse. Symlink targets longer than 4095 bytes now fail with `ENAMETOOLONG`, and no more than 4095 bytes of a symlink blob are downloaded. Custom components that call `ReadLink` must set `ReadLinkOptions.Size` to the target length from `GetAttr`, because a size of 0 now means an empty target instead of reading the whole blob. ([PR #2367](https://github.com/Azure/azure-storage-fuse/pull/2367))
 - Fix a file-cache hang under highly concurrent file closes and renames, most likely with `direct_io` or a file-cache timeout of 0. Queuing local cache cleanup no longer blocks file operations, and the cleanup worker retries busy files instead of waiting for their locks. ([PR #2383](https://github.com/Azure/azure-storage-fuse/pull/2383))
