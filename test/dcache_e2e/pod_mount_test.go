@@ -552,9 +552,15 @@ func (m *podMounter) WaitDeploymentReady(t *testing.T) {
 
 		if listErr == nil && spec == ready && total == spec && live == spec && activePods == spec {
 			t.Logf("pod: deployment ready at replicas=%d (live pods=%d)", spec, live)
+			// Each replica mounts here, and blobfuse2 logs "couldn't initialize
+			// inotify: too many open files" inside the pod when the host budget
+			// is gone. That message carries no numbers, so record the budget
+			// alongside it from the host, where it is actually enforced.
+			logInotifyUsage(t, fmt.Sprintf("deployment %s ready at %d replica(s)", m.deployment, spec))
 			return
 		}
 		if time.Now().After(deadline) {
+			logInotifyUsage(t, "deployment "+m.deployment+" failed to become ready")
 			t.Fatalf("pod: deployment not ready after %s (spec=%d ready=%d statusTotal=%d live=%d activePods=%d listErr=%v)",
 				scaleWaitTimeout, spec, ready, total, live, activePods, listErr)
 		}

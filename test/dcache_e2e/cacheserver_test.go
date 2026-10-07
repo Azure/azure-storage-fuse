@@ -57,8 +57,8 @@ const kindNodeStateTimeout = 2 * time.Minute
 // kindnet/kube-proxy pod restart.
 //
 // The probes report rather than fail (see restoreKindNode), so this is kept
-// short: on a kernel where kube-proxy cannot restart the wait is pure dead
-// time, and on a healthy kernel recovery is observed well inside it.
+// short: when kube-proxy cannot restart the wait is pure dead time, and when
+// the host has inotify headroom recovery is observed well inside it.
 const nodeNetworkProbeTimeout = 60 * time.Second
 
 // kindNodeDialTimeout bounds a single TCP connect attempt issued inside a kind
@@ -114,6 +114,9 @@ func killKindNode(t *testing.T, node string) {
 		t.Fatalf("kind: kill node %s: %v (out: %s)", node, err, strings.TrimSpace(string(out)))
 	}
 	t.Logf("kind: killed node container %s", node)
+	// Sampled before the restart, while kube-proxy on this node is gone: this is
+	// the budget it will have to reacquire from when the node comes back.
+	logInotifyUsage(t, "node "+node+" killed")
 }
 
 func restoreKindNode(t *testing.T, node string) {
@@ -138,47 +141,28 @@ func restoreKindNode(t *testing.T, node string) {
 		return
 	}
 	t.Logf("cleanup: kind node %s is Ready", node)
-	// Node-local readiness says nothing about the data plane, so reprogram the
-	// node's routes and Service rules and then observe both layers.
+	logInotifyUsage(t, "node "+node+" restarted")
+
+	// Node-local readiness says nothing about the data plane, so observe it.
 	//
-	// These probes report; they do not fail the test. On some kernels kube-proxy
-	// cannot complete startup inside a restarted container and crash-loops, which
-	// leaves every Service ClusterIP - including kube-dns - unreachable from this
-	// node for as long as it lives. Nothing a test can do repairs that. The suite
-	// therefore runs this test last (see the split invocation in
-	// azure-pipeline-templates/dist-cache-e2e.yml) and the cluster is torn down
+	// These probes report; they do not fail the test. kube-proxy opens an
+	// inotify instance while starting up, and the kind nodes share the host's
+	// uid-keyed fs.inotify.max_user_instances budget with every other container
+	// on the agent (see inotify_test.go). If that budget is exhausted at the
+	// moment this node's kube-proxy restarts, it exits with "failed complete:
+	// too many open files" and crash-loops, leaving the node without any
+	// Service ClusterIP - including kube-dns - for as long as it lives.
+	//
+	// Nothing this test can do repairs that; deleting the pod only forces
+	// another doomed acquisition of the exhausted resource. The fix belongs on
+	// the host, and the pipeline now raises the limit before creating the
+	// cluster. The suite still runs this test last (see the split invocation in
+	// azure-pipeline-templates/dist-cache-e2e.yml) and tears the cluster down
 	// immediately afterwards, so a node left in this state harms nothing. The
 	// probe output is kept because it is the only in-band record of the damage.
-	recycleNodeNetworkDaemons(t, node)
 	waitCacheserverStatefulSetReady(t)
 	waitClusterIPReachableFromNode(t, node)
 	waitCacheserverPodsReachable(t)
-}
-
-// recycleNodeNetworkDaemons deletes the kindnet and kube-proxy pods bound to
-// node so both reprogram the node's pod-CIDR routes and Service iptables rules
-// from a clean slate. Both are DaemonSet members, so the control plane recreates
-// them immediately.
-//
-// This is a remedy, not an assertion: the reachability gates below decide
-// whether the node actually recovered, so a failure here is only logged.
-func recycleNodeNetworkDaemons(t *testing.T, node string) {
-	t.Helper()
-	for _, app := range []string{"kindnet", "kube-proxy"} {
-		out, err := exec.Command(testCfg.kubectlBin,
-			"-n", "kube-system",
-			"delete", "pod",
-			"-l", "k8s-app="+app,
-			"--field-selector", "spec.nodeName="+node,
-			"--ignore-not-found",
-		).CombinedOutput()
-		if err != nil {
-			t.Logf("cleanup: recycle %s on %s: %v (out: %s)",
-				app, node, err, strings.TrimSpace(string(out)))
-			continue
-		}
-		t.Logf("cleanup: recycled %s on %s to force network reprogramming", app, node)
-	}
 }
 
 // waitClusterIPReachableFromNode reports whether node can open a TCP connection
@@ -211,6 +195,10 @@ func waitClusterIPReachableFromNode(t *testing.T, node string) {
 				"Expected when kube-proxy fails to restart on this node; harmless because "+
 				"this test runs last and the cluster is torn down next: %v",
 				node, dnsIP, nodeNetworkProbeTimeout, dialErr)
+			// Sampled at the point of failure: if the budget is exhausted here,
+			// kube-proxy could not have acquired an inotify instance and this
+			// is the inotify fault rather than a routing one.
+			logInotifyUsage(t, "kube-dns ClusterIP unreachable from "+node)
 			return
 		}
 		time.Sleep(3 * time.Second)

@@ -195,6 +195,10 @@ func TestMain(m *testing.M) {
 		testCfg.cacheserverStatefulSet, testCfg.cacheserverMetricsPort,
 		testCfg.storageAccount, testCfg.storageEndpoint, testCfg.storageContainer)
 
+	// Baseline for the node-failure path: kube-proxy needs a free inotify
+	// instance to restart, and the kind nodes share this host budget.
+	fmt.Printf("  host inotify            = %s\n", inotifyUsageLine())
+
 	os.Exit(m.Run())
 }
 

@@ -37,6 +37,54 @@ steps:
     timeoutInMinutes: 15
 
   # -------------------------------------------------------------------------
+  # 1b. Raise the host inotify budget before anything allocates from it.
+  #
+  # kube-proxy opens an inotify instance while starting up, in Complete(),
+  # before it touches networking. The kind "nodes" are plain containers that do
+  # not enter a user namespace, so every process in the cluster draws on this
+  # host's uid-keyed fs.inotify.max_user_instances budget. Once blobfuse2 and
+  # the cache servers have consumed it, any kube-proxy that has to *reacquire*
+  # an instance - which is exactly what restarting a node container in
+  # TestNodeFailure forces - dies with "failed complete: too many open files"
+  # and crash-loops, stranding that node without a single Service ClusterIP,
+  # kube-dns included. Pods scheduled there then hang before mounting.
+  #
+  # The common default of 128 instances is not enough for this suite. Raising
+  # it is the actual fix; running the destructive test last is only a guard.
+  - script: |
+      set -e
+      # The kernel exposes the limit but no in-use counter, so count the fds it
+      # reports as inotify instances. Needs root to see container processes -
+      # the ones that actually consume the budget - so fall back to an
+      # explicitly labelled partial count rather than a misleading zero.
+      count_inotify() {
+        if sudo -n true 2>/dev/null; then
+          sudo -n find /proc -maxdepth 3 -path '/proc/[0-9]*/fd/*' \
+            -lname 'anon_inode:inotify' 2>/dev/null | wc -l
+        else
+          echo "$(find /proc -maxdepth 3 -path '/proc/[0-9]*/fd/*' \
+            -lname 'anon_inode:inotify' 2>/dev/null | wc -l) (PARTIAL: no passwordless sudo)"
+        fi
+      }
+      report() {
+        echo "inotify $1:"
+        for f in max_user_instances max_user_watches; do
+          printf '  %-22s %s\n' "$f" "$(cat /proc/sys/fs/inotify/$f 2>/dev/null || echo '<unreadable>')"
+        done
+        printf '  %-22s %s\n' "instances-in-use" "$(count_inotify)"
+      }
+      report "before"
+      # Non-fatal: a locked-down agent may refuse. The suite still passes in that
+      # case because TestNodeFailure runs last; the report records which applies.
+      sudo -n sysctl -w fs.inotify.max_user_instances=8192 \
+        || echo "WARNING: could not raise fs.inotify.max_user_instances; node-failure cleanup may strand its node"
+      sudo -n sysctl -w fs.inotify.max_user_watches=1048576 \
+        || echo "WARNING: could not raise fs.inotify.max_user_watches"
+      report "after"
+    displayName: 'DistCache [${{ parameters.run_idstring }}]: Raise host inotify limits'
+    timeoutInMinutes: 5
+
+  # -------------------------------------------------------------------------
   # 2. Bring up the kind cluster.
   - script: |
       set -e
@@ -163,6 +211,23 @@ steps:
       kubectl describe pods -n blobfuse2-dist-cache > "$out_dir/blobfuse2-pods-describe.txt" 2>&1 || true
       kubectl get nodes -o wide > "$out_dir/nodes.txt" 2>&1 || true
       kubectl get events -A --sort-by=.lastTimestamp > "$out_dir/events.txt" 2>&1 || true
+      # Post-run inotify budget. If kube-proxy crash-looped, this says whether
+      # the budget was genuinely exhausted or the cause lies elsewhere.
+      {
+        echo "inotify at teardown:"
+        for f in max_user_instances max_user_watches; do
+          printf '  %-22s %s\n' "$f" "$(cat /proc/sys/fs/inotify/$f 2>/dev/null || echo '<unreadable>')"
+        done
+        printf '  %-22s %s\n' "instances-in-use" \
+          "$(sudo -n find /proc -maxdepth 3 -path '/proc/[0-9]*/fd/*' -lname 'anon_inode:inotify' 2>/dev/null | wc -l)"
+        echo
+        echo "top inotify consumers (instances command):"
+        sudo -n find /proc -maxdepth 3 -path '/proc/[0-9]*/fd/*' -lname 'anon_inode:inotify' 2>/dev/null \
+          | cut -d/ -f3 | sort | uniq -c | sort -rn | head -20 \
+          | while read -r count pid; do
+              printf '  %-8s %-8s %s\n' "$count" "$pid" "$(cat /proc/$pid/comm 2>/dev/null || echo '<gone>')"
+            done
+      } > "$out_dir/inotify.txt" 2>&1 || true
       # kube-proxy fails to restart on a node whose container was restarted by
       # TestNodeFailure, which is what strands that node without Service
       # ClusterIPs. Its fatal startup message is not recoverable anywhere else.
