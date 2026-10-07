@@ -14,6 +14,7 @@
 **Other Changes**
 - Run the ADLS DFS and Blob pre-mount validation concurrently to reduce mount latency ([PR #2341](https://github.com/Azure/azure-storage-fuse/pull/2341))
 - Build release binaries with Microsoft Go 1.26.8 and `golang.org/x/crypto` 0.56.0, and verify their embedded security metadata and reachable vulnerabilities before packaging ([Issue #2350](https://github.com/Azure/azure-storage-fuse/issues/2350))
+- Serve reads and writes of files created through a fuse3 mount natively in C, like files opened with `open()` and like fuse2 builds. Until now, every read and write to a newly created file went through Go, which costs more CPU and throughput. ([PR #2387](https://github.com/Azure/azure-storage-fuse/pull/2387))
 
 ## 2.5.6~preview.1 (2026-09-25)
 **Bug Fixes**

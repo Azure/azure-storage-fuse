@@ -42,6 +42,7 @@ import "C"
 import (
 	"errors"
 	"io/fs"
+	"os"
 	"strings"
 	"syscall"
 	"unsafe"
@@ -221,6 +222,99 @@ func testCreate(suite *libfuseTestSuite) {
 	suite.assert.Equal(C.int(0), err)
 	suite.assert.Equal(stbuf.st_mtim.tv_nsec, C.long(0))
 	suite.assert.NotEqual(stbuf.st_mtim.tv_sec, C.long(0))
+}
+
+// testCreateNativeIO : created files are served natively like opened files, unless file_cache offloads their IO
+func testCreateNativeIO(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	name := "path"
+	path := C.CString("/" + name)
+	defer C.free(unsafe.Pointer(path))
+	options := internal.CreateFileOptions{Name: name, Mode: fs.FileMode(0775)}
+
+	cached := handlemap.NewHandle(name)
+	cached.UnixFD = 42
+	cached.Flags.Set(handlemap.HandleFlagCached)
+	offloaded := handlemap.NewHandle(name) // file_cache with offload-io: true
+	offloaded.UnixFD = 43
+
+	for _, tc := range []struct {
+		handle *handlemap.Handle
+		fd     uint64
+	}{{cached, 42}, {offloaded, 0}} {
+		suite.mock.EXPECT().CreateFile(options).Return(tc.handle, nil)
+		info := &C.fuse_file_info_t{}
+		suite.assert.Equal(C.int(0), libfuse_create(path, 0775, info))
+
+		fobj := (*fileHandle)(unsafe.Pointer(uintptr(info.fh)))
+		suite.assert.Equal(tc.fd, fobj.fd)
+		C.release_native_file_object(info)
+		handlemap.Delete(tc.handle.ID)
+	}
+}
+
+// testNativeWriteDirty : a native write marks the handle dirty only if it changed the file
+func testNativeWriteDirty(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	path := C.CString("/path")
+	defer C.free(unsafe.Pointer(path))
+	data := C.CString("data")
+	defer C.free(unsafe.Pointer(data))
+
+	f, err := os.CreateTemp("", "native_write")
+	suite.assert.NoError(err)
+	defer os.Remove(f.Name())
+	defer f.Close()
+	readOnly, err := os.Open(f.Name())
+	suite.assert.NoError(err)
+	defer readOnly.Close()
+
+	for _, tc := range []struct {
+		file  *os.File
+		ret   C.int
+		dirty C.uint8_t
+	}{{readOnly, -C.EBADF, 0}, {f, 4, 1}} {
+		handle := handlemap.NewHandle("path")
+		fobj := C.allocate_native_file_object(C.uint64_t(tc.file.Fd()), C.uint64_t(uintptr(unsafe.Pointer(handle))))
+		info := &C.fuse_file_info_t{}
+		info.fh = C.uint64_t(uintptr(unsafe.Pointer(fobj)))
+
+		ret := C.native_write_file(path, data, 4, 0, info)
+		suite.assert.Equal(tc.ret, ret)
+		suite.assert.Equal(tc.dirty, fobj.dirty)
+		C.release_native_file_object(info)
+	}
+}
+
+// testFlushNativeDirty : flush uploads a file changed by native writes, retries a failed upload, and does not upload
+// the file again once it is uploaded
+func testFlushNativeDirty(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	path := C.CString("/path")
+	defer C.free(unsafe.Pointer(path))
+
+	handle := handlemap.NewHandle("path")
+	fobj := C.allocate_native_file_object(42, C.uint64_t(uintptr(unsafe.Pointer(handle))))
+	info := &C.fuse_file_info_t{}
+	info.fh = C.uint64_t(uintptr(unsafe.Pointer(fobj)))
+	defer C.release_native_file_object(info)
+
+	options := internal.FlushFileOptions{Handle: handle}
+	upload := func(opts internal.FlushFileOptions) error {
+		opts.Handle.Flags.Clear(handlemap.HandleFlagDirty)
+		return nil
+	}
+
+	suite.assert.Equal(C.int(0), libfuse_flush(path, info))
+
+	fobj.dirty = 1
+	suite.mock.EXPECT().FlushFile(options).Return(syscall.EIO)
+	suite.assert.Equal(C.int(-C.EIO), libfuse_flush(path, info))
+
+	suite.mock.EXPECT().FlushFile(options).DoAndReturn(upload)
+	suite.assert.Equal(C.int(0), libfuse_flush(path, info))
+
+	suite.assert.Equal(C.int(0), libfuse_flush(path, info))
 }
 
 func testCreateError(suite *libfuseTestSuite) {
