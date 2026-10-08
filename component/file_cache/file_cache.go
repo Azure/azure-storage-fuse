@@ -1382,10 +1382,11 @@ func (fc *FileCache) FlushFile(options internal.FlushFileOptions) error {
 	}
 
 	// The application can keep changing the file through this handle while it is uploaded, e.g. when this flush comes
-	// from closing a dup'ed or inherited (fork) fd. Hand the dirty state over to Flushing before the snapshot is taken,
-	// so such changes mark the handle dirty again and the next flush or close uploads them, instead of clearing the
-	// dirty flag once the upload completes. Dirty() reports Flushing too, so a concurrent flush waits for this upload
-	// rather than returning before the data is in storage.
+	// from closing a dup'ed or inherited (fork) fd. Hand the dirty state over to Flushing before the snapshot is read,
+	// instead of clearing the dirty flag once the upload completes. Writers change the file before they mark the
+	// handle dirty, so a change marked before the hand-over is in the snapshot, and a change marked after it keeps the
+	// handle dirty for the next flush or close. Dirty() reports Flushing too, so a concurrent flush waits for this
+	// upload rather than returning before the data is in storage.
 	options.Handle.Flags.Set(handlemap.HandleFlagFlushing)
 	options.Handle.Flags.Clear(handlemap.HandleFlagDirty)
 	uploaded := false
