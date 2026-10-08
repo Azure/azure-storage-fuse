@@ -51,6 +51,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
+	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
@@ -228,6 +229,53 @@ func testCreateError(suite *libfuseTestSuite) {
 
 	err := libfuse_create(path, 0775, info)
 	suite.assert.Equal(C.int(-C.EIO), err)
+}
+
+// enableLibfuseStats turns on stats collection for the test and returns the libfuse collector.
+func enableLibfuseStats(suite *libfuseTestSuite) *stats_manager.StatsCollector {
+	stats_manager.EnableForTest(suite.T())
+	prev := libfuseStatsCollector
+	libfuseStatsCollector = stats_manager.NewStatsCollector(suite.libfuse.Name())
+	suite.T().Cleanup(func() { libfuseStatsCollector = prev })
+	return libfuseStatsCollector
+}
+
+func testCreateUpdatesStats(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	collector := enableLibfuseStats(suite)
+	name := "path"
+	path := C.CString("/" + name)
+	defer C.free(unsafe.Pointer(path))
+	mode := fs.FileMode(0775)
+	info := &C.fuse_file_info_t{}
+	options := internal.CreateFileOptions{Name: name, Mode: mode}
+	suite.mock.EXPECT().CreateFile(options).Return(&handlemap.Handle{}, nil)
+
+	err := libfuse_create(path, 0775, info)
+	suite.assert.Equal(C.int(0), err)
+
+	stats := collector.StopAndGetStats()
+	suite.assert.Equal(int64(1), stats[createFile])
+	suite.assert.Equal(int64(1), stats[openHandles])
+}
+
+func testCreateErrorDoesNotUpdateStats(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	collector := enableLibfuseStats(suite)
+	name := "path"
+	path := C.CString("/" + name)
+	defer C.free(unsafe.Pointer(path))
+	mode := fs.FileMode(0775)
+	info := &C.fuse_file_info_t{}
+	options := internal.CreateFileOptions{Name: name, Mode: mode}
+	suite.mock.EXPECT().CreateFile(options).Return(&handlemap.Handle{}, errors.New("failed to create file"))
+
+	err := libfuse_create(path, 0775, info)
+	suite.assert.Equal(C.int(-C.EIO), err)
+
+	stats := collector.StopAndGetStats()
+	suite.assert.NotContains(stats, createFile)
+	suite.assert.NotContains(stats, openHandles)
 }
 
 func testCreateInvalidArgument(suite *libfuseTestSuite) {

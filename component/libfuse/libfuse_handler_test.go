@@ -219,6 +219,14 @@ func (suite *libfuseTestSuite) TestCreateError() {
 	testCreateError(suite)
 }
 
+func (suite *libfuseTestSuite) TestCreateUpdatesStats() {
+	testCreateUpdatesStats(suite)
+}
+
+func (suite *libfuseTestSuite) TestCreateErrorDoesNotUpdateStats() {
+	testCreateErrorDoesNotUpdateStats(suite)
+}
+
 func (suite *libfuseTestSuite) TestCreateInvalidArgument() {
 	testCreateInvalidArgument(suite)
 }

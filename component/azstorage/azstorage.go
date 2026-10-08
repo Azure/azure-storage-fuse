@@ -382,6 +382,7 @@ func (az *AzStorage) CreateFile(options internal.CreateFileOptions) (*handlemap.
 	handle.Mtime = time.Now()
 
 	azStatsCollector.PushEvents(createFile, options.Name, map[string]any{mode: options.Mode.String()})
+	azStatsCollector.UpdateStats(stats_manager.Increment, createFile, (int64)(1))
 
 	// increment open file handles count
 	azStatsCollector.UpdateStats(stats_manager.Increment, openHandles, (int64)(1))
