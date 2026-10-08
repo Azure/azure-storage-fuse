@@ -10,6 +10,7 @@
 - Fix file-cache eviction after a single expiry pass stops at `max-eviction` (5,000 files by default), which can happen with a nonzero file-cache timeout. The files left in the LRU list could lose their links, so recently used files could be evicted early, older files could stop being evicted, and `policy-trace` could loop forever while printing the list. ([PR #2384](https://github.com/Azure/azure-storage-fuse/pull/2384))
 - Health monitor: count successful file creations in the `CreateFile` operation counter of the `libfuse` and `azstorage` aggregate statistics. Before, they were reported only as individual events. ([Issue #2330](https://github.com/Azure/azure-storage-fuse/issues/2330))
 - Preserve backslashes in Linux filenames and reject unsafe names before constructing local file-cache paths. ([PR #2354](https://github.com/Azure/azure-storage-fuse/pull/2354))
+- Fix `fsync()` with `sync-to-flush` returning success without uploading the file's latest writes when file-cache serves its reads and writes natively (`offload-io: false`, the default). ([PR #2387](https://github.com/Azure/azure-storage-fuse/pull/2387))
 
 **Other Changes**
 - Run the ADLS DFS and Blob pre-mount validation concurrently to reduce mount latency ([PR #2341](https://github.com/Azure/azure-storage-fuse/pull/2341))

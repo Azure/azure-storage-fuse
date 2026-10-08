@@ -231,6 +231,14 @@ func (suite *libfuseTestSuite) TestFlushNativeDirty() {
 	testFlushNativeDirty(suite)
 }
 
+func (suite *libfuseTestSuite) TestFlushNativeWriteDuringUpload() {
+	testFlushNativeWriteDuringUpload(suite)
+}
+
+func (suite *libfuseTestSuite) TestFsyncNativeWrite() {
+	testFsyncNativeWrite(suite)
+}
+
 func (suite *libfuseTestSuite) TestCreateError() {
 	testCreateError(suite)
 }

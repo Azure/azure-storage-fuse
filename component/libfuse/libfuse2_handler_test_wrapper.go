@@ -286,18 +286,22 @@ func testNativeWriteDirty(suite *libfuseTestSuite) {
 	}
 }
 
+// newNativeFileObject : a new handle, and the file info with the native file object that libfuse_open gives libfuse
+func newNativeFileObject(name string) (*handlemap.Handle, *C.file_handle_t, *C.fuse_file_info_t) {
+	handle := handlemap.NewHandle(name)
+	fi := &C.fuse_file_info_t{}
+	fi.fh = newFileHandle(handle)
+	return handle, (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh))), fi
+}
+
 // testFlushNativeDirty : flush uploads a file changed by native writes, retries a failed upload, and does not upload
 // the file again once it is uploaded
 func testFlushNativeDirty(suite *libfuseTestSuite) {
 	defer suite.cleanupTest()
 	path := C.CString("/path")
 	defer C.free(unsafe.Pointer(path))
-
-	handle := handlemap.NewHandle("path")
-	fobj := C.allocate_native_file_object(42, C.uint64_t(uintptr(unsafe.Pointer(handle))))
-	info := &C.fuse_file_info_t{}
-	info.fh = C.uint64_t(uintptr(unsafe.Pointer(fobj)))
-	defer C.release_native_file_object(info)
+	handle, fobj, fi := newNativeFileObject("path")
+	defer C.release_native_file_object(fi)
 
 	options := internal.FlushFileOptions{Handle: handle}
 	upload := func(opts internal.FlushFileOptions) error {
@@ -305,16 +309,89 @@ func testFlushNativeDirty(suite *libfuseTestSuite) {
 		return nil
 	}
 
-	suite.assert.Equal(C.int(0), libfuse_flush(path, info))
+	suite.assert.Equal(C.int(0), libfuse_flush(path, fi))
 
 	fobj.dirty = 1
 	suite.mock.EXPECT().FlushFile(options).Return(syscall.EIO)
-	suite.assert.Equal(C.int(-C.EIO), libfuse_flush(path, info))
+	suite.assert.Equal(C.int(-C.EIO), libfuse_flush(path, fi))
 
 	suite.mock.EXPECT().FlushFile(options).DoAndReturn(upload)
-	suite.assert.Equal(C.int(0), libfuse_flush(path, info))
+	suite.assert.Equal(C.int(0), libfuse_flush(path, fi))
 
-	suite.assert.Equal(C.int(0), libfuse_flush(path, info))
+	suite.assert.Equal(C.int(0), libfuse_flush(path, fi))
+}
+
+// testFlushNativeWriteDuringUpload : flush takes the dirty mark of native writes before uploading, so a native write
+// that lands while the upload is in progress stays pending for the next flush or release
+func testFlushNativeWriteDuringUpload(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	path := C.CString("/path")
+	defer C.free(unsafe.Pointer(path))
+	handle, fobj, fi := newNativeFileObject("path")
+
+	fobj.dirty = 1
+	suite.mock.EXPECT().FlushFile(internal.FlushFileOptions{Handle: handle}).DoAndReturn(
+		func(internal.FlushFileOptions) error {
+			suite.assert.True(handle.Dirty())
+			suite.assert.EqualValues(0, fobj.dirty)
+
+			// The upload succeeds while the application keeps writing through the native path
+			handle.Flags.Clear(handlemap.HandleFlagDirty)
+			fobj.dirty = 1
+			return nil
+		})
+	suite.assert.Equal(C.int(0), libfuse_flush(path, fi))
+	suite.assert.EqualValues(1, fobj.dirty)
+
+	suite.mock.EXPECT().ReleaseFile(internal.ReleaseFileOptions{Handle: handle}).DoAndReturn(
+		func(internal.ReleaseFileOptions) error {
+			suite.assert.True(handle.Dirty())
+			return nil
+		})
+	suite.assert.Equal(C.int(0), libfuse_release(path, fi))
+}
+
+// testFsyncNativeWrite : fsync takes the dirty mark of native writes, so that sync-to-flush uploads them, also for a
+// created file whose handle is clean after an earlier flush. Closing the file afterwards does not upload it again.
+func testFsyncNativeWrite(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	name := "path"
+	path := C.CString("/" + name)
+	defer C.free(unsafe.Pointer(path))
+	data := C.CString("data")
+	defer C.free(unsafe.Pointer(data))
+
+	f, err := os.CreateTemp("", "native_fsync")
+	suite.Require().NoError(err)
+	defer os.Remove(f.Name())
+	defer f.Close()
+
+	// file_cache holds the created file locally, so it is written natively
+	handle := handlemap.NewHandle(name)
+	handle.UnixFD = uint64(f.Fd())
+	handle.Flags.Set(handlemap.HandleFlagCached)
+	suite.mock.EXPECT().CreateFile(internal.CreateFileOptions{Name: name, Mode: fs.FileMode(0775)}).Return(handle, nil)
+	fi := &C.fuse_file_info_t{}
+	suite.Require().Equal(C.int(0), libfuse_create(path, 0775, fi))
+	written := C.native_write_file(path, data, 4, 0, fi)
+	suite.Require().Equal(C.int(4), written)
+
+	suite.mock.EXPECT().SyncFile(internal.SyncFileOptions{Handle: handle}).DoAndReturn(
+		func(options internal.SyncFileOptions) error {
+			suite.assert.True(options.Handle.Dirty(), "fsync must see the native write")
+			options.Handle.Flags.Clear(handlemap.HandleFlagDirty) // uploaded, as with sync-to-flush
+			return nil
+		})
+	suite.assert.Equal(C.int(0), libfuse_fsync(path, C.int(0), fi))
+
+	// Nothing changed since the sync, so closing the file uploads nothing
+	suite.assert.Equal(C.int(0), libfuse_flush(path, fi))
+	suite.mock.EXPECT().ReleaseFile(internal.ReleaseFileOptions{Handle: handle}).DoAndReturn(
+		func(options internal.ReleaseFileOptions) error {
+			suite.assert.False(options.Handle.Dirty())
+			return nil
+		})
+	suite.assert.Equal(C.int(0), libfuse_release(path, fi))
 }
 
 func testCreateError(suite *libfuseTestSuite) {
