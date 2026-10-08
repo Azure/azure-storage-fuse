@@ -4,11 +4,12 @@ trigger:
     include:
       - pr-mirror/*
 
-# Execute this for every PR on main
+# Execute this for every PR, regardless of target branch, so that stacked PRs
+# (whose base branch is not main) can also be validated, including via `/azp run`.
 pr:
   branches:
     include:
-    - main
+    - '*'
   paths:
     exclude:
     - README.md
