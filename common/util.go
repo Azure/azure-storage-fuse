@@ -314,6 +314,17 @@ func (bm *BitMap64) IsSet(bit uint64) bool {
 	return (atomic.LoadUint64((*uint64)(bm)) & (1 << bit)) != 0
 }
 
+// IsAnySet : Check whether any of the given bits is set, reading the bitmap only once
+func (bm *BitMap64) IsAnySet(bits ...uint64) bool {
+	loaded := atomic.LoadUint64((*uint64)(bm))
+	for _, bit := range bits {
+		if (loaded & (1 << bit)) != 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // Set : Set the given bit in bitmap
 // Return true if the bit was not set and was set by this call, false if the bit was already set.
 func (bm *BitMap64) Set(bit uint64) bool {
