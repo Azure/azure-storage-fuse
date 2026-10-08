@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -276,6 +277,40 @@ func TestReadInBuffer_FinalExtentUsesExactBuffer(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, finalSize, n)
 	assert.Equal(t, 0, next.readInBufferCalled, "should serve the exact final extent from L2")
+}
+
+func TestReadInBuffer_KnownEOFDoesNotCallDownstream(t *testing.T) {
+	tests := []struct {
+		name   string
+		offset int64
+	}{
+		{name: "at EOF", offset: 1024},
+		{name: "past EOF", offset: 2048},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			mock := newMockDCacheClient()
+			mock.chunkFn = func(_ context.Context, _ string, _ int64, _ []byte, _ ...dcache.DownloadOption) (int, error) {
+				t.Fatal("distributed cache client must not be called at EOF")
+				return 0, nil
+			}
+			next := &mockNextComponent{}
+			dc := newTestDistCache(mock, next)
+
+			h := handlemap.NewHandle("test/file.bin")
+			h.Size = 1024
+			n, err := dc.ReadInBuffer(&internal.ReadInBufferOptions{
+				Handle: h,
+				Offset: test.offset,
+				Data:   make([]byte, 1024),
+			})
+
+			assert.ErrorIs(t, err, io.EOF)
+			assert.Zero(t, n)
+			assert.Zero(t, next.readInBufferCalled, "next component must not be called at EOF")
+		})
+	}
 }
 
 func TestReadInBuffer_L2ZeroByteHit_FallsThrough(t *testing.T) {
@@ -1604,6 +1639,7 @@ func TestReadInBuffer_GotLock_EmptyReturnedETag_SkipsPopulate(t *testing.T) {
 	}
 
 	h := handlemap.NewHandle("test/file.bin")
+	h.Size = 1024
 
 	empty := ""
 	buf := make([]byte, 1024)

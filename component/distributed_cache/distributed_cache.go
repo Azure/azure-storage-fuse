@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"runtime"
 	"strconv"
@@ -387,7 +388,7 @@ func (dc *DistCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, e
 
 	expectedSize := expectedCacheReadSize(options)
 	if expectedSize == 0 {
-		return dc.NextComponent().ReadInBuffer(options)
+		return 0, io.EOF
 	}
 	cacheBuffer := options.Data[:expectedSize]
 
