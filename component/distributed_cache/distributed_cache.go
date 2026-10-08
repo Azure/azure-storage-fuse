@@ -45,6 +45,11 @@ const (
 	// same RAM.
 	distCacheSharePct = 10
 
+	// discoveryProbeTimeout bounds each step of the discovery diagnostic
+	// probe. The probe only runs on the already-degraded path (zero servers
+	// discovered), but it still sits in the mount path, so keep it short.
+	discoveryProbeTimeout = 3 * time.Second
+
 	// distCacheMinBuffers is the enable threshold for the async upload pool.
 	// If the fair-share memory signal is below distCacheMinBuffers × chunkSize,
 	// resolveMemBudget returns 0 and async populate stays disabled for the
@@ -326,14 +331,74 @@ func (dc *DistCache) completeStart(client dcacheClient, err error) error {
 		return fmt.Errorf("distributed_cache: failed to start: %w", err)
 	}
 
-	if len(client.Servers()) == 0 {
+	servers := client.Servers()
+	if len(servers) == 0 {
 		log.Warn("DistCache::Start : no distributed-cache servers were discovered; mount will continue using block cache and Azure Storage fallback")
+		dc.logDiscoveryDiagnostics()
 	} else {
-		log.Info("DistCache::Start : connected to distributed cache cluster")
+		log.Info("DistCache::Start : connected to distributed cache cluster: %d server(s) %v", len(servers), servers)
 	}
 	dc.client = client
 
 	return nil
+}
+
+// logDiscoveryDiagnostics records what can still be observed about the
+// discovery endpoint after discovery yielded no servers.
+//
+// The client library deliberately treats a failed startup resolve as
+// non-fatal when a discovery URL is configured: it starts with an empty
+// hash ring and waits for its refresh loop. In doing so it discards the
+// underlying error, and it emits no logs of its own, so by the time
+// completeStart sees an empty server list the reason is already gone.
+// Without this probe a DNS failure, an unreachable ClusterIP and an RPC
+// that succeeded but returned an empty list are indistinguishable in the
+// blobfuse2 log.
+//
+// This cannot identify which backend pod the RPC reached - the endpoint is
+// a Service ClusterIP, so DNS returns the virtual IP rather than pod IPs.
+// Determining whether a dead pod was still a routable backend needs the
+// EndpointSlice, which only the cluster-side caller can capture.
+func (dc *DistCache) logDiscoveryDiagnostics() {
+	if dc.conf.DiscoveryEndpoint == "" {
+		log.Warn("DistCache::Start : discovery diagnostic: no discovery endpoint configured (server-list=%q)", dc.conf.ServerList)
+		return
+	}
+
+	host, port, err := net.SplitHostPort(dc.conf.DiscoveryEndpoint)
+	if err != nil {
+		// Endpoint carries no port; fall back to the configured one.
+		host, port = dc.conf.DiscoveryEndpoint, ""
+		if dc.conf.Port > 0 {
+			port = strconv.Itoa(dc.conf.Port)
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), discoveryProbeTimeout)
+	defer cancel()
+
+	addrs, err := net.DefaultResolver.LookupHost(ctx, host)
+	if err != nil {
+		log.Warn("DistCache::Start : discovery diagnostic: DNS lookup of %s failed: %v", host, err)
+		return
+	}
+	log.Warn("DistCache::Start : discovery diagnostic: %s resolved to %v", host, addrs)
+
+	if port == "" {
+		log.Warn("DistCache::Start : discovery diagnostic: no port known for %s; skipping reachability probe", host)
+		return
+	}
+
+	for _, addr := range addrs {
+		target := net.JoinHostPort(addr, port)
+		conn, err := net.DialTimeout("tcp", target, discoveryProbeTimeout)
+		if err != nil {
+			log.Warn("DistCache::Start : discovery diagnostic: TCP dial %s failed: %v", target, err)
+			continue
+		}
+		_ = conn.Close()
+		log.Warn("DistCache::Start : discovery diagnostic: TCP dial %s succeeded", target)
+	}
 }
 
 func (dc *DistCache) Stop() error {

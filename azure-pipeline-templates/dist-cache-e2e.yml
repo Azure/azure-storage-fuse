@@ -238,8 +238,14 @@ steps:
         kubectl logs -n kube-system "$pod" --timestamps > "$kube_dir/${pod}.log" 2>&1 || true
         kubectl logs -n kube-system "$pod" --timestamps --previous > "$kube_dir/${pod}.previous.log" 2>&1 || true
       done
+      # Collected after node restore, so the killed cache server's container has
+      # already restarted by now: --previous holds the only copy of the log
+      # covering the failure window, i.e. whether that server ever received the
+      # GetCacheServers discovery RPC and how it answered. --timestamps lets
+      # those lines be aligned against the discovery moment in the blobfuse log.
       for pod in $(kubectl get pods -n "$NAMESPACE" -l app=cacheserver -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
-        kubectl logs -n "$NAMESPACE" "$pod" --all-containers --prefix > "$out_dir/${pod}.log" 2>&1 || true
+        kubectl logs -n "$NAMESPACE" "$pod" --all-containers --prefix --timestamps > "$out_dir/${pod}.log" 2>&1 || true
+        kubectl logs -n "$NAMESPACE" "$pod" --all-containers --prefix --timestamps --previous > "$out_dir/${pod}.previous.log" 2>&1 || true
       done
       blobfuse_dir="$out_dir/blobfuse2/surviving-pods"
       mkdir -p "$blobfuse_dir"

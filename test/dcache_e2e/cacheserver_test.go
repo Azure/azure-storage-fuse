@@ -37,6 +37,7 @@
 package dcache_e2e
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os/exec"
@@ -65,6 +66,61 @@ const nodeNetworkProbeTimeout = 60 * time.Second
 // node. A blackholed route manifests as a connect timeout rather than a
 // refusal, so this must be short enough to poll against.
 const kindNodeDialTimeout = 3 * time.Second
+
+// discoveryStateTimeout bounds a single diagnostic kubectl query. These hit
+// the API server rather than a kubelet, so they stay responsive even while a
+// node is down, but a bounded wait keeps a wedged query from stalling the test.
+const discoveryStateTimeout = 15 * time.Second
+
+// logDiscoveryBackends records which pods the discovery Service would route a
+// GetCacheServers RPC to at this instant.
+//
+// Discovery is a single RPC to a ClusterIP Service whose selector matches every
+// cache-server pod -- including one whose node has just been killed, since the
+// server list is generated from a ConfigMap with no liveness filtering. The
+// client library discards the failure reason, so when discovery returns zero
+// servers the only way to tell "the RPC was routed to a dead backend" from "the
+// RPC reached a live server that returned nothing" is to know whether the dead
+// pod was still a routable endpoint at that moment.
+//
+// Purely diagnostic: every failure here is logged and swallowed, never fatal.
+func logDiscoveryBackends(t *testing.T, phase string) {
+	t.Helper()
+
+	svc := testCfg.cacheserverStatefulSet + "-discovery"
+	run := func(desc string, args ...string) {
+		ctx, cancel := context.WithTimeout(context.Background(), discoveryStateTimeout)
+		defer cancel()
+
+		out, err := exec.CommandContext(ctx, testCfg.kubectlBin, args...).CombinedOutput()
+		text := strings.TrimSpace(string(out))
+		if err != nil {
+			t.Logf("discovery-state [%s]: %s: query failed: %v (out: %s)", phase, desc, err, text)
+			return
+		}
+		if text == "" {
+			text = "(none)"
+		}
+		t.Logf("discovery-state [%s]: %s:\n%s", phase, desc, text)
+	}
+
+	run("endpoints behind service "+svc,
+		"-n", testCfg.cacheserverNamespace,
+		"get", "endpointslices",
+		"-l", "kubernetes.io/service-name="+svc,
+		"-o", `jsonpath={range .items[*]}{range .endpoints[*]}{"  "}{.targetRef.name}`+
+			`{" addr="}{.addresses[0]}{" ready="}{.conditions.ready}`+
+			`{" serving="}{.conditions.serving}{" node="}{.nodeName}{"\n"}{end}{end}`,
+	)
+
+	run("cache-server pods",
+		"-n", testCfg.cacheserverNamespace,
+		"get", "pod",
+		"-l", testCfg.cacheserverSelector,
+		"-o", `jsonpath={range .items[*]}{"  "}{.metadata.name}{" node="}{.spec.nodeName}`+
+			`{" ip="}{.status.podIP}{" phase="}{.status.phase}{"\n"}{end}`,
+	)
+}
 
 // listCacheserverPods returns cache-server pod names in kubectl order.
 func listCacheserverPods(t *testing.T) []string {
