@@ -37,6 +37,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"io/fs"
 	"math"
 	"math/rand"
@@ -1542,6 +1543,235 @@ func (suite *fileCacheTestSuite) TestFlushFileSyncFileConcurrent() {
 		"expected max 1 concurrent CopyFromFile, got %d — uploads were not serialized", maxInFlight.Load())
 
 	f.Close()
+}
+
+// expectBlockingUploads makes the mock CopyFromFile read the file it is asked to upload and report that snapshot.
+// The first upload then waits for finishFirstUpload to be closed, so the test can act while it is in progress.
+func expectBlockingUploads(mockComponent *internal.MockComponent, times int) (snapshots chan []byte, finishFirstUpload chan struct{}) {
+	snapshots = make(chan []byte, times)
+	finishFirstUpload = make(chan struct{})
+	uploads := 0
+	mockComponent.EXPECT().CopyFromFile(gomock.Any()).DoAndReturn(func(opts internal.CopyFromFileOptions) error {
+		data, err := io.ReadAll(opts.File)
+		if err != nil {
+			return err
+		}
+		snapshots <- data
+		// Uploads of a file are serialized by FlushFile, so this counter needs no locking.
+		uploads++
+		if uploads == 1 {
+			<-finishFirstUpload
+		}
+		return nil
+	}).Times(times)
+	return snapshots, finishFirstUpload
+}
+
+// createFileForFlush creates a file through the file cache, with default permissions so no chmod is replayed on upload
+func (suite *fileCacheTestSuite) createFileForFlush(fc *FileCache, name string) *handlemap.Handle {
+	handle, err := fc.CreateFile(internal.CreateFileOptions{Name: name, Mode: common.DefaultFilePermissionBits})
+	suite.Require().NoError(err)
+	return handle
+}
+
+// flushAsync runs FlushFile in the background. The result is delivered even if FlushFile does not return normally
+// (e.g. on an unexpected mock call), so that the test fails instead of hanging.
+func flushAsync(fc *FileCache, handle *handlemap.Handle) <-chan error {
+	done := make(chan error, 1)
+	go func() {
+		err := fmt.Errorf("FlushFile of %s did not return", handle.Path)
+		defer func() { done <- err }()
+		err = fc.FlushFile(internal.FlushFileOptions{Handle: handle})
+	}()
+	return done
+}
+
+// nextUpload waits for the next upload to read the file and returns the data it read
+func (suite *fileCacheTestSuite) nextUpload(snapshots chan []byte) []byte {
+	select {
+	case data := <-snapshots:
+		return data
+	case <-time.After(30 * time.Second):
+		suite.FailNow("timed out waiting for the file to be uploaded")
+		return nil
+	}
+}
+
+// assertUploaded checks the content sent to storage by the next upload, which must have happened already.
+func (suite *fileCacheTestSuite) assertUploaded(snapshots chan []byte, want []byte) {
+	select {
+	case got := <-snapshots:
+		suite.assert.Equal(want, got)
+	default:
+		suite.Fail("file was not uploaded again, storage keeps a stale copy")
+	}
+}
+
+// TestFlushFileWriteDuringUpload: a flush (e.g. a forked child closing its copy of the fd) uploads a snapshot of the
+// file while the application keeps writing through the same handle. The flush on close must upload those writes too,
+// instead of finding the handle clean and leaving the stale snapshot in storage (issue #2348).
+func (suite *fileCacheTestSuite) TestFlushFileWriteDuringUpload() {
+	defer suite.cleanupTest()
+	mockCtrl := gomock.NewController(suite.T())
+	defer mockCtrl.Finish()
+
+	fc, mockComponent, _, cleanup := suite.setupMockFileCacheForFlush(mockCtrl)
+	defer cleanup()
+
+	handle := suite.createFileForFlush(fc, "write_during_upload.mp3")
+	defer handle.GetFileObject().Close()
+
+	first, second := []byte("first half,"), []byte("second half")
+	_, err := fc.WriteFile(&internal.WriteFileOptions{Handle: handle, Offset: 0, Data: first})
+	suite.assert.NoError(err)
+
+	snapshots, finishFirstUpload := expectBlockingUploads(mockComponent, 2)
+	firstFlush := flushAsync(fc, handle)
+	suite.assert.Equal(first, suite.nextUpload(snapshots))
+
+	// The application writes the rest of the file while the snapshot is uploaded, then closes the file.
+	_, err = fc.WriteFile(&internal.WriteFileOptions{Handle: handle, Offset: int64(len(first)), Data: second})
+	suite.assert.NoError(err)
+	finalFlush := flushAsync(fc, handle)
+
+	// Give the final flush time to queue up behind the upload in progress.
+	time.Sleep(50 * time.Millisecond)
+	close(finishFirstUpload)
+	suite.assert.NoError(<-firstFlush)
+	suite.assert.NoError(<-finalFlush)
+
+	suite.assertUploaded(snapshots, append(first, second...))
+	suite.assert.False(handle.Dirty())
+}
+
+// TestReleaseFileAfterWriteDuringUpload: same as above, but the file is closed only after the earlier upload completed.
+// The writes that landed during that upload must keep the handle dirty, so that release uploads them.
+func (suite *fileCacheTestSuite) TestReleaseFileAfterWriteDuringUpload() {
+	defer suite.cleanupTest()
+	mockCtrl := gomock.NewController(suite.T())
+	defer mockCtrl.Finish()
+
+	fc, mockComponent, _, cleanup := suite.setupMockFileCacheForFlush(mockCtrl)
+	defer cleanup()
+
+	handle := suite.createFileForFlush(fc, "release_after_write_during_upload.mp3")
+
+	first, second := []byte("first half,"), []byte("second half")
+	_, err := fc.WriteFile(&internal.WriteFileOptions{Handle: handle, Offset: 0, Data: first})
+	suite.assert.NoError(err)
+
+	snapshots, finishFirstUpload := expectBlockingUploads(mockComponent, 2)
+	firstFlush := flushAsync(fc, handle)
+	suite.assert.Equal(first, suite.nextUpload(snapshots))
+
+	_, err = fc.WriteFile(&internal.WriteFileOptions{Handle: handle, Offset: int64(len(first)), Data: second})
+	suite.assert.NoError(err)
+
+	close(finishFirstUpload)
+	suite.assert.NoError(<-firstFlush)
+	suite.assert.True(handle.Dirty(), "write made during the upload must keep the handle dirty")
+
+	err = fc.ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
+	suite.assert.NoError(err)
+	suite.assertUploaded(snapshots, append(first, second...))
+	suite.assert.False(handle.Dirty())
+}
+
+// TestFlushFileTruncateDuringUpload: same as TestFlushFileWriteDuringUpload, but the application truncates the file
+// through its open handle (ftruncate) while the snapshot is uploaded. The truncation must reach storage as well.
+func (suite *fileCacheTestSuite) TestFlushFileTruncateDuringUpload() {
+	defer suite.cleanupTest()
+	mockCtrl := gomock.NewController(suite.T())
+	defer mockCtrl.Finish()
+
+	fc, mockComponent, _, cleanup := suite.setupMockFileCacheForFlush(mockCtrl)
+	defer cleanup()
+
+	handle := suite.createFileForFlush(fc, "truncate_during_upload.mp3")
+	defer handle.GetFileObject().Close()
+
+	data := []byte("first half,second half")
+	_, err := fc.WriteFile(&internal.WriteFileOptions{Handle: handle, Offset: 0, Data: data})
+	suite.assert.NoError(err)
+
+	snapshots, finishFirstUpload := expectBlockingUploads(mockComponent, 2)
+	firstFlush := flushAsync(fc, handle)
+	suite.assert.Equal(data, suite.nextUpload(snapshots))
+
+	err = fc.TruncateFile(internal.TruncateFileOptions{Handle: handle, Name: handle.Path, OldSize: -1, NewSize: 10})
+	suite.assert.NoError(err)
+
+	close(finishFirstUpload)
+	suite.assert.NoError(<-firstFlush)
+	suite.assert.True(handle.Dirty(), "truncation made during the upload must keep the handle dirty")
+
+	err = fc.FlushFile(internal.FlushFileOptions{Handle: handle})
+	suite.assert.NoError(err)
+	suite.assertUploaded(snapshots, data[:10])
+	suite.assert.False(handle.Dirty())
+}
+
+// TestFlushFileWaitsForUploadInProgress: a flush with nothing new to upload must not return while another flush of
+// the same handle is still uploading, so that close() only succeeds once the data is in storage. It must not upload
+// the file again either.
+func (suite *fileCacheTestSuite) TestFlushFileWaitsForUploadInProgress() {
+	defer suite.cleanupTest()
+	mockCtrl := gomock.NewController(suite.T())
+	defer mockCtrl.Finish()
+
+	fc, mockComponent, _, cleanup := suite.setupMockFileCacheForFlush(mockCtrl)
+	defer cleanup()
+
+	handle := suite.createFileForFlush(fc, "flush_waits_for_upload.mp3")
+	defer handle.GetFileObject().Close()
+
+	data := []byte("complete file")
+	_, err := fc.WriteFile(&internal.WriteFileOptions{Handle: handle, Offset: 0, Data: data})
+	suite.assert.NoError(err)
+
+	snapshots, finishFirstUpload := expectBlockingUploads(mockComponent, 1)
+	firstFlush := flushAsync(fc, handle)
+	suite.assert.Equal(data, suite.nextUpload(snapshots))
+	suite.assert.True(handle.Dirty(), "handle must not look clean while its data is being uploaded")
+
+	secondFlush := flushAsync(fc, handle)
+	select {
+	case <-secondFlush:
+		suite.Fail("flush returned while the upload of the file was still in progress")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	close(finishFirstUpload)
+	suite.assert.NoError(<-firstFlush)
+	suite.assert.NoError(<-secondFlush)
+	suite.assert.False(handle.Dirty())
+}
+
+// TestFlushFileUploadFailureKeepsDirty: a failed upload must leave the handle dirty, so the next flush retries it.
+func (suite *fileCacheTestSuite) TestFlushFileUploadFailureKeepsDirty() {
+	defer suite.cleanupTest()
+	mockCtrl := gomock.NewController(suite.T())
+	defer mockCtrl.Finish()
+
+	fc, mockComponent, _, cleanup := suite.setupMockFileCacheForFlush(mockCtrl)
+	defer cleanup()
+
+	handle := suite.createFileForFlush(fc, "flush_upload_failure.mp3")
+	defer handle.GetFileObject().Close()
+
+	gomock.InOrder(
+		mockComponent.EXPECT().CopyFromFile(gomock.Any()).Return(syscall.EIO),
+		mockComponent.EXPECT().CopyFromFile(gomock.Any()).Return(nil),
+	)
+
+	err := fc.FlushFile(internal.FlushFileOptions{Handle: handle})
+	suite.assert.Equal(syscall.EIO, err)
+	suite.assert.True(handle.Dirty())
+	suite.assert.False(handle.Flags.IsSet(handlemap.HandleFlagFlushing))
+
+	err = fc.FlushFile(internal.FlushFileOptions{Handle: handle})
+	suite.assert.NoError(err)
+	suite.assert.False(handle.Dirty())
 }
 
 func (suite *fileCacheTestSuite) TestGetAttrCase1() {

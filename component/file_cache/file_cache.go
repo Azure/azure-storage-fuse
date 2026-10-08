@@ -1381,6 +1381,21 @@ func (fc *FileCache) FlushFile(options internal.FlushFileOptions) error {
 		return syscall.EIO
 	}
 
+	// The application can keep changing the file through this handle while it is uploaded, e.g. when this flush comes
+	// from closing a dup'ed or inherited (fork) fd. Hand the dirty state over to Flushing before the snapshot is taken,
+	// so such changes mark the handle dirty again and the next flush or close uploads them, instead of clearing the
+	// dirty flag once the upload completes. Dirty() reports Flushing too, so a concurrent flush waits for this upload
+	// rather than returning before the data is in storage.
+	options.Handle.Flags.Set(handlemap.HandleFlagFlushing)
+	options.Handle.Flags.Clear(handlemap.HandleFlagDirty)
+	uploaded := false
+	defer func() {
+		if !uploaded {
+			options.Handle.Flags.Set(handlemap.HandleFlagDirty) // the next flush or close retries the upload
+		}
+		options.Handle.Flags.Clear(handlemap.HandleFlagFlushing)
+	}()
+
 	// Write to storage
 	// Create a new handle for the SDK to use to upload (read local file)
 	// The local handle can still be used for read and write.
@@ -1426,7 +1441,7 @@ func (fc *FileCache) FlushFile(options internal.FlushFileOptions) error {
 		return err
 	}
 
-	options.Handle.Flags.Clear(handlemap.HandleFlagDirty)
+	uploaded = true
 
 	// If chmod was done on the file before it was uploaded to container then setting up mode would have been missed
 	// Such file names are added to this map and here post upload we try to set the mode correctly

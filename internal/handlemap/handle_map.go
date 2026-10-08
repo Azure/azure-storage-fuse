@@ -51,10 +51,11 @@ const InvalidHandleID HandleID = 0
 
 // Flags represented in BitMap for various flags in the handle
 const (
-	HandleFlagUnknown uint64 = iota
-	HandleFlagDirty          // File has been modified with write operation or is a new file
-	HandleFlagFSynced        // User has called fsync on the file explicitly
-	HandleFlagCached         // File is cached in the local system by blobfuse2
+	HandleFlagUnknown  uint64 = iota
+	HandleFlagDirty           // File has been modified with write operation or is a new file
+	HandleFlagFSynced         // User has called fsync on the file explicitly
+	HandleFlagCached          // File is cached in the local system by blobfuse2
+	HandleFlagFlushing        // A snapshot of the file is being uploaded to storage
 )
 
 // Structure to hold in memory cache for streaming layer
@@ -100,9 +101,10 @@ func NewHandle(path string) *Handle {
 	}
 }
 
-// Dirty : Handle is dirty or not
+// Dirty : Handle has changes that are not persisted in storage yet, either pending or being flushed right now
 func (handle *Handle) Dirty() bool {
-	return handle.Flags.IsSet(HandleFlagDirty)
+	// Read both flags at once, so that a flush handing the state over between them is never seen as clean.
+	return handle.Flags.IsAnySet(HandleFlagDirty, HandleFlagFlushing)
 }
 
 // Fsynced : Handle is Fsynced or not

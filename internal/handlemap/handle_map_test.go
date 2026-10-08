@@ -110,6 +110,22 @@ func (suite *HandleMapSuite) TestHandleFlags() {
 	suite.assert.Empty(val)
 }
 
+func (suite *HandleMapSuite) TestHandleDirtyWhileFlushing() {
+	h := NewHandle("abc")
+	suite.assert.False(h.Dirty())
+
+	// Changes being uploaded are not persisted yet, so the handle is still dirty
+	h.Flags.Set(HandleFlagFlushing)
+	suite.assert.True(h.Dirty())
+
+	h.Flags.Set(HandleFlagDirty)
+	h.Flags.Clear(HandleFlagFlushing)
+	suite.assert.True(h.Dirty())
+
+	h.Flags.Clear(HandleFlagDirty)
+	suite.assert.False(h.Dirty())
+}
+
 func (suite *HandleMapSuite) TestHandleMap() {
 	h := NewHandle("abc")
 	suite.assert.NotNil(h)
