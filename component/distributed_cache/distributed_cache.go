@@ -400,11 +400,10 @@ func (dc *DistCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, e
 		log.Debug("DistCache::ReadInBuffer : L2 hit %s offset=%d etag=%q", name, options.Offset, etag)
 		return n, nil
 	}
-	if err == nil {
-		// Invalid-sized hits do not grant the miss-lock, so fall through
-		// without populating.
-		log.Warn("DistCache::ReadInBuffer : L2 size mismatch %s offset=%d expected=%d received=%d, falling through to storage",
-			name, options.Offset, expectedSize, n)
+	if err == nil && n == 0 {
+		// Zero-byte hit means corrupt/empty cache entry. Fall through without
+		// populating because this response does not grant us the miss-lock.
+		log.Err("DistCache::ReadInBuffer : L2 zero-byte hit %s offset=%d, falling through to storage", name, options.Offset)
 		return dc.NextComponent().ReadInBuffer(options)
 	}
 
@@ -459,7 +458,7 @@ func (dc *DistCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, e
 		// always skip it; bypass-on-error decides whether we mask the
 		// corruption by falling through or surface it as EIO.
 		if dc.bypassOnError {
-			log.Warn("DistCache::ReadInBuffer : L2 checksum mismatch %s offset=%d, falling through to storage: %v", name, options.Offset, err)
+			log.Err("DistCache::ReadInBuffer : L2 checksum mismatch %s offset=%d, falling through to storage: %v", name, options.Offset, err)
 			return dc.NextComponent().ReadInBuffer(options)
 		}
 		log.Err("DistCache::ReadInBuffer : L2 checksum mismatch %s offset=%d, returning EIO: %v", name, options.Offset, err)
@@ -467,7 +466,7 @@ func (dc *DistCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, e
 	}
 
 	if dc.bypassOnError {
-		log.Warn("DistCache::ReadInBuffer : error, bypassing: %v", err)
+		log.Err("DistCache::ReadInBuffer : error, bypassing: %v", err)
 		return dc.NextComponent().ReadInBuffer(options)
 	}
 	return 0, err
@@ -505,7 +504,7 @@ func (dc *DistCache) pollChunkIntoBuffer(ctx context.Context, name, etag string,
 			if n != len(buf) {
 				// Invalid-sized cache entry — treat like a miss but skip
 				// populate since we don't hold the lock.
-				log.Warn("DistCache::pollChunkIntoBuffer : L2 size mismatch %s offset=%d expected=%d received=%d, falling through to storage",
+				log.Err("DistCache::pollChunkIntoBuffer : L2 size mismatch %s offset=%d expected=%d received=%d, falling through to storage",
 					name, offset, len(buf), n)
 				return 0, errPollCorruptHit
 			}
@@ -516,7 +515,7 @@ func (dc *DistCache) pollChunkIntoBuffer(ctx context.Context, name, etag string,
 			return 0, dcache.ErrNotFoundGotLock
 		case errors.Is(err, dcache.ErrChecksumMismatch):
 			// Peer wrote a corrupt chunk; caller decides fall-through vs EIO.
-			log.Warn("DistCache::pollChunkIntoBuffer : L2 checksum mismatch %s offset=%d: %v", name, offset, err)
+			log.Err("DistCache::pollChunkIntoBuffer : L2 checksum mismatch %s offset=%d: %v", name, offset, err)
 			return 0, errPollChecksumMismatch
 		case err == dcache.ErrNotFoundAlreadyLocked, err == dcache.ErrNotFound:
 			// Keep waiting.
@@ -705,7 +704,7 @@ func (dc *DistCache) doUpload(name, etag string, offset int64, buf []byte, lengt
 
 	data := buf[:length]
 	if err := dc.client.UploadChunk(context.Background(), name, etag, offset, data, opts...); err != nil {
-		log.Warn("DistCache::doUpload : upload failed: %v", err)
+		log.Err("DistCache::doUpload : upload failed: %v", err)
 	}
 }
 

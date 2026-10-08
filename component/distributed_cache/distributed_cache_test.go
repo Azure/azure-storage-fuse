@@ -231,14 +231,14 @@ func TestReadInBuffer_L2Hit(t *testing.T) {
 	assert.Equal(t, 0, next.readInBufferCalled, "should NOT call azstorage on L2 hit")
 }
 
-func TestReadInBuffer_L2PartialHit_FallsThrough(t *testing.T) {
+func TestReadInBuffer_L2SizeMismatchError_FallsThrough(t *testing.T) {
 	mock := newMockDCacheClient()
 	azData := []byte("data from azure storage")
 	next := &mockNextComponent{readInBufferData: azData}
 	dc := newTestDistCache(mock, next)
 
-	mock.chunkFn = func(_ context.Context, _ string, _ int64, buf []byte, _ ...dcache.DownloadOption) (int, error) {
-		return copy(buf, []byte("partial")), nil
+	mock.chunkFn = func(_ context.Context, _ string, _ int64, _ []byte, _ ...dcache.DownloadOption) (int, error) {
+		return 0, fmt.Errorf("unexpected chunk size: expected %d, received %d", 1024, 7)
 	}
 
 	buf := make([]byte, 1024)
