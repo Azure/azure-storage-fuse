@@ -51,6 +51,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
+	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
@@ -224,6 +225,63 @@ func testCreateError(suite *libfuseTestSuite) {
 
 	err := libfuse_create(path, 0775, info)
 	suite.assert.Equal(C.int(-C.EIO), err)
+}
+
+// enableLibfuseStats turns on stats collection for the test and returns the libfuse collector.
+func enableLibfuseStats(suite *libfuseTestSuite) *stats_manager.StatsCollector {
+	stats_manager.EnableForTest(suite.T())
+	prev := libfuseStatsCollector
+	libfuseStatsCollector = stats_manager.NewStatsCollector(suite.libfuse.Name())
+	suite.T().Cleanup(func() { libfuseStatsCollector = prev })
+	return libfuseStatsCollector
+}
+
+func testCreateUpdatesStats(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	collector := enableLibfuseStats(suite)
+	name := "path"
+	path := C.CString("/" + name)
+	defer C.free(unsafe.Pointer(path))
+	mode := fs.FileMode(0775)
+	info := &C.fuse_file_info_t{}
+	options := internal.CreateFileOptions{Name: name, Mode: mode}
+	suite.mock.EXPECT().CreateFile(options).Return(&handlemap.Handle{}, nil)
+
+	err := libfuse_create(path, 0775, info)
+	suite.assert.Equal(C.int(0), err)
+
+	stats := collector.StopAndGetStats()
+	suite.assert.Equal(int64(1), stats[createFile])
+	suite.assert.Equal(int64(1), stats[openHandles])
+}
+
+func testCreateErrorDoesNotUpdateStats(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	collector := enableLibfuseStats(suite)
+	name := "path"
+	path := C.CString("/" + name)
+	defer C.free(unsafe.Pointer(path))
+	mode := fs.FileMode(0775)
+	info := &C.fuse_file_info_t{}
+	options := internal.CreateFileOptions{Name: name, Mode: mode}
+	suite.mock.EXPECT().CreateFile(options).Return(&handlemap.Handle{}, errors.New("failed to create file"))
+
+	err := libfuse_create(path, 0775, info)
+	suite.assert.Equal(C.int(-C.EIO), err)
+
+	stats := collector.StopAndGetStats()
+	suite.assert.NotContains(stats, createFile)
+	suite.assert.NotContains(stats, openHandles)
+}
+
+func testCreateInvalidArgument(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	path := C.CString("/path")
+	defer C.free(unsafe.Pointer(path))
+	suite.mock.EXPECT().CreateFile(internal.CreateFileOptions{Name: "path", Mode: 0600}).Return(nil, errors.Join(syscall.EINVAL, errors.New("DFS rejected permissions")))
+
+	err := libfuse_create(path, 0600, &C.fuse_file_info_t{})
+	suite.assert.Equal(C.int(-C.EINVAL), err)
 }
 
 func testGetAttrInvalidArgument(suite *libfuseTestSuite) {
@@ -527,17 +585,56 @@ func testReadLink(suite *libfuseTestSuite) {
 	name := "path"
 	path := C.CString("/" + name)
 	defer C.free(unsafe.Pointer(path))
-	options := internal.ReadLinkOptions{Name: name}
-	suite.mock.EXPECT().ReadLink(options).Return("target", nil)
-	attr := &internal.ObjAttr{}
+	target := "target"
 	getAttrOpt := internal.GetAttrOptions{Name: name}
-	suite.mock.EXPECT().GetAttr(getAttrOpt).Return(attr, nil)
+	suite.mock.EXPECT().GetAttr(getAttrOpt).Return(&internal.ObjAttr{Size: int64(len(target))}, nil)
+	options := internal.ReadLinkOptions{Name: name, Size: int64(len(target))}
+	suite.mock.EXPECT().ReadLink(options).Return(target, nil)
 
-	// https://stackoverflow.com/questions/41953619/how-to-initialise-empty-c-cstring-in-cgo
-	buf := C.CString("")
+	buf := (*C.char)(C.malloc(7))
+	defer C.free(unsafe.Pointer(buf))
 	err := libfuse_readlink(path, buf, 7)
 	suite.assert.Equal(C.int(0), err)
-	suite.assert.Equal("target", C.GoString(buf))
+	got := C.GoString(buf)
+	suite.assert.Equal(target, got)
+}
+
+func testReadLinkEmpty(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	name := "path"
+	path := C.CString("/" + name)
+	defer C.free(unsafe.Pointer(path))
+	getAttrOpt := internal.GetAttrOptions{Name: name}
+	suite.mock.EXPECT().GetAttr(getAttrOpt).Return(&internal.ObjAttr{}, nil)
+	options := internal.ReadLinkOptions{Name: name}
+	suite.mock.EXPECT().ReadLink(options).Return("", nil)
+
+	buf := C.CString("x")
+	defer C.free(unsafe.Pointer(buf))
+	err := libfuse_readlink(path, buf, 2)
+	suite.assert.Equal(C.int(0), err)
+	suite.assert.Empty(C.GoString(buf))
+}
+
+func testReadLinkMaxTarget(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	name := "path"
+	path := C.CString("/" + name)
+	defer C.free(unsafe.Pointer(path))
+	target := strings.Repeat("A", common.MaxSymlinkTargetLen)
+	getAttrOpt := internal.GetAttrOptions{Name: name}
+	suite.mock.EXPECT().GetAttr(getAttrOpt).Return(&internal.ObjAttr{Size: int64(len(target))}, nil)
+	options := internal.ReadLinkOptions{Name: name, Size: int64(len(target))}
+	suite.mock.EXPECT().ReadLink(options).Return(target, nil)
+
+	// libfuse passes a PATH_MAX + 1 byte buffer
+	const bufSize = 4097
+	buf := (*C.char)(C.malloc(bufSize))
+	defer C.free(unsafe.Pointer(buf))
+	err := libfuse_readlink(path, buf, bufSize)
+	suite.assert.Equal(C.int(0), err)
+	got := C.GoString(buf)
+	suite.assert.Equal(target, got)
 }
 
 func testReadLinkNotExists(suite *libfuseTestSuite) {
@@ -545,16 +642,41 @@ func testReadLinkNotExists(suite *libfuseTestSuite) {
 	name := "path"
 	path := C.CString("/" + name)
 	defer C.free(unsafe.Pointer(path))
-	options := internal.ReadLinkOptions{Name: name}
-	suite.mock.EXPECT().ReadLink(options).Return("", syscall.ENOENT)
-	attr := &internal.ObjAttr{}
 	getAttrOpt := internal.GetAttrOptions{Name: name}
-	suite.mock.EXPECT().GetAttr(getAttrOpt).Return(attr, nil)
+	suite.mock.EXPECT().GetAttr(getAttrOpt).Return(nil, syscall.ENOENT)
 
 	buf := C.CString("")
-	err := libfuse_readlink(path, buf, 7)
+	defer C.free(unsafe.Pointer(buf))
+	err := libfuse_readlink(path, buf, 1)
 	suite.assert.Equal(C.int(-C.ENOENT), err)
-	suite.assert.NotEqual("target", C.GoString(buf))
+}
+
+func testReadLinkGetAttrError(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	name := "path"
+	path := C.CString("/" + name)
+	defer C.free(unsafe.Pointer(path))
+	getAttrOpt := internal.GetAttrOptions{Name: name}
+	suite.mock.EXPECT().GetAttr(getAttrOpt).Return(nil, errors.New("failed to get attr"))
+
+	buf := C.CString("")
+	defer C.free(unsafe.Pointer(buf))
+	err := libfuse_readlink(path, buf, 1)
+	suite.assert.Equal(C.int(-C.EIO), err)
+}
+
+func testReadLinkNilAttr(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	name := "path"
+	path := C.CString("/" + name)
+	defer C.free(unsafe.Pointer(path))
+	getAttrOpt := internal.GetAttrOptions{Name: name}
+	suite.mock.EXPECT().GetAttr(getAttrOpt).Return(nil, nil)
+
+	buf := C.CString("")
+	defer C.free(unsafe.Pointer(buf))
+	err := libfuse_readlink(path, buf, 1)
+	suite.assert.Equal(C.int(-C.EIO), err)
 }
 
 func testReadLinkError(suite *libfuseTestSuite) {
@@ -562,15 +684,88 @@ func testReadLinkError(suite *libfuseTestSuite) {
 	name := "path"
 	path := C.CString("/" + name)
 	defer C.free(unsafe.Pointer(path))
-	options := internal.ReadLinkOptions{Name: name}
-	suite.mock.EXPECT().ReadLink(options).Return("", errors.New("failed to read link"))
 	getAttrOpt := internal.GetAttrOptions{Name: name}
-	suite.mock.EXPECT().GetAttr(getAttrOpt).Return(nil, nil)
+	suite.mock.EXPECT().GetAttr(getAttrOpt).Return(&internal.ObjAttr{Size: 6}, nil)
+	options := internal.ReadLinkOptions{Name: name, Size: 6}
+	suite.mock.EXPECT().ReadLink(options).Return("", errors.New("failed to read link"))
 
-	buf := C.CString("")
+	buf := (*C.char)(C.malloc(7))
+	defer C.free(unsafe.Pointer(buf))
 	err := libfuse_readlink(path, buf, 7)
 	suite.assert.Equal(C.int(-C.EIO), err)
-	suite.assert.NotEqual("target", C.GoString(buf))
+}
+
+// A target longer than PATH_MAX - 1 is rejected before anything is downloaded.
+func testReadLinkTargetTooLong(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	name := "path"
+	path := C.CString("/" + name)
+	defer C.free(unsafe.Pointer(path))
+	getAttrOpt := internal.GetAttrOptions{Name: name}
+	suite.mock.EXPECT().GetAttr(getAttrOpt).Return(&internal.ObjAttr{Size: 16 << 20}, nil)
+
+	const bufSize = 4097
+	buf := (*C.char)(C.malloc(bufSize))
+	defer C.free(unsafe.Pointer(buf))
+	err := libfuse_readlink(path, buf, bufSize)
+	suite.assert.Equal(C.int(-C.ENAMETOOLONG), err)
+}
+
+// A target that does not fit in a buffer smaller than PATH_MAX is rejected as well.
+func testReadLinkTargetExceedsBuffer(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	name := "path"
+	path := C.CString("/" + name)
+	defer C.free(unsafe.Pointer(path))
+	getAttrOpt := internal.GetAttrOptions{Name: name}
+	const bufSize = 16
+	suite.mock.EXPECT().GetAttr(getAttrOpt).Return(&internal.ObjAttr{Size: bufSize}, nil)
+
+	buf := (*C.char)(C.malloc(bufSize))
+	defer C.free(unsafe.Pointer(buf))
+	err := libfuse_readlink(path, buf, bufSize)
+	suite.assert.Equal(C.int(-C.ENAMETOOLONG), err)
+}
+
+// If the next component returns more than it was asked for, nothing may be written past the buffer.
+func testReadLinkTargetLongerThanAttr(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	name := "path"
+	path := C.CString("/" + name)
+	defer C.free(unsafe.Pointer(path))
+
+	const bufSize = 16
+	const allocSize = 64
+	target := strings.Repeat("A", 32)
+
+	getAttrOpt := internal.GetAttrOptions{Name: name}
+	suite.mock.EXPECT().GetAttr(getAttrOpt).Return(&internal.ObjAttr{Size: 6}, nil)
+	options := internal.ReadLinkOptions{Name: name, Size: 6}
+	suite.mock.EXPECT().ReadLink(options).Return(target, nil)
+
+	mem := C.malloc(allocSize)
+	defer C.free(mem)
+	raw := unsafe.Slice((*byte)(mem), allocSize)
+	for i := range raw {
+		raw[i] = 0xAA
+	}
+
+	err := libfuse_readlink(path, (*C.char)(mem), bufSize)
+	suite.assert.Equal(C.int(-C.ENAMETOOLONG), err)
+	for i := range raw {
+		suite.assert.Equal(byte(0xAA), raw[i], "byte %d of the buffer was modified", i)
+	}
+}
+
+func testReadLinkZeroSize(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	path := C.CString("/path")
+	defer C.free(unsafe.Pointer(path))
+
+	buf := C.CString("")
+	defer C.free(unsafe.Pointer(buf))
+	err := libfuse_readlink(path, buf, 0)
+	suite.assert.Equal(C.int(-C.EINVAL), err)
 }
 
 func testFsync(suite *libfuseTestSuite) {

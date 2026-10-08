@@ -107,6 +107,25 @@ extends:
               skip_azcli: "false"
               skip_ut: "false"
 
+          # One run of the close/rename stress test catches the original file-cache deadlock only about
+          # half the time, so repeat it. Unlike the unit-test step above, a failure here fails the job.
+          - script: |
+              set -e
+              go test -v -timeout=20m -tags=unittest,$(tags) -count=20 \
+                -run 'TestFileCacheTestSuite/TestConcurrentCloseRenamePurge$' ./component/file_cache
+              go test -v -race -timeout=20m -tags=unittest,$(tags) -count=5 \
+                -run 'Test(FileCacheTestSuite|LRUPolicyTestSuite)/(TestConcurrentCloseRenamePurge|TestPurgeRetriesBusyFile)$' ./component/file_cache
+            displayName: 'File cache close/rename stress'
+            workingDirectory: $(WORK_DIR)
+
+          # Mount blobfuse2 over loopbackfs with direct_io and a zero file-cache timeout, then run the
+          # incident's concurrent close, fsync and rename workload. Fails if the mount stops making
+          # progress or a file operation fails, and prints the hung daemon's file-cache goroutines.
+          - script: |
+              go test -v -timeout=15m ./test/loopback_e2e -args -blobfuse2=$(WORK_DIR)/blobfuse2
+            displayName: 'File cache loopback mount E2E'
+            workingDirectory: $(WORK_DIR)
+
           # Code lint checks (Static-analysis)
           - script: |
               curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.11.0

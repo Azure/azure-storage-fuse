@@ -35,13 +35,14 @@ package common
 
 import (
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
 // Lock item for each file
 type LockMapItem struct {
 	handleCount  uint32
-	exLocked     bool
+	exLocked     atomic.Bool
 	mtx          sync.Mutex
 	downloadTime time.Time
 }
@@ -59,7 +60,7 @@ func NewLockMap() *LockMap {
 
 // Get the lock item based on file name, if item does not exists create it
 func (l *LockMap) Get(name string) *LockMapItem {
-	lockIntf, _ := l.locks.LoadOrStore(name, &LockMapItem{handleCount: 0, exLocked: false})
+	lockIntf, _ := l.locks.LoadOrStore(name, &LockMapItem{})
 	item := lockIntf.(*LockMapItem)
 	return item
 }
@@ -74,7 +75,7 @@ func (l *LockMap) Locked(name string) bool {
 	lockIntf, ok := l.locks.Load(name)
 	if ok {
 		item := lockIntf.(*LockMapItem)
-		return item.exLocked
+		return item.exLocked.Load()
 	}
 
 	return false
@@ -84,12 +85,21 @@ func (l *LockMap) Locked(name string) bool {
 // Lock this file exclusively
 func (l *LockMapItem) Lock() {
 	l.mtx.Lock()
-	l.exLocked = true
+	l.exLocked.Store(true)
+}
+
+// TryLock locks the file only if no other operation currently holds its lock.
+func (l *LockMapItem) TryLock() bool {
+	if !l.mtx.TryLock() {
+		return false
+	}
+	l.exLocked.Store(true)
+	return true
 }
 
 // UnLock this file exclusively
 func (l *LockMapItem) Unlock() {
-	l.exLocked = false
+	l.exLocked.Store(false)
 	l.mtx.Unlock()
 }
 

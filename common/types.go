@@ -65,6 +65,10 @@ const (
 	DefaultDirectoryPermissionBits  os.FileMode = 0775
 	DefaultAllowOtherPermissionBits os.FileMode = 0777
 
+	// MaxSymlinkTargetLen is the longest symlink target, excluding the terminating NUL, that the
+	// kernel accepts in a FUSE readlink reply (PATH_MAX - 1).
+	MaxSymlinkTargetLen = 4095
+
 	MbToBytes     = 1024 * 1024
 	GbToBytes     = 1024 * MbToBytes
 	BfuseStats    = "blobfuse_stats"

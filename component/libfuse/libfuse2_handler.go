@@ -628,6 +628,8 @@ func libfuse_create(path *C.char, mode C.mode_t, fi *C.fuse_file_info_t) C.int {
 			return -C.EEXIST
 		} else if os.IsPermission(err) {
 			return -C.EACCES
+		} else if errors.Is(err, syscall.EINVAL) {
+			return -C.EINVAL
 		} else {
 			return -C.EIO
 		}
@@ -642,6 +644,7 @@ func libfuse_create(path *C.char, mode C.mode_t, fi *C.fuse_file_info_t) C.int {
 	fi.fh = C.uint64_t(uintptr(unsafe.Pointer(ret_val)))
 
 	libfuseStatsCollector.PushEvents(createFile, name, map[string]any{md: fs.FileMode(uint32(mode) & 0xffffffff)})
+	libfuseStatsCollector.UpdateStats(stats_manager.Increment, createFile, (int64)(1))
 
 	// increment open file handles count
 	libfuseStatsCollector.UpdateStats(stats_manager.Increment, openHandles, (int64)(1))
@@ -1048,13 +1051,31 @@ func libfuse_readlink(path *C.char, buf *C.char, size C.size_t) C.int {
 	name = common.NormalizeObjectName(name)
 	//log.Trace("Libfuse::libfuse_readlink : Received for %s", name)
 
-	linkSize := int64(0)
-	attr, err := fuseFS.NextComponent().GetAttr(internal.GetAttrOptions{Name: name})
-	if err == nil && attr != nil {
-		linkSize = attr.Size
+	// buf must have room for at least the terminating NUL
+	if size == 0 {
+		return -C.EINVAL
 	}
 
-	targetPath, err := fuseFS.NextComponent().ReadLink(internal.ReadLinkOptions{Name: name, Size: linkSize})
+	attr, err := fuseFS.NextComponent().GetAttr(internal.GetAttrOptions{Name: name})
+	if err != nil {
+		log.Err("Libfuse::libfuse2_readlink : error getting attributes of link file %s [%s]", name, err.Error())
+		if os.IsNotExist(err) {
+			return -C.ENOENT
+		}
+		return -C.EIO
+	}
+	if attr == nil {
+		log.Err("Libfuse::libfuse2_readlink : no attributes returned for link file %s", name)
+		return -C.EIO
+	}
+
+	maxLen := min(int64(size-1), common.MaxSymlinkTargetLen)
+	if attr.Size > maxLen {
+		log.Err("Libfuse::libfuse2_readlink : link target of %s is %d bytes, max allowed is %d", name, attr.Size, maxLen)
+		return -C.ENAMETOOLONG
+	}
+
+	targetPath, err := fuseFS.NextComponent().ReadLink(internal.ReadLinkOptions{Name: name, Size: attr.Size})
 	if err != nil {
 		log.Err("Libfuse::libfuse2_readlink : error reading link file %s [%s]", name, err.Error())
 		if os.IsNotExist(err) {
@@ -1062,9 +1083,16 @@ func libfuse_readlink(path *C.char, buf *C.char, size C.size_t) C.int {
 		}
 		return -C.EIO
 	}
-	data := (*[1 << 30]byte)(unsafe.Pointer(buf))
-	copy(data[:size-1], targetPath)
-	data[len(targetPath)] = 0
+
+	// Do not trust the next component to have honoured Size.
+	if int64(len(targetPath)) > maxLen {
+		log.Err("Libfuse::libfuse2_readlink : link target of %s is %d bytes, max allowed is %d", name, len(targetPath), maxLen)
+		return -C.ENAMETOOLONG
+	}
+
+	data := unsafe.Slice((*byte)(unsafe.Pointer(buf)), size)
+	n := copy(data[:size-1], targetPath)
+	data[n] = 0
 
 	libfuseStatsCollector.PushEvents(readLink, name, map[string]any{trgt: targetPath})
 	libfuseStatsCollector.UpdateStats(stats_manager.Increment, readLink, (int64)(1))

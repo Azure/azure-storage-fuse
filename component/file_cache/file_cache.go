@@ -1163,9 +1163,13 @@ func (fc *FileCache) ReleaseFile(options internal.ReleaseFileOptions) error {
 		log.Trace("FileCache::releaseFileInternal : fsync/sync op, purging %s", options.Handle.Path)
 		localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
 
-		err = deleteFile(localPath)
-		if err != nil && !os.IsNotExist(err) {
-			log.Err("FileCache::releaseFileInternal : failed to delete local file %s [%s]", localPath, err.Error())
+		// Another handle may still use this path, possibly for a new file created after a rename.
+		// In that case, leave deletion to the cache policy, which skips files with open handles.
+		if flock.Count() == 0 {
+			err = deleteFile(localPath)
+			if err != nil && !os.IsNotExist(err) {
+				log.Err("FileCache::releaseFileInternal : failed to delete local file %s [%s]", localPath, err.Error())
+			}
 		}
 
 		fc.policy.CachePurge(localPath)
