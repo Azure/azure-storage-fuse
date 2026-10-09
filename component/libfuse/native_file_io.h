@@ -47,15 +47,15 @@
       - fd == 0 means the file is not served natively (it is not cached locally, or file_cache runs with
         offload-io: true). Those reads and writes go to libfuse_read/libfuse_write and through the pipeline.
       - C only does the IO, and marks the handle dirty when a write changed the file. Everything else is decided in
-        Go: flush, fsync and release carry the dirty mark over to the handle (peek_dirty_flag, clear_dirty_flag),
-        so that file_cache uploads the file.
+        Go: flush, fsync and release consume the dirty mark (consume_dirty_flag) and carry it over to the handle, so
+        that file_cache uploads the file.
 */
 
 // file_handle_t : native object given to libfuse as the file handle (fi->fh) of an open file
 typedef struct {
     uint64_t       fd;                  // Descriptor of the locally cached file, 0 if IO is not served natively
     uint64_t       obj;                 // handlemap.Handle of this open file
-    uint8_t        dirty;               // A native write changed the file since the mark was last cleared
+    uint8_t        dirty;               // A native write changed the file since the mark was last consumed
 } file_handle_t;
 
 
@@ -100,25 +100,20 @@ static int native_write_file(char *path, char *buf, size_t size, off_t offset, f
     if (res < 0)
         return -errno;
 
-    // Mark the handle dirty if the write changed the file. Go clears the mark concurrently, see clear_dirty_flag.
+    // Mark the handle dirty if the write changed the file. Go consumes the mark concurrently, see consume_dirty_flag.
     if (res > 0)
         __atomic_store_n(&handle_obj->dirty, 1, __ATOMIC_RELEASE);
 
     return (int)res;
 }
 
-// peek_dirty_flag : Whether native writes changed the file since the dirty mark was last cleared
-static int peek_dirty_flag(file_handle_t* handle_obj)
+// consume_dirty_flag : Atomically fetch and reset the dirty mark set by native writes on this handle.
+// Flush, fsync and release consume it before they upload the file, rather than resetting it after the upload, so a
+// write that lands while the file is uploaded marks the handle again. Go consumes the mark and marks the handle as one
+// step under the handle's lock, see markNativeWritesDirty.
+static int consume_dirty_flag(file_handle_t* handle_obj)
 {
-    return __atomic_load_n(&handle_obj->dirty, __ATOMIC_ACQUIRE);
-}
-
-// clear_dirty_flag : Clear the dirty mark, once Go has marked the handle dirty. Flush, fsync and release clear it
-// before they upload the file, rather than after the upload, so a write that lands during the upload marks it again.
-// The exchange, rather than a plain store, makes the writes whose mark it clears visible to that upload.
-static void clear_dirty_flag(file_handle_t* handle_obj)
-{
-    __atomic_exchange_n(&handle_obj->dirty, 0, __ATOMIC_ACQ_REL);
+    return __atomic_exchange_n(&handle_obj->dirty, 0, __ATOMIC_ACQ_REL);
 }
 
 #endif // __NATIVE_FILE_IO_H__
