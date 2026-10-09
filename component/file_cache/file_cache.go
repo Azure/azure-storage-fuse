@@ -442,19 +442,12 @@ func isLocalDirEmpty(path string) bool {
 	return err == io.EOF
 }
 
-// getLocalCachePath rejects names that could escape the cache before joining them.
-func (fc *FileCache) getLocalCachePath(name string) (string, error) {
-	if !common.IsValidObjectName(name) {
-		log.Err("FileCache::getLocalCachePath : path traversal attempt blocked [name=%s]", name)
-		return "", syscall.EINVAL
-	}
-	return filepath.Join(fc.tmpPath, name), nil
-}
-
-// validateObjectName checks names at file-cache entry points.
+// validateObjectName rejects names that would resolve outside the cache directory.
 func (fc *FileCache) validateObjectName(name string) error {
-	_, err := fc.getLocalCachePath(name)
-	return err
+	if !common.IsValidObjectName(name) {
+		return syscall.EINVAL
+	}
+	return nil
 }
 
 // invalidateDirectory: Recursively invalidates a directory in the file cache.
@@ -653,6 +646,7 @@ func (fc *FileCache) IsDirEmpty(options internal.IsDirEmptyOptions) bool {
 	log.Trace("FileCache::IsDirEmpty : %s", options.Name)
 
 	if err := fc.validateObjectName(options.Name); err != nil {
+		// Fail safe: "not empty" stops callers from deleting. libfuse rejects such names first.
 		log.Err("FileCache::IsDirEmpty : invalid path %s", options.Name)
 		return false
 	}

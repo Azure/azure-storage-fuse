@@ -191,6 +191,16 @@ func testRmDirError(suite *libfuseTestSuite) {
 	suite.assert.Equal(C.int(-C.EIO), err)
 }
 
+func testRmDirInvalidPath(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	path := C.CString("/../escape")
+	defer C.free(unsafe.Pointer(path))
+
+	// The mock fails the test if IsDirEmpty or DeleteDir is called.
+	err := libfuse_rmdir(path)
+	suite.assert.Equal(C.int(-C.EINVAL), err)
+}
+
 func testCreate(suite *libfuseTestSuite) {
 	defer suite.cleanupTest()
 	name := "path"
@@ -548,6 +558,37 @@ func testRenameDirEnametoolong(suite *libfuseTestSuite) {
 
 	err := libfuse2_rename(srcPath, dstPath)
 	suite.assert.Equal(C.int(-C.ENAMETOOLONG), err)
+}
+
+func testRenameInvalidPath(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	valid := C.CString("/file")
+	invalid := C.CString("/../escape")
+	defer C.free(unsafe.Pointer(valid))
+	defer C.free(unsafe.Pointer(invalid))
+
+	// The mock fails the test if any component method is called.
+	suite.assert.Equal(C.int(-C.EINVAL), libfuse2_rename(invalid, valid))
+	suite.assert.Equal(C.int(-C.EINVAL), libfuse2_rename(valid, invalid))
+}
+
+func testRenameBackslashName(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	src := "src"
+	dst := `..\..\etc\crontab`
+	srcPath := C.CString("/" + src)
+	dstPath := C.CString("/" + dst)
+	defer C.free(unsafe.Pointer(srcPath))
+	defer C.free(unsafe.Pointer(dstPath))
+
+	// The backslash name must reach the next component unchanged, not as "../../etc/crontab".
+	srcAttr := &internal.ObjAttr{Name: src}
+	suite.mock.EXPECT().GetAttr(internal.GetAttrOptions{Name: src}).Return(srcAttr, nil)
+	suite.mock.EXPECT().GetAttr(internal.GetAttrOptions{Name: dst}).Return(nil, syscall.ENOENT)
+	suite.mock.EXPECT().RenameFile(internal.RenameFileOptions{Src: src, Dst: dst, SrcAttr: srcAttr}).Return(nil)
+
+	err := libfuse2_rename(srcPath, dstPath)
+	suite.assert.Equal(C.int(0), err)
 }
 
 func testSymlink(suite *libfuseTestSuite) {

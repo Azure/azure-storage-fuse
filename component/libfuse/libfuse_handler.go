@@ -651,6 +651,12 @@ func libfuse_rmdir(path *C.char) C.int {
 	name = common.NormalizeObjectName(name)
 	log.Trace("Libfuse::libfuse_rmdir : %s", name)
 
+	// IsDirEmpty cannot report EINVAL, so reject an invalid name before calling it.
+	if !common.IsValidObjectName(name) {
+		log.Err("Libfuse::libfuse_rmdir : invalid path %s", name)
+		return -C.EINVAL
+	}
+
 	empty := fuseFS.NextComponent().IsDirEmpty(internal.IsDirEmptyOptions{Name: name})
 	if !empty {
 		return -C.ENOTEMPTY
@@ -1073,10 +1079,8 @@ func libfuse_rename(src *C.char, dst *C.char, flags C.uint) C.int {
 		return -C.ENOENT
 	}
 
-	// Reject names that escape the mount root. A Linux filename containing
-	// backslashes (e.g. `..\..\etc\crontab`) is normalized above into a
-	// traversal sequence (`../../etc/crontab`). Such names must never be
-	// treated as multi-segment paths escaping the mount.
+	// Reject absolute names and ".." segments that escape the mount root. A backslash is an
+	// ordinary filename character, so `..\..\etc\crontab` is a single valid name.
 	if !common.IsValidObjectName(srcPath) || !common.IsValidObjectName(dstPath) {
 		log.Err("Libfuse::libfuse_rename : invalid path in rename src: [%s] dst: [%s]", srcPath, dstPath)
 		return -C.EINVAL

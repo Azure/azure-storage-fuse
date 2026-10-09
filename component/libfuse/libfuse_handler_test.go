@@ -211,6 +211,10 @@ func (suite *libfuseTestSuite) TestRmDirError() {
 	testRmDirError(suite)
 }
 
+func (suite *libfuseTestSuite) TestRmDirInvalidPath() {
+	testRmDirInvalidPath(suite)
+}
+
 func (suite *libfuseTestSuite) TestCreate() {
 	testCreate(suite)
 }
@@ -303,6 +307,14 @@ func (suite *libfuseTestSuite) TestUnlinkError() {
 
 func (suite *libfuseTestSuite) TestRenameDirEnametoolong() {
 	testRenameDirEnametoolong(suite)
+}
+
+func (suite *libfuseTestSuite) TestRenameInvalidPath() {
+	testRenameInvalidPath(suite)
+}
+
+func (suite *libfuseTestSuite) TestRenameBackslashName() {
+	testRenameBackslashName(suite)
 }
 
 func (suite *libfuseTestSuite) TestSymlink() {

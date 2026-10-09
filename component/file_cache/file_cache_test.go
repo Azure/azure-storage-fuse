@@ -1735,15 +1735,7 @@ func (suite *fileCacheTestSuite) TestValidateObjectName() {
 		`dir\file`,
 	}
 	for _, name := range validNames {
-		err := suite.fileCache.validateObjectName(name)
-		suite.assert.NoError(err, "expected %q to be valid", name)
-
-		localPath, err := suite.fileCache.getLocalCachePath(name)
-		suite.assert.NoError(err, "expected %q to be valid", name)
-		suite.assert.Equal(filepath.Join(suite.cache_path, name), localPath)
-		// The resolved path must stay within (or equal) the cache root.
-		suite.assert.True(localPath == suite.cache_path ||
-			strings.HasPrefix(localPath, suite.cache_path+string(os.PathSeparator)))
+		suite.assert.NoError(suite.fileCache.validateObjectName(name), "expected %q to be valid", name)
 	}
 
 	// Names that escape or leave and re-enter the cache root are invalid.
@@ -1758,28 +1750,8 @@ func (suite *fileCacheTestSuite) TestValidateObjectName() {
 		`../dir\file`,
 	}
 	for _, name := range invalidNames {
-		err := suite.fileCache.validateObjectName(name)
-		suite.assert.Equal(syscall.EINVAL, err, "expected %q to be rejected", name)
-
-		localPath, err := suite.fileCache.getLocalCachePath(name)
-		suite.assert.Equal(syscall.EINVAL, err, "expected %q to be rejected", name)
-		suite.assert.Empty(localPath)
+		suite.assert.Equal(syscall.EINVAL, suite.fileCache.validateObjectName(name), "expected %q to be rejected", name)
 	}
-}
-
-// TestValidateObjectNameBackslashTraversal verifies that backslashes remain
-// literal, while a traversal using forward slashes is rejected.
-func (suite *fileCacheTestSuite) TestValidateObjectNameBackslashTraversal() {
-	defer suite.cleanupTest()
-
-	literal := common.NormalizeObjectName(`..\..\etc\crontab`)
-	suite.assert.Equal(`..\..\etc\crontab`, literal)
-	suite.assert.NoError(suite.fileCache.validateObjectName(literal))
-
-	local := common.NormalizeObjectName(`dir\file`)
-	suite.assert.Equal(`dir\file`, local)
-	suite.assert.NoError(suite.fileCache.validateObjectName(local))
-	suite.assert.Equal(syscall.EINVAL, suite.fileCache.validateObjectName(`../dir\file`))
 }
 
 // TestRenameFilePathTraversal verifies that a rename cannot overwrite a file
@@ -1859,6 +1831,15 @@ func (suite *fileCacheTestSuite) TestFileCachePathTraversalRejected() {
 
 		_, err = suite.fileCache.GetAttr(internal.GetAttrOptions{Name: name})
 		suite.assert.Equal(syscall.EINVAL, err, "GetAttr should reject %s", name)
+
+		_, err = suite.fileCache.ReadDir(internal.ReadDirOptions{Name: name})
+		suite.assert.Equal(syscall.EINVAL, err, "ReadDir should reject %s", name)
+
+		_, _, err = suite.fileCache.StreamDir(internal.StreamDirOptions{Name: name})
+		suite.assert.Equal(syscall.EINVAL, err, "StreamDir should reject %s", name)
+
+		suite.assert.False(suite.fileCache.IsDirEmpty(internal.IsDirEmptyOptions{Name: name}),
+			"IsDirEmpty should report not empty for %s", name)
 
 		err = suite.fileCache.FileUsed(name)
 		suite.assert.Equal(syscall.EINVAL, err, "FileUsed should reject %s", name)
