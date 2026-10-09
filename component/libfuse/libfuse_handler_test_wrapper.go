@@ -38,11 +38,18 @@ package libfuse
 // #cgo CFLAGS: -DFUSE_USE_VERSION=39 -D_FILE_OFFSET_BITS=64
 // #cgo LDFLAGS: -lfuse3 -ldl
 // #include "libfuse_wrapper.h"
+//
+// // mark_native_write : set the dirty mark the way a native write does, without writing to a file
+// static void mark_native_write(file_handle_t* handle_obj)
+// {
+//     __atomic_store_n(&handle_obj->dirty, 1, __ATOMIC_RELEASE);
+// }
 import "C"
 import (
 	"errors"
 	"io/fs"
 	"os"
+	"runtime"
 	"strings"
 	"syscall"
 	"unsafe"
@@ -420,6 +427,47 @@ func testNativeDirtyHandOver(suite *libfuseTestSuite) {
 		close(start)
 		if first, second := <-sawDirty, <-sawDirty; !first || !second {
 			suite.FailNowf("a flush saw the handle clean while a native write was pending", "round %d", round)
+		}
+	}
+}
+
+// testNativeWriteDuringHandOver : two flushes of a handle carry its native dirty mark over at the same moment, while
+// the upload that one of them starts hands the handle's dirty state over to Flushing, as FlushFile does, and the
+// application writes again. That write must stay marked, in the native handle or the handle, or no later flush or
+// close would upload it. The interleavings that lose it last only an instant, so the round is repeated many times.
+func testNativeWriteDuringHandOver(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	handle, fobj, fi := newNativeFileObject("path")
+	defer C.release_native_file_object(fi)
+
+	for round := 0; round < 200000; round++ {
+		handle.Flags.Clear(handlemap.HandleFlagDirty)
+		handle.Flags.Clear(handlemap.HandleFlagFlushing)
+		fobj.dirty = 1 // a native write is pending
+		start, done := make(chan struct{}), make(chan struct{}, 3)
+		for flush := 0; flush < 2; flush++ {
+			go func() {
+				<-start
+				markNativeWritesDirty(fobj, handle)
+				done <- struct{}{}
+			}()
+		}
+		go func() {
+			<-start
+			for !handle.Flags.IsSet(handlemap.HandleFlagDirty) {
+				runtime.Gosched() // until a flush has carried the pending write over
+			}
+			handle.Flags.Set(handlemap.HandleFlagFlushing) // that flush uploads the file...
+			handle.Flags.Clear(handlemap.HandleFlagDirty)
+			C.mark_native_write(fobj) // ...while the application writes again
+			done <- struct{}{}
+		}()
+		close(start)
+		for i := 0; i < 3; i++ {
+			<-done
+		}
+		if fobj.dirty == 0 && !handle.Flags.IsSet(handlemap.HandleFlagDirty) {
+			suite.FailNowf("the write made during the upload is no longer marked", "round %d", round)
 		}
 	}
 }
