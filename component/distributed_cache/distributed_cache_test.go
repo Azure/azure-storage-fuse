@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -217,7 +218,7 @@ func TestReadInBuffer_L2Hit(t *testing.T) {
 		return n, nil
 	}
 
-	buf := make([]byte, 1024)
+	buf := make([]byte, len(chunkData))
 	n, err := dc.ReadInBuffer(&internal.ReadInBufferOptions{
 		Path:   "test/file.bin",
 		Offset: 0,
@@ -228,6 +229,88 @@ func TestReadInBuffer_L2Hit(t *testing.T) {
 	assert.Equal(t, len(chunkData), n)
 	assert.Equal(t, chunkData, buf[:n])
 	assert.Equal(t, 0, next.readInBufferCalled, "should NOT call azstorage on L2 hit")
+}
+
+func TestReadInBuffer_L2SizeMismatchError_FallsThrough(t *testing.T) {
+	mock := newMockDCacheClient()
+	azData := []byte("data from azure storage")
+	next := &mockNextComponent{readInBufferData: azData}
+	dc := newTestDistCache(mock, next)
+
+	mock.chunkFn = func(_ context.Context, _ string, _ int64, _ []byte, _ ...dcache.DownloadOption) (int, error) {
+		return 0, fmt.Errorf("unexpected chunk size: expected %d, received %d", 1024, 7)
+	}
+
+	buf := make([]byte, 1024)
+	n, err := dc.ReadInBuffer(&internal.ReadInBufferOptions{
+		Path:   "test/file.bin",
+		Offset: 0,
+		Data:   buf,
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, len(azData), n)
+	assert.Equal(t, azData, buf[:n])
+	assert.Equal(t, 1, next.readInBufferCalled, "should fall through to azstorage on partial L2 hit")
+}
+
+func TestReadInBuffer_FinalExtentUsesExactBuffer(t *testing.T) {
+	mock := newMockDCacheClient()
+	next := &mockNextComponent{}
+	dc := newTestDistCache(mock, next)
+
+	const finalSize = 7
+	mock.chunkFn = func(_ context.Context, _ string, _ int64, buf []byte, _ ...dcache.DownloadOption) (int, error) {
+		assert.Len(t, buf, finalSize)
+		return copy(buf, make([]byte, finalSize)), nil
+	}
+
+	h := handlemap.NewHandle("test/file.bin")
+	h.Size = 1024 + finalSize
+	buf := make([]byte, 1024)
+	n, err := dc.ReadInBuffer(&internal.ReadInBufferOptions{
+		Handle: h,
+		Offset: 1024,
+		Data:   buf,
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, finalSize, n)
+	assert.Equal(t, 0, next.readInBufferCalled, "should serve the exact final extent from L2")
+}
+
+func TestReadInBuffer_KnownEOFDoesNotCallDownstream(t *testing.T) {
+	tests := []struct {
+		name   string
+		offset int64
+	}{
+		{name: "at EOF", offset: 1024},
+		{name: "past EOF", offset: 2048},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			mock := newMockDCacheClient()
+			mock.chunkFn = func(_ context.Context, _ string, _ int64, _ []byte, _ ...dcache.DownloadOption) (int, error) {
+				t.Fatal("distributed cache client must not be called at EOF")
+				return 0, nil
+			}
+			next := &mockNextComponent{}
+			dc := newTestDistCache(mock, next)
+
+			h := handlemap.NewHandle("test/file.bin")
+			h.Size = 1024
+			n, err := dc.ReadInBuffer(&internal.ReadInBufferOptions{
+				Handle: h,
+				Offset: test.offset,
+				Data:   make([]byte, 1024),
+			})
+
+			assert.ErrorIs(t, err, io.EOF)
+			assert.Zero(t, n)
+			assert.Zero(t, next.readInBufferCalled, "next component must not be called at EOF")
+		})
+	}
 }
 
 func TestReadInBuffer_L2ZeroByteHit_FallsThrough(t *testing.T) {
@@ -315,7 +398,7 @@ func TestReadInBuffer_AlreadyLocked_PollSucceeds(t *testing.T) {
 		return copy(buf, cachedData), nil
 	}
 
-	buf := make([]byte, 1024)
+	buf := make([]byte, len(cachedData))
 	n, err := dc.ReadInBuffer(&internal.ReadInBufferOptions{
 		Path:   "test/file.bin",
 		Offset: 0,
@@ -326,6 +409,34 @@ func TestReadInBuffer_AlreadyLocked_PollSucceeds(t *testing.T) {
 	assert.Equal(t, len(cachedData), n)
 	assert.Equal(t, cachedData, buf[:n])
 	assert.Equal(t, 0, next.readInBufferCalled, "should serve from cache after poll, not Azure")
+}
+
+func TestReadInBuffer_AlreadyLocked_PollPartialHit_FallsThrough(t *testing.T) {
+	mock := newMockDCacheClient()
+	azData := []byte("azure data after partial L2 hit")
+	next := &mockNextComponent{readInBufferData: azData}
+	dc := newTestDistCache(mock, next)
+
+	callCount := 0
+	mock.chunkFn = func(_ context.Context, _ string, _ int64, buf []byte, _ ...dcache.DownloadOption) (int, error) {
+		callCount++
+		if callCount == 1 {
+			return 0, dcache.ErrNotFoundAlreadyLocked
+		}
+		return copy(buf, []byte("partial")), nil
+	}
+
+	buf := make([]byte, 1024)
+	n, err := dc.ReadInBuffer(&internal.ReadInBufferOptions{
+		Path:   "test/file.bin",
+		Offset: 0,
+		Data:   buf,
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, len(azData), n)
+	assert.Equal(t, azData, buf[:n])
+	assert.Equal(t, 1, next.readInBufferCalled, "should fall through to azstorage on partial poll hit")
 }
 
 func TestReadInBuffer_AlreadyLocked_PollTimeout_FallsThrough(t *testing.T) {
@@ -1528,6 +1639,7 @@ func TestReadInBuffer_GotLock_EmptyReturnedETag_SkipsPopulate(t *testing.T) {
 	}
 
 	h := handlemap.NewHandle("test/file.bin")
+	h.Size = 1024
 
 	empty := ""
 	buf := make([]byte, 1024)

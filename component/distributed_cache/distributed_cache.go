@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"runtime"
 	"strconv"
@@ -25,10 +26,10 @@ import (
 
 const compName = "distributed_cache"
 
-// errPollCorruptHit signals that pollChunkIntoBuffer observed a zero-byte
-// cache entry. The caller should treat it like a timeout: fetch from Azure
-// but skip populate (we don't hold the miss-lock).
-var errPollCorruptHit = errors.New("distributed_cache: poll saw zero-byte cache entry")
+// errPollCorruptHit signals that pollChunkIntoBuffer observed a cache entry
+// whose size did not match the requested extent. The caller should fetch from
+// Azure but skip populate because it does not hold the miss-lock.
+var errPollCorruptHit = errors.New("distributed_cache: poll saw invalid cache entry size")
 
 // errPollChecksumMismatch signals a checksum failure during polling. The
 // caller decides whether to fall through (bypass-on-error) or surface EIO.
@@ -362,6 +363,22 @@ func resolveReadPath(options *internal.ReadInBufferOptions) string {
 	return options.Path
 }
 
+func expectedCacheReadSize(options *internal.ReadInBufferOptions) int {
+	expectedSize := len(options.Data)
+	if options.Handle == nil {
+		return expectedSize
+	}
+
+	remaining := options.Handle.Size - options.Offset
+	if remaining <= 0 {
+		return 0
+	}
+	if remaining < int64(expectedSize) {
+		return int(remaining)
+	}
+	return expectedSize
+}
+
 func (dc *DistCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, error) {
 	name := resolveReadPath(options)
 
@@ -369,18 +386,24 @@ func (dc *DistCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, e
 	etag := resolveETag(options)
 	log.Debug("DistCache::ReadInBuffer : %s offset=%d etag=%q", name, options.Offset, etag)
 
+	expectedSize := expectedCacheReadSize(options)
+	if expectedSize == 0 {
+		return 0, io.EOF
+	}
+	cacheBuffer := options.Data[:expectedSize]
+
 	ctx := context.Background()
 
-	n, err := dc.client.DownloadChunk(ctx, name, etag, options.Offset, options.Data,
+	n, err := dc.client.DownloadChunk(ctx, name, etag, options.Offset, cacheBuffer,
 		dcache.WithLock(true))
-	if err == nil && n > 0 {
+	if err == nil && n == expectedSize {
 		log.Debug("DistCache::ReadInBuffer : L2 hit %s offset=%d etag=%q", name, options.Offset, etag)
 		return n, nil
 	}
 	if err == nil && n == 0 {
 		// Zero-byte hit means corrupt/empty cache entry. Fall through without
 		// populating because this response does not grant us the miss-lock.
-		log.Warn("DistCache::ReadInBuffer : L2 zero-byte hit %s offset=%d, falling through to storage", name, options.Offset)
+		log.Err("DistCache::ReadInBuffer : L2 zero-byte hit %s offset=%d, falling through to storage", name, options.Offset)
 		return dc.NextComponent().ReadInBuffer(options)
 	}
 
@@ -400,7 +423,7 @@ func (dc *DistCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, e
 	if err == dcache.ErrNotFoundAlreadyLocked {
 		// Poll until L2 hit, inherited lock, or timeout.
 		log.Debug("DistCache::ReadInBuffer : L2 miss (locked) %s offset=%d, polling", name, options.Offset)
-		n, pollErr := dc.pollChunkIntoBuffer(ctx, name, etag, options.Offset, options.Data)
+		n, pollErr := dc.pollChunkIntoBuffer(ctx, name, etag, options.Offset, cacheBuffer)
 		if pollErr == nil {
 			return n, nil // L2 hit during poll
 		}
@@ -435,7 +458,7 @@ func (dc *DistCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, e
 		// always skip it; bypass-on-error decides whether we mask the
 		// corruption by falling through or surface it as EIO.
 		if dc.bypassOnError {
-			log.Warn("DistCache::ReadInBuffer : L2 checksum mismatch %s offset=%d, falling through to storage: %v", name, options.Offset, err)
+			log.Err("DistCache::ReadInBuffer : L2 checksum mismatch %s offset=%d, falling through to storage: %v", name, options.Offset, err)
 			return dc.NextComponent().ReadInBuffer(options)
 		}
 		log.Err("DistCache::ReadInBuffer : L2 checksum mismatch %s offset=%d, returning EIO: %v", name, options.Offset, err)
@@ -443,7 +466,7 @@ func (dc *DistCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, e
 	}
 
 	if dc.bypassOnError {
-		log.Warn("DistCache::ReadInBuffer : error, bypassing: %v", err)
+		log.Err("DistCache::ReadInBuffer : error, bypassing: %v", err)
 		return dc.NextComponent().ReadInBuffer(options)
 	}
 	return 0, err
@@ -478,10 +501,11 @@ func (dc *DistCache) pollChunkIntoBuffer(ctx context.Context, name, etag string,
 		n, err := dc.client.DownloadChunk(ctx, name, etag, offset, buf, dcache.WithLock(true))
 		switch {
 		case err == nil:
-			if n == 0 {
-				// Corrupt/empty cache entry — treat like a miss but
-				// skip populate since we don't hold the lock.
-				log.Warn("DistCache::pollChunkIntoBuffer : L2 zero-byte hit %s offset=%d, falling through to storage", name, offset)
+			if n != len(buf) {
+				// Invalid-sized cache entry — treat like a miss but skip
+				// populate since we don't hold the lock.
+				log.Err("DistCache::pollChunkIntoBuffer : L2 size mismatch %s offset=%d expected=%d received=%d, falling through to storage",
+					name, offset, len(buf), n)
 				return 0, errPollCorruptHit
 			}
 			return n, nil // L2 hit
@@ -491,7 +515,7 @@ func (dc *DistCache) pollChunkIntoBuffer(ctx context.Context, name, etag string,
 			return 0, dcache.ErrNotFoundGotLock
 		case errors.Is(err, dcache.ErrChecksumMismatch):
 			// Peer wrote a corrupt chunk; caller decides fall-through vs EIO.
-			log.Warn("DistCache::pollChunkIntoBuffer : L2 checksum mismatch %s offset=%d: %v", name, offset, err)
+			log.Err("DistCache::pollChunkIntoBuffer : L2 checksum mismatch %s offset=%d: %v", name, offset, err)
 			return 0, errPollChecksumMismatch
 		case err == dcache.ErrNotFoundAlreadyLocked, err == dcache.ErrNotFound:
 			// Keep waiting.
@@ -680,7 +704,7 @@ func (dc *DistCache) doUpload(name, etag string, offset int64, buf []byte, lengt
 
 	data := buf[:length]
 	if err := dc.client.UploadChunk(context.Background(), name, etag, offset, data, opts...); err != nil {
-		log.Warn("DistCache::doUpload : upload failed: %v", err)
+		log.Err("DistCache::doUpload : upload failed: %v", err)
 	}
 }
 
