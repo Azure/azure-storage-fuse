@@ -485,6 +485,56 @@ func (suite *utilTestSuite) TestCRC64() {
 	suite.assert.NotEqual(crc, crc1)
 }
 
+func (suite *utilTestSuite) TestIsValidObjectNameValid() {
+	validNames := []string{
+		"",
+		"file",
+		"dir/file",
+		"a/b/c/file.txt",
+		"a/./b",
+		".hidden",
+		"file with spaces",
+		"a..b",
+		"..file",
+		"file..",
+		`..\..\etc\crontab`,
+		`dir\file`,
+	}
+
+	for _, name := range validNames {
+		suite.assert.True(IsValidObjectName(name), "expected %q to be valid", name)
+	}
+}
+
+func (suite *utilTestSuite) TestIsValidObjectNameInvalid() {
+	invalidNames := []string{
+		"..",
+		"../file",
+		"../../etc/crontab",
+		"a/../../escape",
+		"a/b/../../../escape",
+		"/etc/crontab",
+		"/absolute",
+		`../dir\file`,
+	}
+
+	for _, name := range invalidNames {
+		suite.assert.False(IsValidObjectName(name), "expected %q to be invalid", name)
+	}
+}
+
+// TestIsValidObjectNameBackslashTraversal verifies that backslashes remain
+// literal Linux filename characters instead of becoming path separators.
+func (suite *utilTestSuite) TestIsValidObjectNameBackslashTraversal() {
+	normalized := NormalizeObjectName(`..\..\etc\crontab`)
+	suite.assert.Equal(`..\..\etc\crontab`, normalized)
+	suite.assert.True(IsValidObjectName(normalized))
+
+	local := NormalizeObjectName(`dir\file`)
+	suite.assert.Equal(`dir\file`, local)
+	suite.assert.True(IsValidObjectName(local))
+}
+
 func (suite *utilTestSuite) TestGetFuseMinorVersion() {
 	i := GetFuseMinorVersion()
 	suite.assert.GreaterOrEqual(i, 0)

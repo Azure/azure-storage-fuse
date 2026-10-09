@@ -590,6 +590,12 @@ func libfuse_rmdir(path *C.char) C.int {
 	name = common.NormalizeObjectName(name)
 	log.Trace("Libfuse::libfuse2_rmdir : %s", name)
 
+	// IsDirEmpty cannot report EINVAL, so reject an invalid name before calling it.
+	if !common.IsValidObjectName(name) {
+		log.Err("Libfuse::libfuse2_rmdir : invalid path %s", name)
+		return -C.EINVAL
+	}
+
 	empty := fuseFS.NextComponent().IsDirEmpty(internal.IsDirEmptyOptions{Name: name})
 	if !empty {
 		return -C.ENOTEMPTY
@@ -948,6 +954,13 @@ func libfuse2_rename(src *C.char, dst *C.char) C.int {
 	if srcPath == "" || dstPath == "" {
 		log.Err("Libfuse::libfuse2_rename : src: [%s] or dst: [%s] is an empty string", srcPath, dstPath)
 		return -C.ENOENT
+	}
+
+	// Reject absolute names and ".." segments that escape the mount root. A backslash is an
+	// ordinary filename character, so `..\..\etc\crontab` is a single valid name.
+	if !common.IsValidObjectName(srcPath) || !common.IsValidObjectName(dstPath) {
+		log.Err("Libfuse::libfuse2_rename : invalid path in rename src: [%s] dst: [%s]", srcPath, dstPath)
+		return -C.EINVAL
 	}
 
 	srcAttr, srcErr := fuseFS.NextComponent().GetAttr(internal.GetAttrOptions{Name: srcPath})
