@@ -1,0 +1,137 @@
+# Template consumed by test/scripts/dcache/deploy-blobfuse2.sh via envsubst.
+# Do NOT `kubectl apply -f` directly.
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ${BLOBFUSE2_NAMESPACE}
+
+---
+# Projected into the container at /usr/share/blobfuse2/config.yaml,
+# which the Dockerfile entrypoint (`fuse` script) reads.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: blobfuse2-config
+  namespace: ${BLOBFUSE2_NAMESPACE}
+type: Opaque
+stringData:
+  config.yaml: |
+    allow-other: true
+    read-only: true
+
+    logging:
+      level: log_debug
+      file-path: "/var/log/blobfuse2/blobfuse2-block-logs.txt"
+      type: base
+
+    components:
+      - libfuse
+      - dist_cache
+      - attr_cache
+      - azstorage
+
+    libfuse:
+      attribute-expiration-sec: 0
+      entry-expiration-sec: 0
+      negative-entry-expiration-sec: 0
+      ignore-open-flags: true
+
+    dist_cache:
+      discovery-endpoint: "${DCACHE_DISCOVERY_ENDPOINT}"
+      # block_cache is auto-injected as dist_cache's L1. Tune it here;
+      # normalizeDistCacheConfig fans these onto block_cache.* at mount time.
+      block-size-mb: 16
+      mem-size-mb: 4096
+      prefetch: 32
+      parallelism: 128
+
+    attr_cache:
+      timeout-sec: 3600
+
+    azstorage:
+      type: block
+      use-http: false
+      endpoint: ${STO_ACC_ENDPOINT}
+      account-name: ${STO_ACC_NAME}
+      account-key: "${STO_ACC_KEY}"
+      mode: key
+      container: ${STO_ACC_CONTAINER}
+      tier: hot
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${BLOBFUSE2_DEPLOYMENT}
+  namespace: ${BLOBFUSE2_NAMESPACE}
+  labels:
+    app: ${BLOBFUSE2_DEPLOYMENT}
+spec:
+  # Tests clone this reference at one replica, scale their private clone when
+  # needed, and delete the clone during cleanup.
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ${BLOBFUSE2_DEPLOYMENT}
+  template:
+    metadata:
+      labels:
+        app: ${BLOBFUSE2_DEPLOYMENT}
+      annotations:
+        # AppArmor must be relaxed for FUSE mounts inside a pod.
+        container.apparmor.security.beta.kubernetes.io/blobfuse2: unconfined
+    spec:
+      nodeSelector:
+        kubernetes.io/os: linux
+      containers:
+        - name: blobfuse2
+          image: ${BLOBFUSE2_IMAGE}
+          # Image is side-loaded into kind nodes by deploy-blobfuse2.sh.
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            # Required for SYS_ADMIN + /dev/fuse access.
+            privileged: true
+            capabilities:
+              add:
+                - SYS_ADMIN
+          volumeMounts:
+            - name: blobfuse2-config
+              mountPath: /usr/share/blobfuse2/config.yaml
+              subPath: config.yaml
+              readOnly: true
+            - name: blobfuse2-logs
+              mountPath: /var/log/blobfuse2
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2"
+              memory: "4Gi"
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - "mount | grep -q ' on /mnt/blobfuse_mnt '"
+            periodSeconds: 2
+            timeoutSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - "mount | grep -q ' on /mnt/blobfuse_mnt '"
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+      volumes:
+        - name: blobfuse2-config
+          secret:
+            secretName: blobfuse2-config
+        - name: blobfuse2-logs
+          emptyDir: {}
