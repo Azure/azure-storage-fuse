@@ -178,6 +178,24 @@ func (suite *utilTestSuite) TestBitmapReset() {
 	suite.assert.False(ok)
 }
 
+func (suite *utilTestSuite) TestBitmapIsAnySet() {
+	var bitmap BitMap64
+
+	suite.assert.False(bitmap.IsAnySet())
+	suite.assert.False(bitmap.IsAnySet(1, 3))
+
+	bitmap.Set(3)
+	suite.assert.True(bitmap.IsAnySet(3))
+	suite.assert.True(bitmap.IsAnySet(1, 3))
+	suite.assert.False(bitmap.IsAnySet(1, 2))
+
+	bitmap.Set(63)
+	suite.assert.True(bitmap.IsAnySet(0, 63))
+
+	bitmap.Clear(3)
+	suite.assert.False(bitmap.IsAnySet(1, 3))
+}
+
 func (suite *utilTestSuite) TestIsMountActiveNoMount() {
 	var out bytes.Buffer
 	cmd := exec.Command("../blobfuse2", "unmount", "all")

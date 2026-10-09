@@ -243,6 +243,10 @@ func (suite *libfuseTestSuite) TestNativeDirtyHandOver() {
 	testNativeDirtyHandOver(suite)
 }
 
+func (suite *libfuseTestSuite) TestNativeWriteDuringHandOver() {
+	testNativeWriteDuringHandOver(suite)
+}
+
 func (suite *libfuseTestSuite) TestCreateError() {
 	testCreateError(suite)
 }
