@@ -394,6 +394,32 @@ func testFsyncNativeWrite(suite *libfuseTestSuite) {
 	suite.assert.Equal(C.int(0), libfuse_release(path, fi))
 }
 
+// testNativeDirtyHandOver : when two flushes of a handle take a pending native dirty mark at the same moment, neither
+// may see the handle clean, or it would return before the upload. The mark is in transit only for an instant, so the
+// two flushes are started together many times.
+func testNativeDirtyHandOver(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	handle, fobj, fi := newNativeFileObject("path")
+	defer C.release_native_file_object(fi)
+
+	for round := 0; round < 200000; round++ {
+		handle.Flags.Clear(handlemap.HandleFlagDirty)
+		fobj.dirty = 1 // a native write is pending
+		start, sawDirty := make(chan struct{}), make(chan bool, 2)
+		for flush := 0; flush < 2; flush++ {
+			go func() {
+				<-start
+				markNativeWritesDirty(fobj, handle)
+				sawDirty <- handle.Dirty()
+			}()
+		}
+		close(start)
+		if first, second := <-sawDirty, <-sawDirty; !first || !second {
+			suite.FailNowf("a flush saw the handle clean while a native write was pending", "round %d", round)
+		}
+	}
+}
+
 func testCreateError(suite *libfuseTestSuite) {
 	defer suite.cleanupTest()
 	name := "path"

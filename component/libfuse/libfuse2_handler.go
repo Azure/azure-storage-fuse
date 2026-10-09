@@ -773,12 +773,13 @@ func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.
 	return C.int(bytesWritten)
 }
 
-// markNativeWritesDirty : Writes served natively in C only set the dirty mark of the native file handle. Consume the
-// mark and carry it over to the handle, so that the pipeline uploads those writes. It is consumed before the upload
-// rather than reset after it, so a write that lands while the file is uploaded marks the handle again.
+// markNativeWritesDirty : Writes served natively in C only set the dirty mark of the native file handle. Carry the
+// mark over to the handle, so that the pipeline uploads those writes. The handle is marked before the native mark is
+// cleared, so a concurrent flush or fsync always sees the writes in one of the two places and waits for their upload.
 func markNativeWritesDirty(fileHandle *C.file_handle_t, handle *handlemap.Handle) {
-	if C.consume_dirty_flag(fileHandle) != 0 {
+	if C.peek_dirty_flag(fileHandle) != 0 {
 		handle.Flags.Set(handlemap.HandleFlagDirty)
+		C.clear_dirty_flag(fileHandle)
 	}
 }
 
