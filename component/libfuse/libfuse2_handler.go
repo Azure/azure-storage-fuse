@@ -619,6 +619,18 @@ func libfuse_rmdir(path *C.char) C.int {
 
 // File Operations
 
+// newFileHandle : Allocate the native object that libfuse keeps as the handle (fi.fh) of an open file. Reads and
+// writes of a file that file_cache holds locally are served natively on the cached file's descriptor. Any other file
+// gets descriptor 0, so its reads and writes go through the pipeline, see native_file_io.h.
+func newFileHandle(handle *handlemap.Handle) C.uint64_t {
+	var fd C.uint64_t
+	if handle.Cached() {
+		fd = C.uint64_t(handle.UnixFD)
+	}
+	fobj := C.allocate_native_file_object(fd, C.uint64_t(uintptr(unsafe.Pointer(handle))))
+	return C.uint64_t(uintptr(unsafe.Pointer(fobj)))
+}
+
 // libfuse_create creates a file with the specified mode and then opens it.
 //
 //export libfuse_create
@@ -642,12 +654,8 @@ func libfuse_create(path *C.char, mode C.mode_t, fi *C.fuse_file_info_t) C.int {
 	}
 
 	handlemap.Add(handle)
-	ret_val := C.allocate_native_file_object(C.uint64_t(handle.UnixFD), C.uint64_t(uintptr(unsafe.Pointer(handle))), 0)
-	if !handle.Cached() {
-		ret_val.fd = 0
-	}
+	fi.fh = newFileHandle(handle)
 	log.Trace("Libfuse::libfuse2_create : %s, handle %d", name, handle.ID)
-	fi.fh = C.uint64_t(uintptr(unsafe.Pointer(ret_val)))
 
 	libfuseStatsCollector.PushEvents(createFile, name, map[string]any{md: fs.FileMode(uint32(mode) & 0xffffffff)})
 	libfuseStatsCollector.UpdateStats(stats_manager.Increment, createFile, (int64)(1))
@@ -696,12 +704,8 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 	}
 
 	handlemap.Add(handle)
-	ret_val := C.allocate_native_file_object(C.uint64_t(handle.UnixFD), C.uint64_t(uintptr(unsafe.Pointer(handle))), C.uint64_t(handle.Size))
-	if !handle.Cached() {
-		ret_val.fd = 0
-	}
+	fi.fh = newFileHandle(handle)
 	log.Trace("Libfuse::libfuse2_open : %s, handle %d", name, handle.ID)
-	fi.fh = C.uint64_t(uintptr(unsafe.Pointer(ret_val)))
 
 	// increment open file handles count
 	libfuseStatsCollector.UpdateStats(stats_manager.Increment, openHandles, (int64)(1))
@@ -709,7 +713,7 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 	return 0
 }
 
-// libfuse_read reads data from an open file
+// libfuse_read reads data from an open file that is not served natively, see native_file_io.h
 //
 //export libfuse_read
 func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.fuse_file_info_t) C.int {
@@ -724,7 +728,6 @@ func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.f
 
 	if handle.Cached() {
 		bytesRead, err = syscall.Pread(handle.FD(), data[:size], int64(offset))
-		//bytesRead, err = handle.FObj.ReadAt(data[:size], int64(offset))
 	} else {
 		bytesRead, err = fuseFS.NextComponent().ReadInBuffer(
 			&internal.ReadInBufferOptions{
@@ -745,7 +748,7 @@ func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.f
 	return C.int(bytesRead)
 }
 
-// libfuse_write writes data to an open file
+// libfuse_write writes data to an open file that is not served natively, see native_file_io.h
 //
 //export libfuse_write
 func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.fuse_file_info_t) C.int {
@@ -770,6 +773,20 @@ func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.
 	return C.int(bytesWritten)
 }
 
+// markNativeWritesDirty : Writes served natively in C only set the dirty mark of the native file handle. Consume the
+// mark and carry it over to the handle, so that the pipeline uploads those writes. The mark is consumed before the
+// upload rather than reset after it, so a write that lands during the upload marks the handle again.
+// Consuming the mark and marking the handle are one step under the handle's lock. A concurrent flush, fsync or release
+// of the handle thus either finds the handle marked or consumes the mark itself, and a mark is only ever cleared by
+// the call that carries it over.
+func markNativeWritesDirty(fileHandle *C.file_handle_t, handle *handlemap.Handle) {
+	handle.Lock()
+	defer handle.Unlock()
+	if C.consume_dirty_flag(fileHandle) != 0 {
+		handle.Flags.Set(handlemap.HandleFlagDirty)
+	}
+}
+
 // libfuse_flush possibly flushes cached data
 // Flush is called on each close() of a file descriptor, as opposed to release which is called on the close of the
 // last file descriptor for a file.
@@ -785,11 +802,9 @@ func libfuse_flush(path *C.char, fi *C.fuse_file_info_t) C.int {
 
 	log.Trace("Libfuse::libfuse2_flush : %s, handle: %d", handle.Path, handle.ID)
 
-	// If the file handle is not dirty, there is no need to flush
-	if fileHandle.dirty != 0 {
-		handle.Flags.Set(handlemap.HandleFlagDirty)
-	}
+	markNativeWritesDirty(fileHandle, handle)
 
+	// If the file handle is not dirty, there is no need to flush
 	if !handle.Dirty() {
 		return 0
 	}
@@ -819,9 +834,7 @@ func libfuse_release(path *C.char, fi *C.fuse_file_info_t) C.int {
 	log.Trace("Libfuse::libfuse2_release : %s, handle: %d", handle.Path, handle.ID)
 
 	// If the file handle is dirty then file-cache needs to flush this file
-	if fileHandle.dirty != 0 {
-		handle.Flags.Set(handlemap.HandleFlagDirty)
-	}
+	markNativeWritesDirty(fileHandle, handle)
 
 	err := fuseFS.NextComponent().ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
 	if err != nil {
@@ -856,6 +869,9 @@ func libfuse_fsync(path *C.char, datasync C.int, fi *C.fuse_file_info_t) C.int {
 	fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
 	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
 	log.Trace("Libfuse::libfuse2_fsync : %s, handle: %d", handle.Path, handle.ID)
+
+	// Let the sync (e.g. with sync-to-flush) see writes that were served natively as well
+	markNativeWritesDirty(fileHandle, handle)
 
 	options := internal.SyncFileOptions{Handle: handle}
 	// If the datasync parameter is non-zero, then only the user data should be flushed, not the metadata.
@@ -1178,15 +1194,5 @@ func libfuse2_utimens(path *C.char, tv *C.timespec_t) C.int {
 	// TODO: is the conversion from [2]timespec to *timespec ok?
 	// TODO: Implement
 	// For now this returns 0 to allow touch to work correctly
-	return 0
-}
-
-// blobfuse_cache_update refresh the file-cache policy for this file
-//
-//export blobfuse_cache_update
-func blobfuse_cache_update(path *C.char) C.int {
-	name := trimFusePath(path)
-	name = common.NormalizeObjectName(name)
-	go fuseFS.NextComponent().FileUsed(name) //nolint
 	return 0
 }
