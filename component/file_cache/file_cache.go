@@ -1216,7 +1216,7 @@ func (fc *FileCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, e
 	}
 
 	// Read and write operations are very frequent so updating cache policy for every read is a costly operation
-	// Update cache policy every 1K operations (includes both read and write) instead
+	// Update cache policy every 100 operations (includes both read and write) instead
 	options.Handle.OptCnt++
 	if (options.Handle.OptCnt % defaultCacheUpdateCount) == 0 {
 		localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
@@ -1253,7 +1253,7 @@ func (fc *FileCache) WriteFile(options *internal.WriteFileOptions) (int, error) 
 	}
 
 	// Read and write operations are very frequent so updating cache policy for every read is a costly operation
-	// Update cache policy every 1K operations (includes both read and write) instead
+	// Update cache policy every 100 operations (includes both read and write) instead
 	options.Handle.OptCnt++
 	if (options.Handle.OptCnt % defaultCacheUpdateCount) == 0 {
 		localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
@@ -1381,6 +1381,22 @@ func (fc *FileCache) FlushFile(options internal.FlushFileOptions) error {
 		return syscall.EIO
 	}
 
+	// The application can keep changing the file through this handle while it is uploaded, e.g. when this flush comes
+	// from closing a dup'ed or inherited (fork) fd. Hand the dirty state over to Flushing before the snapshot is read,
+	// instead of clearing the dirty flag once the upload completes. Writers change the file before they mark the
+	// handle dirty, so a change marked before the hand-over is in the snapshot, and a change marked after it keeps the
+	// handle dirty for the next flush or close. Dirty() reports Flushing too, so a concurrent flush waits for this
+	// upload rather than returning before the data is in storage.
+	options.Handle.Flags.Set(handlemap.HandleFlagFlushing)
+	options.Handle.Flags.Clear(handlemap.HandleFlagDirty)
+	uploaded := false
+	defer func() {
+		if !uploaded {
+			options.Handle.Flags.Set(handlemap.HandleFlagDirty) // the next flush or close retries the upload
+		}
+		options.Handle.Flags.Clear(handlemap.HandleFlagFlushing)
+	}()
+
 	// Write to storage
 	// Create a new handle for the SDK to use to upload (read local file)
 	// The local handle can still be used for read and write.
@@ -1426,7 +1442,7 @@ func (fc *FileCache) FlushFile(options internal.FlushFileOptions) error {
 		return err
 	}
 
-	options.Handle.Flags.Clear(handlemap.HandleFlagDirty)
+	uploaded = true
 
 	// If chmod was done on the file before it was uploaded to container then setting up mode would have been missed
 	// Such file names are added to this map and here post upload we try to set the mode correctly
@@ -1732,7 +1748,7 @@ func (fc *FileCache) FileUsed(name string) error {
 	if err := fc.validateObjectName(name); err != nil {
 		return err
 	}
-	// Update the owner and group of the file in the local cache
+	// Mark the file as recently used in the cache policy
 	localPath := filepath.Join(fc.tmpPath, name)
 	fc.policy.CacheValid(localPath)
 	return nil
