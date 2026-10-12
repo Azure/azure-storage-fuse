@@ -52,11 +52,9 @@ steps:
   #   - kube-proxy exits with "failed complete: too many open files" and
   #     crash-loops, stranding its node without a single Service ClusterIP,
   #     kube-dns included. Pods scheduled there hang before mounting.
-  #   - blobfuse2 used to die with no log at all, because viper's WatchConfig
-  #     calls os.Exit(1) when fsnotify.NewWatcher fails and routes the message
-  #     to a discard handler. That path is handled now (see common/config:
-  #     WatchConfig disables dynamic reload instead of exiting), but the
-  #     budget is still the thing that triggers it.
+  #   - blobfuse2 dies with no log at all, because viper's WatchConfig calls
+  #     os.Exit(1) when fsnotify.NewWatcher fails and routes the message to a
+  #     discard handler. Keeping the budget clear is what prevents this.
   - script: |
       set -e
       # The kernel exposes the limit but no in-use counter, so count the fds it
