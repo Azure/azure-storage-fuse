@@ -288,7 +288,6 @@ func Execute() error {
 
 	err := rootCmd.Execute()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "blobfuse2: %s\n", err.Error())
 		os.Exit(1)
 	}
 	return err

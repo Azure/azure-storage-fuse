@@ -39,18 +39,24 @@ steps:
   # -------------------------------------------------------------------------
   # 1b. Raise the host inotify budget before anything allocates from it.
   #
-  # kube-proxy opens an inotify instance while starting up, in Complete(),
-  # before it touches networking. The kind "nodes" are plain containers that do
-  # not enter a user namespace, so every process in the cluster draws on this
-  # host's uid-keyed fs.inotify.max_user_instances budget. Once blobfuse2 and
-  # the cache servers have consumed it, any kube-proxy that has to *reacquire*
-  # an instance - which is exactly what restarting a node container in
-  # TestNodeFailure forces - dies with "failed complete: too many open files"
-  # and crash-loops, stranding that node without a single Service ClusterIP,
-  # kube-dns included. Pods scheduled there then hang before mounting.
+  # The kind "nodes" are plain containers that do not enter a user namespace,
+  # so every process in the cluster draws on this host's uid-keyed
+  # fs.inotify.max_user_instances budget. The usual default is 128 and this
+  # suite has been measured at 139-145 instances once three cache-server
+  # replicas are up, so without this step the budget runs out mid-run.
   #
-  # The common default of 128 instances is not enough for this suite. Raising
-  # it is the actual fix; running the destructive test last is only a guard.
+  # Exhaustion is worth avoiding because nothing reports it usefully. The
+  # kernel only fails the next inotify_init(2) with EMFILE; whichever process
+  # happens to make that call is the one that breaks, and already-running
+  # processes keep working, so the symptom appears far from the cause:
+  #   - kube-proxy exits with "failed complete: too many open files" and
+  #     crash-loops, stranding its node without a single Service ClusterIP,
+  #     kube-dns included. Pods scheduled there hang before mounting.
+  #   - blobfuse2 used to die with no log at all, because viper's WatchConfig
+  #     calls os.Exit(1) when fsnotify.NewWatcher fails and routes the message
+  #     to a discard handler. That path is handled now (see common/config:
+  #     WatchConfig disables dynamic reload instead of exiting), but the
+  #     budget is still the thing that triggers it.
   - script: |
       set -e
       # The kernel exposes the limit but no in-use counter, so count the fds it
@@ -74,10 +80,10 @@ steps:
         printf '  %-22s %s\n' "instances-in-use" "$(count_inotify)"
       }
       report "before"
-      # Non-fatal: a locked-down agent may refuse. The suite still passes in that
-      # case because TestNodeFailure runs last; the report records which applies.
+      # Non-fatal: a locked-down agent may refuse. The before/after reports
+      # record which applies, so a later EMFILE failure can be attributed.
       sudo -n sysctl -w fs.inotify.max_user_instances=8192 \
-        || echo "WARNING: could not raise fs.inotify.max_user_instances; node-failure cleanup may strand its node"
+        || echo "WARNING: could not raise fs.inotify.max_user_instances; the suite may exhaust the host budget"
       sudo -n sysctl -w fs.inotify.max_user_watches=1048576 \
         || echo "WARNING: could not raise fs.inotify.max_user_watches"
       report "after"

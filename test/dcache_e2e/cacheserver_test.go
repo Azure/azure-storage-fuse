@@ -213,8 +213,6 @@ func failKindNode(t *testing.T, node string) {
 		}
 		t.Logf("kind: stopped cache-server container %s on node %s", id, node)
 	}
-
-	logInotifyUsage(t, "node "+node+" failed")
 }
 
 // restoreKindNode undoes failKindNode by starting kubelet again.
@@ -239,7 +237,6 @@ func restoreKindNode(t *testing.T, node string) {
 		return
 	}
 	t.Logf("cleanup: kind node %s is Ready", node)
-	logInotifyUsage(t, "node "+node+" restored")
 
 	// Node-local readiness says nothing about the cache-server container coming
 	// back or about the data plane, so observe both before the next test runs.
@@ -283,10 +280,6 @@ func waitClusterIPReachableFromNode(t *testing.T, node string) {
 				"pods scheduled there cannot resolve DNS and will hang before mounting, "+
 				"which would fail some later test rather than this one: %v",
 				node, dnsIP, nodeNetworkProbeTimeout, dialErr)
-			// Unexpected now that kube-proxy is never restarted. Sample the
-			// budget anyway: if it is exhausted here the cause is the inotify
-			// fault rather than routing.
-			logInotifyUsage(t, "kube-dns ClusterIP unreachable from "+node)
 			return
 		}
 		time.Sleep(3 * time.Second)

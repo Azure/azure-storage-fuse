@@ -37,7 +37,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -83,11 +82,9 @@ type options struct {
 	completionFuncMap map[string]func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective)
 	secureConfig      bool
 	passphrase        string
-	watcher           *fsnotify.Watcher
 }
 
 var userOptions options
-var newConfigWatcher = fsnotify.NewWatcher
 
 func SetSecureConfigOptions(passphrase string) {
 	userOptions.secureConfig = true
@@ -159,74 +156,18 @@ func DecryptConfigFile(fileName string, passphrase string) error {
 }
 
 func WatchConfig() {
-	if userOptions.path == "" {
-		return
-	}
-
-	if userOptions.watcher != nil {
-		_ = userOptions.watcher.Close()
-		userOptions.watcher = nil
-	}
-
-	watcher, err := newConfigWatcher()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "config: failed to create file watcher; dynamic config reload disabled [%s]\n", err.Error())
-		return
-	}
-
-	configFile := filepath.Clean(userOptions.path)
-	configDir := filepath.Dir(configFile)
-	realConfigFile, _ := filepath.EvalSymlinks(configFile)
-
-	if err = watcher.Add(configDir); err != nil {
-		fmt.Fprintf(os.Stderr, "config: failed to watch %s; dynamic config reload disabled [%s]\n", configDir, err.Error())
-		_ = watcher.Close()
-		return
-	}
-
-	userOptions.watcher = watcher
-	go func() {
-		for {
-			select {
-			case event, ok := <-watcher.Events:
-				if !ok {
-					return
-				}
-
-				currentConfigFile, _ := filepath.EvalSymlinks(configFile)
-				configChanged := filepath.Clean(event.Name) == configFile &&
-					(event.Has(fsnotify.Write) || event.Has(fsnotify.Create))
-				symlinkChanged := currentConfigFile != "" && currentConfigFile != realConfigFile
-				if !configChanged && !symlinkChanged {
-					if filepath.Clean(event.Name) == configFile && event.Has(fsnotify.Remove) {
-						return
-					}
-					continue
-				}
-
-				realConfigFile = currentConfigFile
-				log.Crit("WatchConfig : Config change detected")
-
-				var reloadErr error
-				if userOptions.secureConfig {
-					reloadErr = DecryptConfigFile(userOptions.path, userOptions.passphrase)
-				} else {
-					reloadErr = viper.ReadInConfig()
-				}
-				if reloadErr != nil {
-					log.Err("WatchConfig : %s", reloadErr.Error())
-					continue
-				}
-				OnConfigChange()
-
-			case watchErr, ok := <-watcher.Errors:
-				if ok {
-					log.Err("WatchConfig : watcher error [%s]", watchErr.Error())
-				}
+	viper.WatchConfig()
+	viper.OnConfigChange(func(_ fsnotify.Event) {
+		log.Crit("WatchConfig : Config change detected")
+		if userOptions.secureConfig {
+			err := DecryptConfigFile(userOptions.path, userOptions.passphrase)
+			if err != nil {
+				log.Err("WatchConfig : %s", err.Error())
 				return
 			}
 		}
-	}()
+		OnConfigChange()
+	})
 }
 
 func ReadConfigFromReader(reader io.Reader) error {
@@ -457,9 +398,6 @@ func RegisterFlagCompletionFunc(flagName string, completionFunc func(cmd *cobra.
 }
 
 func ResetConfig() {
-	if userOptions.watcher != nil {
-		_ = userOptions.watcher.Close()
-	}
 	viper.Reset()
 	userOptions = options{
 		path:      "",
