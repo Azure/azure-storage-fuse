@@ -51,6 +51,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
+	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
@@ -195,6 +196,16 @@ func testRmDirError(suite *libfuseTestSuite) {
 	suite.assert.Equal(C.int(-C.EIO), err)
 }
 
+func testRmDirInvalidPath(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	path := C.CString("/../escape")
+	defer C.free(unsafe.Pointer(path))
+
+	// The mock fails the test if IsDirEmpty or DeleteDir is called.
+	err := libfuse_rmdir(path)
+	suite.assert.Equal(C.int(-C.EINVAL), err)
+}
+
 func testCreate(suite *libfuseTestSuite) {
 	defer suite.cleanupTest()
 	name := "path"
@@ -228,6 +239,53 @@ func testCreateError(suite *libfuseTestSuite) {
 
 	err := libfuse_create(path, 0775, info)
 	suite.assert.Equal(C.int(-C.EIO), err)
+}
+
+// enableLibfuseStats turns on stats collection for the test and returns the libfuse collector.
+func enableLibfuseStats(suite *libfuseTestSuite) *stats_manager.StatsCollector {
+	stats_manager.EnableForTest(suite.T())
+	prev := libfuseStatsCollector
+	libfuseStatsCollector = stats_manager.NewStatsCollector(suite.libfuse.Name())
+	suite.T().Cleanup(func() { libfuseStatsCollector = prev })
+	return libfuseStatsCollector
+}
+
+func testCreateUpdatesStats(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	collector := enableLibfuseStats(suite)
+	name := "path"
+	path := C.CString("/" + name)
+	defer C.free(unsafe.Pointer(path))
+	mode := fs.FileMode(0775)
+	info := &C.fuse_file_info_t{}
+	options := internal.CreateFileOptions{Name: name, Mode: mode}
+	suite.mock.EXPECT().CreateFile(options).Return(&handlemap.Handle{}, nil)
+
+	err := libfuse_create(path, 0775, info)
+	suite.assert.Equal(C.int(0), err)
+
+	stats := collector.StopAndGetStats()
+	suite.assert.Equal(int64(1), stats[createFile])
+	suite.assert.Equal(int64(1), stats[openHandles])
+}
+
+func testCreateErrorDoesNotUpdateStats(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	collector := enableLibfuseStats(suite)
+	name := "path"
+	path := C.CString("/" + name)
+	defer C.free(unsafe.Pointer(path))
+	mode := fs.FileMode(0775)
+	info := &C.fuse_file_info_t{}
+	options := internal.CreateFileOptions{Name: name, Mode: mode}
+	suite.mock.EXPECT().CreateFile(options).Return(&handlemap.Handle{}, errors.New("failed to create file"))
+
+	err := libfuse_create(path, 0775, info)
+	suite.assert.Equal(C.int(-C.EIO), err)
+
+	stats := collector.StopAndGetStats()
+	suite.assert.NotContains(stats, createFile)
+	suite.assert.NotContains(stats, openHandles)
 }
 
 func testCreateInvalidArgument(suite *libfuseTestSuite) {
@@ -529,6 +587,37 @@ func testRenameDirEnametoolong(suite *libfuseTestSuite) {
 
 	err := libfuse_rename(srcPath, dstPath, 0)
 	suite.assert.Equal(C.int(-C.ENAMETOOLONG), err)
+}
+
+func testRenameInvalidPath(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	valid := C.CString("/file")
+	invalid := C.CString("/../escape")
+	defer C.free(unsafe.Pointer(valid))
+	defer C.free(unsafe.Pointer(invalid))
+
+	// The mock fails the test if any component method is called.
+	suite.assert.Equal(C.int(-C.EINVAL), libfuse_rename(invalid, valid, 0))
+	suite.assert.Equal(C.int(-C.EINVAL), libfuse_rename(valid, invalid, 0))
+}
+
+func testRenameBackslashName(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	src := "src"
+	dst := `..\..\etc\crontab`
+	srcPath := C.CString("/" + src)
+	dstPath := C.CString("/" + dst)
+	defer C.free(unsafe.Pointer(srcPath))
+	defer C.free(unsafe.Pointer(dstPath))
+
+	// The backslash name must reach the next component unchanged, not as "../../etc/crontab".
+	srcAttr := &internal.ObjAttr{Name: src}
+	suite.mock.EXPECT().GetAttr(internal.GetAttrOptions{Name: src}).Return(srcAttr, nil)
+	suite.mock.EXPECT().GetAttr(internal.GetAttrOptions{Name: dst}).Return(nil, syscall.ENOENT)
+	suite.mock.EXPECT().RenameFile(internal.RenameFileOptions{Src: src, Dst: dst, SrcAttr: srcAttr}).Return(nil)
+
+	err := libfuse_rename(srcPath, dstPath, 0)
+	suite.assert.Equal(C.int(0), err)
 }
 
 func testSymlink(suite *libfuseTestSuite) {

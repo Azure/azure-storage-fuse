@@ -212,9 +212,18 @@ func GetCurrentUser() (uint32, uint32, error) {
 	return uint32(userUID), uint32(userGID), nil
 }
 
-// normalizeObjectName : If file contains \\ in name replace it with ..
+// NormalizeObjectName preserves Linux filenames; a backslash is not a path separator.
 func NormalizeObjectName(name string) string {
-	return strings.ReplaceAll(name, "\\", "/")
+	return name
+}
+
+// IsValidObjectName rejects absolute and escaping relative paths.
+// An empty name refers to the mount root.
+func IsValidObjectName(name string) bool {
+	if name == "" {
+		return true
+	}
+	return filepath.IsLocal(name)
 }
 
 // List all mount points which were mounted using blobfuse2
