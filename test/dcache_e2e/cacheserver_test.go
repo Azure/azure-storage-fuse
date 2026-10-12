@@ -49,17 +49,17 @@ import (
 // cacheserverRolloutTimeout allows for startup and readiness probes.
 const cacheserverRolloutTimeout = 3 * time.Minute
 
-// kindNodeStateTimeout allows the kubelet heartbeat lease to expire after a
-// kind node container is stopped.
+// kindNodeStateTimeout allows the kubelet heartbeat lease to expire after
+// kubelet on a kind node is stopped.
 const kindNodeStateTimeout = 2 * time.Minute
 
-// nodeNetworkProbeTimeout bounds the post-restore data-plane probes. Route and
-// iptables reprogramming is normally seconds; this only has to outlast a
-// kindnet/kube-proxy pod restart.
+// nodeNetworkProbeTimeout bounds the post-restore data-plane probes. Stopping
+// kubelet leaves the node's network namespace, pod IPs, iptables and kindnet
+// routes untouched, so these only have to outlast kubelet restarting the one
+// cache-server container it finds stopped.
 //
-// The probes report rather than fail (see restoreKindNode), so this is kept
-// short: when kube-proxy cannot restart the wait is pure dead time, and when
-// the host has inotify headroom recovery is observed well inside it.
+// The probes still report rather than fail (see restoreKindNode): they gate the
+// health of the restore path, not what the test proves.
 const nodeNetworkProbeTimeout = 60 * time.Second
 
 // kindNodeDialTimeout bounds a single TCP connect attempt issued inside a kind
@@ -154,7 +154,24 @@ func getPodNode(namespace, pod string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-func killKindNode(t *testing.T, node string) {
+// failKindNode takes a worker out of service without destroying it.
+//
+// Stopping kubelet makes the node miss its heartbeat lease, so the node
+// controller marks it NotReady and the cache-server endpoint behind the
+// headless Service flips not-ready. That withdraws the pod's per-pod DNS
+// record, and cache clients address servers purely by name
+// (<sts>-<ordinal>.<svc>.<ns>.svc.cluster.local), so the victim becomes
+// unaddressable exactly as it would be had the machine died.
+//
+// The cache-server container is then stopped directly. kubelet is already down
+// and cannot restart it, so the server is genuinely absent rather than merely
+// unnamed: a client still holding a cached DNS answer is refused instead of
+// served, which keeps the blob-fallback assertion honest.
+//
+// Nothing is destroyed. The node container, its network namespace, pod IPs,
+// iptables, kindnet routes and /dev/fuse all survive, so restoreKindNode is one
+// systemctl start rather than the cluster-wide rebuild a `docker kill` forces.
+func failKindNode(t *testing.T, node string) {
 	t.Helper()
 	label, err := exec.Command(testCfg.dockerBin, "inspect",
 		"--format", `{{index .Config.Labels "io.x-k8s.kind.cluster"}}`, node,
@@ -163,59 +180,72 @@ func killKindNode(t *testing.T, node string) {
 		t.Fatalf("kind: inspect node container %s: %v (out: %s)", node, err, strings.TrimSpace(string(label)))
 	}
 	if strings.TrimSpace(string(label)) == "" {
-		t.Fatalf("kind: refusing to kill Docker container %s: missing io.x-k8s.kind.cluster label", node)
+		t.Fatalf("kind: refusing to disrupt Docker container %s: missing io.x-k8s.kind.cluster label", node)
 	}
-	out, err := exec.Command(testCfg.dockerBin, "kill", node).CombinedOutput()
-	if err != nil {
-		t.Fatalf("kind: kill node %s: %v (out: %s)", node, err, strings.TrimSpace(string(out)))
-	}
-	t.Logf("kind: killed node container %s", node)
-	// Sampled before the restart, while kube-proxy on this node is gone: this is
-	// the budget it will have to reacquire from when the node comes back.
-	logInotifyUsage(t, "node "+node+" killed")
-}
 
-func restoreKindNode(t *testing.T, node string) {
-	t.Helper()
-	out, err := exec.Command(testCfg.dockerBin, "start", node).CombinedOutput()
+	// kubelet.service is Restart=always, but systemd does not resurrect a unit
+	// that was stopped explicitly, so this holds until restoreKindNode.
+	out, err := exec.Command(testCfg.dockerBin, "exec", node,
+		"systemctl", "stop", "kubelet").CombinedOutput()
 	if err != nil {
-		t.Errorf("cleanup: start kind node %s: %v (out: %s)", node, err, strings.TrimSpace(string(out)))
-		return
+		t.Fatalf("kind: stop kubelet on node %s: %v (out: %s)", node, err, strings.TrimSpace(string(out)))
 	}
-	out, err = exec.Command(testCfg.dockerBin,
-		"exec", node, "sh", "-c",
-		"if [ ! -c /dev/fuse ]; then mknod -m 0666 /dev/fuse c 10 229; else chmod 0666 /dev/fuse; fi; test -c /dev/fuse",
+	t.Logf("kind: stopped kubelet on node %s", node)
+
+	ids, err := exec.Command(testCfg.dockerBin, "exec", node,
+		"crictl", "ps", "--name", "cacheserver", "--state", "Running", "-q",
 	).CombinedOutput()
 	if err != nil {
-		t.Errorf("cleanup: restore /dev/fuse on kind node %s: %v (out: %s)",
+		t.Fatalf("kind: list cache-server containers on node %s: %v (out: %s)",
+			node, err, strings.TrimSpace(string(ids)))
+	}
+	running := strings.Fields(string(ids))
+	if len(running) == 0 {
+		t.Logf("kind: WARNING: no running cache-server container on node %s; "+
+			"the victim is unaddressable by name but nothing was stopped", node)
+	}
+	for _, id := range running {
+		out, err := exec.Command(testCfg.dockerBin, "exec", node,
+			"crictl", "stop", "--timeout", "5", id).CombinedOutput()
+		if err != nil {
+			t.Fatalf("kind: stop cache-server container %s on node %s: %v (out: %s)",
+				id, node, err, strings.TrimSpace(string(out)))
+		}
+		t.Logf("kind: stopped cache-server container %s on node %s", id, node)
+	}
+
+	logInotifyUsage(t, "node "+node+" failed")
+}
+
+// restoreKindNode undoes failKindNode by starting kubelet again.
+//
+// Because nothing was destroyed, kubelet resumes against the state it left:
+// the same network namespace, pod IPs, iptables and kindnet routes. It then
+// restarts the cache-server container it finds stopped. No /dev/fuse recreation
+// and no kube-proxy or kindnet restart is involved, so the node is usable by
+// later tests instead of being stranded.
+func restoreKindNode(t *testing.T, node string) {
+	t.Helper()
+	out, err := exec.Command(testCfg.dockerBin, "exec", node,
+		"systemctl", "start", "kubelet").CombinedOutput()
+	if err != nil {
+		t.Errorf("cleanup: start kubelet on kind node %s: %v (out: %s)",
 			node, err, strings.TrimSpace(string(out)))
 		return
 	}
-	t.Logf("cleanup: kind node %s has a usable /dev/fuse device", node)
+	t.Logf("cleanup: started kubelet on kind node %s", node)
 	if err := waitKindNodeReady(node, true); err != nil {
 		t.Errorf("cleanup: %v", err)
 		return
 	}
 	t.Logf("cleanup: kind node %s is Ready", node)
-	logInotifyUsage(t, "node "+node+" restarted")
+	logInotifyUsage(t, "node "+node+" restored")
 
-	// Node-local readiness says nothing about the data plane, so observe it.
-	//
-	// These probes report; they do not fail the test. kube-proxy opens an
-	// inotify instance while starting up, and the kind nodes share the host's
-	// uid-keyed fs.inotify.max_user_instances budget with every other container
-	// on the agent (see inotify_test.go). If that budget is exhausted at the
-	// moment this node's kube-proxy restarts, it exits with "failed complete:
-	// too many open files" and crash-loops, leaving the node without any
-	// Service ClusterIP - including kube-dns - for as long as it lives.
-	//
-	// Nothing this test can do repairs that; deleting the pod only forces
-	// another doomed acquisition of the exhausted resource. The fix belongs on
-	// the host, and the pipeline now raises the limit before creating the
-	// cluster. The suite still runs this test last (see the split invocation in
-	// azure-pipeline-templates/dist-cache-e2e.yml) and tears the cluster down
-	// immediately afterwards, so a node left in this state harms nothing. The
-	// probe output is kept because it is the only in-band record of the damage.
+	// Node-local readiness says nothing about the cache-server container coming
+	// back or about the data plane, so observe both before the next test runs.
+	// These probes report rather than fail: the restore path is no longer
+	// expected to damage anything, and a false failure here would be charged to
+	// whichever test happened to own the cleanup.
 	waitCacheserverStatefulSetReady(t)
 	waitClusterIPReachableFromNode(t, node)
 	waitCacheserverPodsReachable(t)
@@ -224,11 +254,14 @@ func restoreKindNode(t *testing.T, node string) {
 // waitClusterIPReachableFromNode reports whether node can open a TCP connection
 // to the kube-dns ClusterIP, waiting up to nodeNetworkProbeTimeout.
 //
-// A restarted kind node rebuilds its iptables from scratch. Until kube-proxy
-// reprograms them the node reaches no Service at all, including DNS. A blobfuse2
-// pod scheduled there then blocks in azstorage's TestPipeline inside
-// internal.NewPipeline - before the mount exists - so its readiness probe can
-// never pass and its liveness probe eventually kills it.
+// A restarted kind node rebuilds its iptables from scratch. Stopping kubelet
+// does neither: it leaves this node's iptables in place and never restarts
+// kube-proxy, so Service routing should be intact throughout and this should
+// pass on the first attempt. It is kept as a regression gate, because a
+// blobfuse2 pod scheduled on a node that reaches no Service blocks in
+// azstorage's TestPipeline inside internal.NewPipeline - before the mount
+// exists - so its readiness probe never passes and its liveness probe
+// eventually kills it, surfacing as a failure in some unrelated later test.
 //
 // Observed and logged, not asserted: see restoreKindNode for why.
 func waitClusterIPReachableFromNode(t *testing.T, node string) {
@@ -247,13 +280,12 @@ func waitClusterIPReachableFromNode(t *testing.T, node string) {
 		}
 		if time.Now().After(deadline) {
 			t.Logf("cleanup: WARNING: kind node %s could not reach kube-dns ClusterIP %s within %s; "+
-				"pods scheduled there cannot resolve DNS and will hang before mounting. "+
-				"Expected when kube-proxy fails to restart on this node; harmless because "+
-				"this test runs last and the cluster is torn down next: %v",
+				"pods scheduled there cannot resolve DNS and will hang before mounting, "+
+				"which would fail some later test rather than this one: %v",
 				node, dnsIP, nodeNetworkProbeTimeout, dialErr)
-			// Sampled at the point of failure: if the budget is exhausted here,
-			// kube-proxy could not have acquired an inotify instance and this
-			// is the inotify fault rather than a routing one.
+			// Unexpected now that kube-proxy is never restarted. Sample the
+			// budget anyway: if it is exhausted here the cause is the inotify
+			// fault rather than routing.
 			logInotifyUsage(t, "kube-dns ClusterIP unreachable from "+node)
 			return
 		}
@@ -267,10 +299,10 @@ func waitClusterIPReachableFromNode(t *testing.T, node string) {
 //
 // The distributed cache is cross-node by construction: one shared StatefulSet
 // spreads the hash ring over all nodes, so a blobfuse2 pod must reach every
-// server wherever it is scheduled. After `docker start`, kubelet reports the
-// node and its pods Ready well before kindnet reinstalls the cross-node
-// pod-CIDR routes, and traffic to the restored node is silently blackholed -
-// a connect timeout rather than a refusal.
+// server wherever it is scheduled. This confirms that the cache-server
+// container kubelet restarted is accepting connections again, and that the
+// cross-node pod-CIDR routes - which stopping kubelet leaves in place - still
+// carry traffic to it.
 //
 // Observed and logged, not asserted: see restoreKindNode for why.
 func waitCacheserverPodsReachable(t *testing.T) {
