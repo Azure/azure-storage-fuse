@@ -327,11 +327,10 @@ func (dc *DistCache) completeStart(client dcacheClient, err error) error {
 		return fmt.Errorf("distributed_cache: failed to start: %w", err)
 	}
 
-	servers := client.Servers()
-	if len(servers) == 0 {
+	if len(client.Servers()) == 0 {
 		log.Warn("DistCache::Start : no distributed-cache servers were discovered; mount will continue using block cache and Azure Storage fallback")
 	} else {
-		log.Info("DistCache::Start : connected to distributed cache cluster: %d server(s) %v", len(servers), servers)
+		log.Info("DistCache::Start : connected to distributed cache cluster")
 	}
 	dc.client = client
 
