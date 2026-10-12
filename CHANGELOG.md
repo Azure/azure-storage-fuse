@@ -11,6 +11,7 @@
 - Health monitor: count successful file creations in the `CreateFile` operation counter of the `libfuse` and `azstorage` aggregate statistics. Before, they were reported only as individual events. ([Issue #2330](https://github.com/Azure/azure-storage-fuse/issues/2330))
 - Preserve backslashes in Linux filenames and reject unsafe names before constructing local file-cache paths. ([PR #2354](https://github.com/Azure/azure-storage-fuse/pull/2354))
 - Fix `fsync()` with `sync-to-flush` returning success without uploading the file's latest writes when file-cache serves its reads and writes natively (`offload-io: false`, the default). ([PR #2387](https://github.com/Azure/azure-storage-fuse/pull/2387))
+- Fix file-cache committing a stale copy of a file, while `close()` reports success, when the file is flushed while the application is still writing to it. This can happen when a process with the file open starts a child process, such as an encoder, or duplicates the file descriptor. The blob could be truncated or, for a file sized up front, keep its full size but contain zeros from the middle to the end. Changes made while the file is being uploaded, such as writes or `ftruncate()`, now trigger another upload. ([Issue #2348](https://github.com/Azure/azure-storage-fuse/issues/2348))
 
 **Other Changes**
 - Run the ADLS DFS and Blob pre-mount validation concurrently to reduce mount latency ([PR #2341](https://github.com/Azure/azure-storage-fuse/pull/2341))
