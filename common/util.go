@@ -212,18 +212,15 @@ func GetCurrentUser() (uint32, uint32, error) {
 	return uint32(userUID), uint32(userGID), nil
 }
 
-// NormalizeObjectName preserves Linux filenames; a backslash is not a path separator.
-func NormalizeObjectName(name string) string {
-	return name
-}
-
-// IsValidObjectName rejects absolute and escaping relative paths.
-// An empty name refers to the mount root.
+// IsValidObjectName rejects absolute paths, paths that escape the mount root, and names
+// containing a backslash. Azure Storage treats '\' as '/' and then resolves "." and ".."
+// segments, so such a name would be stored under a different path, possibly outside the
+// container. An empty name refers to the mount root.
 func IsValidObjectName(name string) bool {
 	if name == "" {
 		return true
 	}
-	return filepath.IsLocal(name)
+	return !strings.ContainsRune(name, '\\') && filepath.IsLocal(name)
 }
 
 // List all mount points which were mounted using blobfuse2
