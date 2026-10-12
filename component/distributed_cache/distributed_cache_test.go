@@ -3,12 +3,15 @@
 
 //go:build unittest
 
-package dist_cache
+package distributed_cache
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -16,7 +19,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 	dcache "github.com/nearora-msft/dist-cache-client-go"
@@ -30,6 +35,7 @@ type mockDCacheClient struct {
 	chunkFn           func(ctx context.Context, filename string, offset int64, buf []byte, opts ...dcache.DownloadOption) (int, error)
 	uploadChunkFn     func(ctx context.Context, filename string, offset int64, data []byte) error
 	uploadChunkCalled int
+	servers           []string
 
 	// uploadEtags captures the etag passed to each UploadChunk call in
 	// invocation order. Populated regardless of whether uploadChunkFn is set.
@@ -69,6 +75,10 @@ func (m *mockDCacheClient) UploadChunk(ctx context.Context, filename, etag strin
 	return nil
 }
 
+func (m *mockDCacheClient) Servers() []string {
+	return m.servers
+}
+
 // uploadedEtags returns a snapshot of etags recorded so far.
 func (m *mockDCacheClient) uploadedEtags() []string {
 	m.uploadMu.Lock()
@@ -80,6 +90,61 @@ func (m *mockDCacheClient) uploadedEtags() []string {
 
 func (m *mockDCacheClient) Close() error {
 	return nil
+}
+
+func TestCompleteStart_ServerDiscoveryLogging(t *testing.T) {
+	const (
+		fallbackWarning = "no distributed-cache servers were discovered; mount will continue using block cache and Azure Storage fallback"
+		successMessage  = "connected to distributed cache cluster"
+	)
+
+	t.Cleanup(func() {
+		_ = log.SetDefaultLogger("silent", common.LogConfig{})
+	})
+
+	tests := []struct {
+		name          string
+		servers       []string
+		expectedLog   string
+		unexpectedLog string
+	}{
+		{
+			name:          "empty server list continues with fallback warning",
+			expectedLog:   fallbackWarning,
+			unexpectedLog: successMessage,
+		},
+		{
+			name:          "discovered servers follow normal startup path",
+			servers:       []string{"127.0.0.1:9065"},
+			expectedLog:   successMessage,
+			unexpectedLog: fallbackWarning,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			client := newMockDCacheClient()
+			client.servers = test.servers
+
+			logPath := filepath.Join(t.TempDir(), "blobfuse2.log")
+			require.NoError(t, log.SetDefaultLogger("base", common.LogConfig{
+				FilePath: logPath,
+				Level:    common.ELogLevel.LOG_INFO(),
+			}))
+
+			dc := &DistCache{chunkSize: 1024}
+			dc.SetName(compName)
+
+			require.NoError(t, dc.completeStart(client, nil))
+			assert.Same(t, client, dc.client)
+			require.NoError(t, log.Destroy())
+
+			logContents, err := os.ReadFile(logPath)
+			require.NoError(t, err)
+			assert.Equal(t, 1, strings.Count(string(logContents), test.expectedLog))
+			assert.NotContains(t, string(logContents), test.unexpectedLog)
+		})
+	}
 }
 
 // mockNextComponent records calls to NextComponent methods.
@@ -153,7 +218,7 @@ func TestReadInBuffer_L2Hit(t *testing.T) {
 		return n, nil
 	}
 
-	buf := make([]byte, 1024)
+	buf := make([]byte, len(chunkData))
 	n, err := dc.ReadInBuffer(&internal.ReadInBufferOptions{
 		Path:   "test/file.bin",
 		Offset: 0,
@@ -164,6 +229,88 @@ func TestReadInBuffer_L2Hit(t *testing.T) {
 	assert.Equal(t, len(chunkData), n)
 	assert.Equal(t, chunkData, buf[:n])
 	assert.Equal(t, 0, next.readInBufferCalled, "should NOT call azstorage on L2 hit")
+}
+
+func TestReadInBuffer_L2SizeMismatchError_FallsThrough(t *testing.T) {
+	mock := newMockDCacheClient()
+	azData := []byte("data from azure storage")
+	next := &mockNextComponent{readInBufferData: azData}
+	dc := newTestDistCache(mock, next)
+
+	mock.chunkFn = func(_ context.Context, _ string, _ int64, _ []byte, _ ...dcache.DownloadOption) (int, error) {
+		return 0, fmt.Errorf("unexpected chunk size: expected %d, received %d", 1024, 7)
+	}
+
+	buf := make([]byte, 1024)
+	n, err := dc.ReadInBuffer(&internal.ReadInBufferOptions{
+		Path:   "test/file.bin",
+		Offset: 0,
+		Data:   buf,
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, len(azData), n)
+	assert.Equal(t, azData, buf[:n])
+	assert.Equal(t, 1, next.readInBufferCalled, "should fall through to azstorage on partial L2 hit")
+}
+
+func TestReadInBuffer_FinalExtentUsesExactBuffer(t *testing.T) {
+	mock := newMockDCacheClient()
+	next := &mockNextComponent{}
+	dc := newTestDistCache(mock, next)
+
+	const finalSize = 7
+	mock.chunkFn = func(_ context.Context, _ string, _ int64, buf []byte, _ ...dcache.DownloadOption) (int, error) {
+		assert.Len(t, buf, finalSize)
+		return copy(buf, make([]byte, finalSize)), nil
+	}
+
+	h := handlemap.NewHandle("test/file.bin")
+	h.Size = 1024 + finalSize
+	buf := make([]byte, 1024)
+	n, err := dc.ReadInBuffer(&internal.ReadInBufferOptions{
+		Handle: h,
+		Offset: 1024,
+		Data:   buf,
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, finalSize, n)
+	assert.Equal(t, 0, next.readInBufferCalled, "should serve the exact final extent from L2")
+}
+
+func TestReadInBuffer_KnownEOFDoesNotCallDownstream(t *testing.T) {
+	tests := []struct {
+		name   string
+		offset int64
+	}{
+		{name: "at EOF", offset: 1024},
+		{name: "past EOF", offset: 2048},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			mock := newMockDCacheClient()
+			mock.chunkFn = func(_ context.Context, _ string, _ int64, _ []byte, _ ...dcache.DownloadOption) (int, error) {
+				t.Fatal("distributed cache client must not be called at EOF")
+				return 0, nil
+			}
+			next := &mockNextComponent{}
+			dc := newTestDistCache(mock, next)
+
+			h := handlemap.NewHandle("test/file.bin")
+			h.Size = 1024
+			n, err := dc.ReadInBuffer(&internal.ReadInBufferOptions{
+				Handle: h,
+				Offset: test.offset,
+				Data:   make([]byte, 1024),
+			})
+
+			assert.ErrorIs(t, err, io.EOF)
+			assert.Zero(t, n)
+			assert.Zero(t, next.readInBufferCalled, "next component must not be called at EOF")
+		})
+	}
 }
 
 func TestReadInBuffer_L2ZeroByteHit_FallsThrough(t *testing.T) {
@@ -251,7 +398,7 @@ func TestReadInBuffer_AlreadyLocked_PollSucceeds(t *testing.T) {
 		return copy(buf, cachedData), nil
 	}
 
-	buf := make([]byte, 1024)
+	buf := make([]byte, len(cachedData))
 	n, err := dc.ReadInBuffer(&internal.ReadInBufferOptions{
 		Path:   "test/file.bin",
 		Offset: 0,
@@ -262,6 +409,34 @@ func TestReadInBuffer_AlreadyLocked_PollSucceeds(t *testing.T) {
 	assert.Equal(t, len(cachedData), n)
 	assert.Equal(t, cachedData, buf[:n])
 	assert.Equal(t, 0, next.readInBufferCalled, "should serve from cache after poll, not Azure")
+}
+
+func TestReadInBuffer_AlreadyLocked_PollPartialHit_FallsThrough(t *testing.T) {
+	mock := newMockDCacheClient()
+	azData := []byte("azure data after partial L2 hit")
+	next := &mockNextComponent{readInBufferData: azData}
+	dc := newTestDistCache(mock, next)
+
+	callCount := 0
+	mock.chunkFn = func(_ context.Context, _ string, _ int64, buf []byte, _ ...dcache.DownloadOption) (int, error) {
+		callCount++
+		if callCount == 1 {
+			return 0, dcache.ErrNotFoundAlreadyLocked
+		}
+		return copy(buf, []byte("partial")), nil
+	}
+
+	buf := make([]byte, 1024)
+	n, err := dc.ReadInBuffer(&internal.ReadInBufferOptions{
+		Path:   "test/file.bin",
+		Offset: 0,
+		Data:   buf,
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, len(azData), n)
+	assert.Equal(t, azData, buf[:n])
+	assert.Equal(t, 1, next.readInBufferCalled, "should fall through to azstorage on partial poll hit")
 }
 
 func TestReadInBuffer_AlreadyLocked_PollTimeout_FallsThrough(t *testing.T) {
@@ -593,7 +768,7 @@ func TestConfigure_DerivesCachePrefixFromAzStorage(t *testing.T) {
 azstorage:
   account-name: myacct
   container: mycontainer
-dist_cache:
+distributed_cache:
   server-list: "localhost:9065"
 `)
 
@@ -601,6 +776,58 @@ dist_cache:
 	err := dc.Configure(true)
 	require.NoError(t, err)
 	assert.Equal(t, "myacct/mycontainer", dc.cachePrefix)
+}
+
+func TestConfigure_ValidatesDNSServer(t *testing.T) {
+	tests := []struct {
+		name    string
+		server  string
+		wantErr bool
+	}{
+		{name: "IPv4", server: "10.0.0.10"},
+		{name: "IPv4 with port", server: "10.0.0.10:53"},
+		{name: "invalid address", server: "not-an-ip", wantErr: true},
+		{name: "invalid port", server: "10.0.0.10:65536", wantErr: true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			loadConfig(t, fmt.Sprintf(`
+azstorage:
+  account-name: myacct
+  container: mycontainer
+distributed_cache:
+  server-list: "localhost:9065"
+  dns-server: %q
+`, test.server))
+
+			dc := NewDistCacheComponent().(*DistCache)
+			err := dc.Configure(true)
+			if test.wantErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "invalid dns-server")
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, test.server, dc.conf.DNSServer)
+		})
+	}
+}
+
+func TestConfigure_DerivesCachePrefixFromEnvironment(t *testing.T) {
+	loadConfig(t, `
+azstorage:
+  container: mycontainer
+distributed_cache:
+  server-list: "localhost:9065"
+`)
+	config.BindEnv("azstorage.account-name", "AZURE_STORAGE_ACCOUNT")
+	t.Setenv("AZURE_STORAGE_ACCOUNT", "envacct")
+
+	dc := NewDistCacheComponent().(*DistCache)
+	err := dc.Configure(true)
+	require.NoError(t, err)
+	assert.Equal(t, "envacct/mycontainer", dc.cachePrefix)
 }
 
 func TestConfigure_VerifyChecksumDefaultAndOverride(t *testing.T) {
@@ -621,7 +848,7 @@ azstorage:
   container: mycontainer
 block_cache:
   mem-size-mb: 100
-dist_cache:
+distributed_cache:
   server-list: "localhost:9065"
 `+test.setting)
 
@@ -636,7 +863,7 @@ func TestConfigure_FailsWhenAccountNameMissing(t *testing.T) {
 	loadConfig(t, `
 azstorage:
   container: mycontainer
-dist_cache:
+distributed_cache:
   server-list: "localhost:9065"
 `)
 
@@ -651,7 +878,7 @@ func TestConfigure_FailsWhenContainerMissing(t *testing.T) {
 	loadConfig(t, `
 azstorage:
   account-name: myacct
-dist_cache:
+distributed_cache:
   server-list: "localhost:9065"
 `)
 
@@ -663,7 +890,7 @@ dist_cache:
 
 func TestConfigure_FailsWhenBothMissing(t *testing.T) {
 	loadConfig(t, `
-dist_cache:
+distributed_cache:
   server-list: "localhost:9065"
 `)
 
@@ -678,7 +905,7 @@ func TestConfigure_FailsWhenAccountNameEmptyString(t *testing.T) {
 azstorage:
   account-name: ""
   container: mycontainer
-dist_cache:
+distributed_cache:
   server-list: "localhost:9065"
 `)
 
@@ -695,7 +922,7 @@ func TestConfigure_CachePrefixIsolatesTenants(t *testing.T) {
 azstorage:
   account-name: tenantA
   container: shared
-dist_cache:
+distributed_cache:
   server-list: "localhost:9065"
 `)
 	dcA := NewDistCacheComponent().(*DistCache)
@@ -705,7 +932,7 @@ dist_cache:
 azstorage:
   account-name: tenantB
   container: shared
-dist_cache:
+distributed_cache:
   server-list: "localhost:9065"
 `)
 	dcB := NewDistCacheComponent().(*DistCache)
@@ -733,7 +960,7 @@ block_cache:
   mem-size-mb: 100
   block-size-mb: 16
   parallelism: 2
-dist_cache:
+distributed_cache:
   server-list: "localhost:9065"
 `)
 
@@ -1015,6 +1242,10 @@ func (c *blockingUploadClient) UploadChunk(_ context.Context, _, _ string, _ int
 	return nil
 }
 
+func (c *blockingUploadClient) Servers() []string {
+	return nil
+}
+
 func (c *blockingUploadClient) Close() error {
 	if c.onClose != nil {
 		c.onClose()
@@ -1205,7 +1436,7 @@ func TestRegisterEnvVariables_BindsDiscoveryEndpoint(t *testing.T) {
 azstorage:
   account-name: myacct
   container: mycontainer
-dist_cache: {}
+distributed_cache: {}
 `)
 	RegisterEnvVariables()
 	t.Setenv(EnvDistCacheDiscoveryEndpoint, "127.0.0.1:9000")
@@ -1215,25 +1446,6 @@ dist_cache: {}
 	assert.Equal(t, "127.0.0.1:9000", dc.conf.DiscoveryEndpoint)
 }
 
-// TestRegisterEnvVariables_BindsK8sServiceAndNamespace verifies that both
-// K8s discovery env vars land in conf.
-func TestRegisterEnvVariables_BindsK8sServiceAndNamespace(t *testing.T) {
-	loadConfig(t, `
-azstorage:
-  account-name: myacct
-  container: mycontainer
-dist_cache: {}
-`)
-	RegisterEnvVariables()
-	t.Setenv(EnvDistCacheK8sService, "dcache-svc")
-	t.Setenv(EnvDistCacheK8sNamespace, "cache-ns")
-
-	dc := NewDistCacheComponent().(*DistCache)
-	require.NoError(t, dc.Configure(true))
-	assert.Equal(t, "dcache-svc", dc.conf.K8sService)
-	assert.Equal(t, "cache-ns", dc.conf.K8sNamespace)
-}
-
 // TestRegisterEnvVariables_BindsServerList verifies the env-only path for
 // server-list: no YAML entry, only the env var, Configure must succeed.
 func TestRegisterEnvVariables_BindsServerList(t *testing.T) {
@@ -1241,7 +1453,7 @@ func TestRegisterEnvVariables_BindsServerList(t *testing.T) {
 azstorage:
   account-name: myacct
   container: mycontainer
-dist_cache: {}
+distributed_cache: {}
 `)
 	RegisterEnvVariables()
 	t.Setenv(EnvDistCacheServerList, "host1:9065,host2:9065")
@@ -1251,6 +1463,22 @@ dist_cache: {}
 	assert.Equal(t, "host1:9065,host2:9065", dc.conf.ServerList)
 }
 
+func TestRegisterEnvVariables_BindsDNSServer(t *testing.T) {
+	loadConfig(t, `
+azstorage:
+  account-name: myacct
+  container: mycontainer
+distributed_cache:
+  server-list: "localhost:9065"
+`)
+	RegisterEnvVariables()
+	t.Setenv(EnvDistCacheDNSServer, "10.0.0.10:53")
+
+	dc := NewDistCacheComponent().(*DistCache)
+	require.NoError(t, dc.Configure(true))
+	assert.Equal(t, "10.0.0.10:53", dc.conf.DNSServer)
+}
+
 // TestRegisterEnvVariables_EnvOverridesYAML verifies viper precedence:
 // env value wins over an unchanged YAML value for the same key.
 func TestRegisterEnvVariables_EnvOverridesYAML(t *testing.T) {
@@ -1258,7 +1486,7 @@ func TestRegisterEnvVariables_EnvOverridesYAML(t *testing.T) {
 azstorage:
   account-name: myacct
   container: mycontainer
-dist_cache:
+distributed_cache:
   server-list: "yaml-host:9065"
 `)
 	RegisterEnvVariables()
@@ -1273,7 +1501,7 @@ dist_cache:
 // --- resolveETag: only the storage-returned etag drives L2 population ---
 //
 // azstorage.BlockBlob.ReadInBuffer writes the observed blob ETag into
-// *options.Etag on success. dist_cache must key the L2 populate on that
+// *options.Etag on success. distributed_cache must key the L2 populate on that
 // returned value so the chunk lands under the blob's current version. When
 // storage does not set it (nil pointer or empty string), resolveETag returns
 // "" and schedulePopulate skips the upload rather than falling back to a
@@ -1411,6 +1639,7 @@ func TestReadInBuffer_GotLock_EmptyReturnedETag_SkipsPopulate(t *testing.T) {
 	}
 
 	h := handlemap.NewHandle("test/file.bin")
+	h.Size = 1024
 
 	empty := ""
 	buf := make([]byte, 1024)
