@@ -273,12 +273,25 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 	C.set_fuse_ptr(C.fuse_get_context().fuse)
 
 	if fuseFS.kernelListCacheTtlInSec > 0 {
-		if C.kernel_supports_dir_cache(conn) != 0 {
+		kernelListCacheSupport := C.kernel_supports_dir_cache(conn)
+		kernelListCacheSupported := true
+		if kernelListCacheSupport < 0 {
+			if kernelListCacheSupport == -2 {
+				log.Warn("Libfuse::libfuse_init : Loaded libfuse runtime does not forward cache_readdir through the high-level API (requires libfuse 3.16.1+), disabling kernel-list-cache")
+			} else {
+				log.Warn("Libfuse::libfuse_init : blobfuse2 was built against libfuse headers without cache_readdir (requires libfuse 3.5+), disabling kernel-list-cache")
+			}
+			kernelListCacheSupported = false
+		} else if kernelListCacheSupport == 0 {
+			log.Warn("Libfuse::libfuse_init : Kernel fuse proto %d.%d does not support FOPEN_CACHE_DIR (requires 7.28 / Linux 5.1+), disabling kernel-list-cache",
+				conn.proto_major, conn.proto_minor)
+			kernelListCacheSupported = false
+		}
+
+		if kernelListCacheSupported {
 			log.Info("Libfuse::libfuse_init : Kernel supports FOPEN_CACHE_DIR (fuse proto %d.%d), kernel-list-cache enabled with timeout %d sec",
 				conn.proto_major, conn.proto_minor, fuseFS.kernelListCacheTtlInSec)
 		} else {
-			log.Warn("Libfuse::libfuse_init : Kernel fuse proto %d.%d does not support FOPEN_CACHE_DIR (requires 7.28 / Linux 5.1+), disabling kernel-list-cache",
-				conn.proto_major, conn.proto_minor)
 			fuseFS.kernelListCacheTtlInSec = 0
 			if fuseFS.kernelListCacheTracker != nil {
 				fuseFS.kernelListCacheTracker.stop()
@@ -451,6 +464,8 @@ func libfuse_getattr(path *C.char, stbuf *C.stat_t, fi *C.fuse_file_info_t) C.in
 			return -C.ENOENT
 		case syscall.EACCES:
 			return -C.EACCES
+		case syscall.EINVAL:
+			return -C.EINVAL
 		default:
 			return -C.EIO
 		}
@@ -636,6 +651,12 @@ func libfuse_rmdir(path *C.char) C.int {
 	name = common.NormalizeObjectName(name)
 	log.Trace("Libfuse::libfuse_rmdir : %s", name)
 
+	// IsDirEmpty cannot report EINVAL, so reject an invalid name before calling it.
+	if !common.IsValidObjectName(name) {
+		log.Err("Libfuse::libfuse_rmdir : invalid path %s", name)
+		return -C.EINVAL
+	}
+
 	empty := fuseFS.NextComponent().IsDirEmpty(internal.IsDirEmptyOptions{Name: name})
 	if !empty {
 		return -C.ENOTEMPTY
@@ -689,6 +710,18 @@ func libfuse_statfs(path *C.char, buf *C.statvfs_t) C.int {
 	return 0
 }
 
+// newFileHandle : Allocate the native object that libfuse keeps as the handle (fi.fh) of an open file. Reads and
+// writes of a file that file_cache holds locally are served natively on the cached file's descriptor. Any other file
+// gets descriptor 0, so its reads and writes go through the pipeline, see native_file_io.h.
+func newFileHandle(handle *handlemap.Handle) C.uint64_t {
+	var fd C.uint64_t
+	if handle.Cached() {
+		fd = C.uint64_t(handle.UnixFD)
+	}
+	fobj := C.allocate_native_file_object(fd, C.uint64_t(uintptr(unsafe.Pointer(handle))))
+	return C.uint64_t(uintptr(unsafe.Pointer(fobj)))
+}
+
 // libfuse_create creates a file with the specified mode and then opens it.
 //
 //export libfuse_create
@@ -704,21 +737,19 @@ func libfuse_create(path *C.char, mode C.mode_t, fi *C.fuse_file_info_t) C.int {
 			return -C.EEXIST
 		} else if os.IsPermission(err) {
 			return -C.EACCES
+		} else if errors.Is(err, syscall.EINVAL) {
+			return -C.EINVAL
 		} else {
 			return -C.EIO
 		}
 	}
 
 	handlemap.Add(handle)
-	ret_val := C.allocate_native_file_object(0, C.uint64_t(uintptr(unsafe.Pointer(handle))), 0)
-	if !handle.Cached() {
-		ret_val.fd = 0
-	}
-
+	fi.fh = newFileHandle(handle)
 	log.Trace("Libfuse::libfuse_create : %s, handle %d", name, handle.ID)
-	fi.fh = C.uint64_t(uintptr(unsafe.Pointer(ret_val)))
 
 	libfuseStatsCollector.PushEvents(createFile, name, map[string]any{md: fs.FileMode(uint32(mode) & 0xffffffff)})
+	libfuseStatsCollector.UpdateStats(stats_manager.Increment, createFile, (int64)(1))
 
 	// increment open file handles count
 	libfuseStatsCollector.UpdateStats(stats_manager.Increment, openHandles, (int64)(1))
@@ -780,13 +811,8 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 	}
 
 	handlemap.Add(handle)
-	//fi.fh = C.ulong(uintptr(unsafe.Pointer(handle)))
-	ret_val := C.allocate_native_file_object(C.uint64_t(handle.UnixFD), C.uint64_t(uintptr(unsafe.Pointer(handle))), C.uint64_t(handle.Size))
-	if !handle.Cached() {
-		ret_val.fd = 0
-	}
+	fi.fh = newFileHandle(handle)
 	log.Trace("Libfuse::libfuse_open : %s, handle %d", name, handle.ID)
-	fi.fh = C.uint64_t(uintptr(unsafe.Pointer(ret_val)))
 
 	// increment open file handles count
 	libfuseStatsCollector.UpdateStats(stats_manager.Increment, openHandles, (int64)(1))
@@ -794,7 +820,7 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 	return 0
 }
 
-// libfuse_read reads data from an open file
+// libfuse_read reads data from an open file that is not served natively, see native_file_io.h
 //
 //export libfuse_read
 func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.fuse_file_info_t) C.int {
@@ -809,7 +835,6 @@ func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.f
 
 	if handle.Cached() {
 		bytesRead, err = syscall.Pread(handle.FD(), data[:size], int64(offset))
-		//bytesRead, err = handle.FObj.ReadAt(data[:size], int64(offset))
 	} else {
 		bytesRead, err = fuseFS.NextComponent().ReadInBuffer(
 			&internal.ReadInBufferOptions{
@@ -830,7 +855,7 @@ func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.f
 	return C.int(bytesRead)
 }
 
-// libfuse_write writes data to an open file
+// libfuse_write writes data to an open file that is not served natively, see native_file_io.h
 //
 //export libfuse_write
 func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.fuse_file_info_t) C.int {
@@ -839,7 +864,6 @@ func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.
 
 	offset := uint64(off)
 	data := (*[1 << 30]byte)(unsafe.Pointer(buf))
-	// log.Debug("Libfuse::libfuse_write : Offset %v, Data %v", offset, size)
 	bytesWritten, err := fuseFS.NextComponent().WriteFile(
 		&internal.WriteFileOptions{
 			Handle:   handle,
@@ -856,6 +880,20 @@ func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.
 	return C.int(bytesWritten)
 }
 
+// markNativeWritesDirty : Writes served natively in C only set the dirty mark of the native file handle. Consume the
+// mark and carry it over to the handle, so that the pipeline uploads those writes. The mark is consumed before the
+// upload rather than reset after it, so a write that lands during the upload marks the handle again.
+// Consuming the mark and marking the handle are one step under the handle's lock. A concurrent flush, fsync or release
+// of the handle thus either finds the handle marked or consumes the mark itself, and a mark is only ever cleared by
+// the call that carries it over.
+func markNativeWritesDirty(fileHandle *C.file_handle_t, handle *handlemap.Handle) {
+	handle.Lock()
+	defer handle.Unlock()
+	if C.consume_dirty_flag(fileHandle) != 0 {
+		handle.Flags.Set(handlemap.HandleFlagDirty)
+	}
+}
+
 // libfuse_flush possibly flushes cached data
 // Flush is called on each close() of a file descriptor, as opposed to release which is called on the close of the
 // last file descriptor for a file.
@@ -870,11 +908,9 @@ func libfuse_flush(path *C.char, fi *C.fuse_file_info_t) C.int {
 	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
 	log.Trace("Libfuse::libfuse_flush : %s, handle: %d", handle.Path, handle.ID)
 
-	// If the file handle is not dirty, there is no need to flush
-	if fileHandle.dirty != 0 {
-		handle.Flags.Set(handlemap.HandleFlagDirty)
-	}
+	markNativeWritesDirty(fileHandle, handle)
 
+	// If the file handle is not dirty, there is no need to flush
 	if !handle.Dirty() {
 		return 0
 	}
@@ -905,9 +941,7 @@ func libfuse_release(path *C.char, fi *C.fuse_file_info_t) C.int {
 	log.Trace("Libfuse::libfuse_release : %s, handle: %d", handle.Path, handle.ID)
 
 	// If the file handle is dirty then file-cache needs to flush this file
-	if fileHandle.dirty != 0 {
-		handle.Flags.Set(handlemap.HandleFlagDirty)
-	}
+	markNativeWritesDirty(fileHandle, handle)
 
 	err := fuseFS.NextComponent().ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
 	if err != nil {
@@ -942,6 +976,9 @@ func libfuse_fsync(path *C.char, datasync C.int, fi *C.fuse_file_info_t) C.int {
 	fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
 	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
 	log.Trace("Libfuse::libfuse_fsync : %s, handle: %d", handle.Path, handle.ID)
+
+	// Let the sync (e.g. with sync-to-flush) see writes that were served natively as well
+	markNativeWritesDirty(fileHandle, handle)
 
 	options := internal.SyncFileOptions{Handle: handle}
 	// If the datasync parameter is non-zero, then only the user data should be flushed, not the metadata.
@@ -1055,6 +1092,13 @@ func libfuse_rename(src *C.char, dst *C.char, flags C.uint) C.int {
 		return -C.ENOENT
 	}
 
+	// Reject absolute names and ".." segments that escape the mount root. A backslash is an
+	// ordinary filename character, so `..\..\etc\crontab` is a single valid name.
+	if !common.IsValidObjectName(srcPath) || !common.IsValidObjectName(dstPath) {
+		log.Err("Libfuse::libfuse_rename : invalid path in rename src: [%s] dst: [%s]", srcPath, dstPath)
+		return -C.EINVAL
+	}
+
 	srcAttr, srcErr := fuseFS.NextComponent().GetAttr(internal.GetAttrOptions{Name: srcPath})
 	if os.IsNotExist(srcErr) {
 		log.Err("Libfuse::libfuse_rename : Failed to get attributes of %s [%s]", srcPath, srcErr.Error())
@@ -1155,13 +1199,31 @@ func libfuse_readlink(path *C.char, buf *C.char, size C.size_t) C.int {
 	name = common.NormalizeObjectName(name)
 	//log.Trace("Libfuse::libfuse_readlink : Received for %s", name)
 
-	linkSize := int64(0)
-	attr, err := fuseFS.NextComponent().GetAttr(internal.GetAttrOptions{Name: name})
-	if err == nil && attr != nil {
-		linkSize = attr.Size
+	// buf must have room for at least the terminating NUL
+	if size == 0 {
+		return -C.EINVAL
 	}
 
-	targetPath, err := fuseFS.NextComponent().ReadLink(internal.ReadLinkOptions{Name: name, Size: linkSize})
+	attr, err := fuseFS.NextComponent().GetAttr(internal.GetAttrOptions{Name: name})
+	if err != nil {
+		log.Err("Libfuse::libfuse_readlink : error getting attributes of link file %s [%s]", name, err.Error())
+		if os.IsNotExist(err) {
+			return -C.ENOENT
+		}
+		return -C.EIO
+	}
+	if attr == nil {
+		log.Err("Libfuse::libfuse_readlink : no attributes returned for link file %s", name)
+		return -C.EIO
+	}
+
+	maxLen := min(int64(size-1), common.MaxSymlinkTargetLen)
+	if attr.Size > maxLen {
+		log.Err("Libfuse::libfuse_readlink : link target of %s is %d bytes, max allowed is %d", name, attr.Size, maxLen)
+		return -C.ENAMETOOLONG
+	}
+
+	targetPath, err := fuseFS.NextComponent().ReadLink(internal.ReadLinkOptions{Name: name, Size: attr.Size})
 	if err != nil {
 		log.Err("Libfuse::libfuse_readlink : error reading link file %s [%s]", name, err.Error())
 		if os.IsNotExist(err) {
@@ -1169,9 +1231,16 @@ func libfuse_readlink(path *C.char, buf *C.char, size C.size_t) C.int {
 		}
 		return -C.EIO
 	}
-	data := (*[1 << 30]byte)(unsafe.Pointer(buf))
-	copy(data[:size-1], targetPath)
-	data[len(targetPath)] = 0
+
+	// Do not trust the next component to have honoured Size.
+	if int64(len(targetPath)) > maxLen {
+		log.Err("Libfuse::libfuse_readlink : link target of %s is %d bytes, max allowed is %d", name, len(targetPath), maxLen)
+		return -C.ENAMETOOLONG
+	}
+
+	data := unsafe.Slice((*byte)(unsafe.Pointer(buf)), size)
+	n := copy(data[:size-1], targetPath)
+	data[n] = 0
 
 	libfuseStatsCollector.PushEvents(readLink, name, map[string]any{trgt: targetPath})
 	libfuseStatsCollector.UpdateStats(stats_manager.Increment, readLink, (int64)(1))
@@ -1253,16 +1322,6 @@ func libfuse_utimens(path *C.char, tv *C.timespec_t, fi *C.fuse_file_info_t) C.i
 	// TODO: is the conversion from [2]timespec to *timespec ok?
 	// TODO: Implement
 	// For now this returns 0 to allow touch to work correctly
-	return 0
-}
-
-// blobfuse_cache_update refresh the file-cache policy for this file
-//
-//export blobfuse_cache_update
-func blobfuse_cache_update(path *C.char) C.int {
-	name := trimFusePath(path)
-	name = common.NormalizeObjectName(name)
-	go fuseFS.NextComponent().FileUsed(name) //nolint
 	return 0
 }
 

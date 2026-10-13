@@ -224,6 +224,11 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 		lf.kernelListCacheTtlInSec = defaultKernelListCacheTtlInSec
 	}
 
+	// With FUSE writeback caching, Linux retains the kernel's size, mtime, and ctime for
+	// regular files even when Blobfuse2 returns refreshed attributes. External blob updates
+	// therefore require --disable-kernel-cache; direct I/O sets the libfuse timeouts to zero,
+	// leaving attr_cache.timeout-sec as the configurable attribute TTL.
+	// See https://github.com/torvalds/linux/blob/3d6d817622b0a9721e3cc404df3469171582be13/fs/fuse/inode.c#L326
 	if lf.disableKernelCache {
 		opt.DirectIO = true
 		lf.directIO = true
@@ -420,6 +425,6 @@ func init() {
 	ignoreOpenFlags := config.AddBoolFlag("ignore-open-flags", true, "Ignore unsupported open flags (APPEND, WRONLY) by blobfuse when writeback caching is enabled.")
 	config.BindPFlag(compName+".ignore-open-flags", ignoreOpenFlags)
 
-	kernelListCacheTtl := config.AddUint32Flag("kernel-list-cache-timeout", 0, "Enable kernel caching of directory listings and set TTL in seconds (fuse3 only). 0 = disabled.")
+	kernelListCacheTtl := config.AddUint32Flag("kernel-list-cache-timeout", 0, "Enable kernel caching of directory listings and set TTL in seconds (fuse3 only; requires libfuse 3.16.1+ and Linux 5.1+). 0 = disabled.")
 	config.BindPFlag(compName+".kernel-list-cache-expiration-sec", kernelListCacheTtl)
 }

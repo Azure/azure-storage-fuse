@@ -37,6 +37,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"io/fs"
 	"math"
 	"math/rand"
@@ -634,6 +635,18 @@ func (suite *fileCacheTestSuite) TestIsDirEmpty() {
 
 	empty := suite.fileCache.IsDirEmpty(internal.IsDirEmptyOptions{Name: path})
 	suite.assert.True(empty)
+}
+
+func (suite *fileCacheTestSuite) TestIsDirEmptyWithCachePathInName() {
+	defer suite.cleanupTest()
+
+	name := "prefix" + suite.cache_path + "/empty"
+	suite.Require().NoError(os.MkdirAll(filepath.Join(suite.cache_path, name, "child"), 0755))
+	suite.Require().NoError(os.MkdirAll(filepath.Join(suite.fake_storage_path, name), 0755))
+
+	suite.assert.True(suite.fileCache.IsDirEmpty(internal.IsDirEmptyOptions{Name: name}))
+	_, err := os.Stat(filepath.Join(suite.cache_path, name))
+	suite.assert.True(os.IsNotExist(err))
 }
 
 func (suite *fileCacheTestSuite) TestIsDirEmptyFalse() {
@@ -1532,6 +1545,235 @@ func (suite *fileCacheTestSuite) TestFlushFileSyncFileConcurrent() {
 	f.Close()
 }
 
+// expectBlockingUploads makes the mock CopyFromFile read the file it is asked to upload and report that snapshot.
+// The first upload then waits for finishFirstUpload to be closed, so the test can act while it is in progress.
+func expectBlockingUploads(mockComponent *internal.MockComponent, times int) (snapshots chan []byte, finishFirstUpload chan struct{}) {
+	snapshots = make(chan []byte, times)
+	finishFirstUpload = make(chan struct{})
+	uploads := 0
+	mockComponent.EXPECT().CopyFromFile(gomock.Any()).DoAndReturn(func(opts internal.CopyFromFileOptions) error {
+		data, err := io.ReadAll(opts.File)
+		if err != nil {
+			return err
+		}
+		snapshots <- data
+		// Uploads of a file are serialized by FlushFile, so this counter needs no locking.
+		uploads++
+		if uploads == 1 {
+			<-finishFirstUpload
+		}
+		return nil
+	}).Times(times)
+	return snapshots, finishFirstUpload
+}
+
+// createFileForFlush creates a file through the file cache, with default permissions so no chmod is replayed on upload
+func (suite *fileCacheTestSuite) createFileForFlush(fc *FileCache, name string) *handlemap.Handle {
+	handle, err := fc.CreateFile(internal.CreateFileOptions{Name: name, Mode: common.DefaultFilePermissionBits})
+	suite.Require().NoError(err)
+	return handle
+}
+
+// flushAsync runs FlushFile in the background. The result is delivered even if FlushFile does not return normally
+// (e.g. on an unexpected mock call), so that the test fails instead of hanging.
+func flushAsync(fc *FileCache, handle *handlemap.Handle) <-chan error {
+	done := make(chan error, 1)
+	go func() {
+		err := fmt.Errorf("FlushFile of %s did not return", handle.Path)
+		defer func() { done <- err }()
+		err = fc.FlushFile(internal.FlushFileOptions{Handle: handle})
+	}()
+	return done
+}
+
+// nextUpload waits for the next upload to read the file and returns the data it read
+func (suite *fileCacheTestSuite) nextUpload(snapshots chan []byte) []byte {
+	select {
+	case data := <-snapshots:
+		return data
+	case <-time.After(30 * time.Second):
+		suite.FailNow("timed out waiting for the file to be uploaded")
+		return nil
+	}
+}
+
+// assertUploaded checks the content sent to storage by the next upload, which must have happened already.
+func (suite *fileCacheTestSuite) assertUploaded(snapshots chan []byte, want []byte) {
+	select {
+	case got := <-snapshots:
+		suite.assert.Equal(want, got)
+	default:
+		suite.Fail("file was not uploaded again, storage keeps a stale copy")
+	}
+}
+
+// TestFlushFileWriteDuringUpload: a flush (e.g. a forked child closing its copy of the fd) uploads a snapshot of the
+// file while the application keeps writing through the same handle. The flush on close must upload those writes too,
+// instead of finding the handle clean and leaving the stale snapshot in storage (issue #2348).
+func (suite *fileCacheTestSuite) TestFlushFileWriteDuringUpload() {
+	defer suite.cleanupTest()
+	mockCtrl := gomock.NewController(suite.T())
+	defer mockCtrl.Finish()
+
+	fc, mockComponent, _, cleanup := suite.setupMockFileCacheForFlush(mockCtrl)
+	defer cleanup()
+
+	handle := suite.createFileForFlush(fc, "write_during_upload.mp3")
+	defer handle.GetFileObject().Close()
+
+	first, second := []byte("first half,"), []byte("second half")
+	_, err := fc.WriteFile(&internal.WriteFileOptions{Handle: handle, Offset: 0, Data: first})
+	suite.assert.NoError(err)
+
+	snapshots, finishFirstUpload := expectBlockingUploads(mockComponent, 2)
+	firstFlush := flushAsync(fc, handle)
+	suite.assert.Equal(first, suite.nextUpload(snapshots))
+
+	// The application writes the rest of the file while the snapshot is uploaded, then closes the file.
+	_, err = fc.WriteFile(&internal.WriteFileOptions{Handle: handle, Offset: int64(len(first)), Data: second})
+	suite.assert.NoError(err)
+	finalFlush := flushAsync(fc, handle)
+
+	// Give the final flush time to queue up behind the upload in progress.
+	time.Sleep(50 * time.Millisecond)
+	close(finishFirstUpload)
+	suite.assert.NoError(<-firstFlush)
+	suite.assert.NoError(<-finalFlush)
+
+	suite.assertUploaded(snapshots, append(first, second...))
+	suite.assert.False(handle.Dirty())
+}
+
+// TestReleaseFileAfterWriteDuringUpload: same as above, but the file is closed only after the earlier upload completed.
+// The writes that landed during that upload must keep the handle dirty, so that release uploads them.
+func (suite *fileCacheTestSuite) TestReleaseFileAfterWriteDuringUpload() {
+	defer suite.cleanupTest()
+	mockCtrl := gomock.NewController(suite.T())
+	defer mockCtrl.Finish()
+
+	fc, mockComponent, _, cleanup := suite.setupMockFileCacheForFlush(mockCtrl)
+	defer cleanup()
+
+	handle := suite.createFileForFlush(fc, "release_after_write_during_upload.mp3")
+
+	first, second := []byte("first half,"), []byte("second half")
+	_, err := fc.WriteFile(&internal.WriteFileOptions{Handle: handle, Offset: 0, Data: first})
+	suite.assert.NoError(err)
+
+	snapshots, finishFirstUpload := expectBlockingUploads(mockComponent, 2)
+	firstFlush := flushAsync(fc, handle)
+	suite.assert.Equal(first, suite.nextUpload(snapshots))
+
+	_, err = fc.WriteFile(&internal.WriteFileOptions{Handle: handle, Offset: int64(len(first)), Data: second})
+	suite.assert.NoError(err)
+
+	close(finishFirstUpload)
+	suite.assert.NoError(<-firstFlush)
+	suite.assert.True(handle.Dirty(), "write made during the upload must keep the handle dirty")
+
+	err = fc.ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
+	suite.assert.NoError(err)
+	suite.assertUploaded(snapshots, append(first, second...))
+	suite.assert.False(handle.Dirty())
+}
+
+// TestFlushFileTruncateDuringUpload: same as TestFlushFileWriteDuringUpload, but the application truncates the file
+// through its open handle (ftruncate) while the snapshot is uploaded. The truncation must reach storage as well.
+func (suite *fileCacheTestSuite) TestFlushFileTruncateDuringUpload() {
+	defer suite.cleanupTest()
+	mockCtrl := gomock.NewController(suite.T())
+	defer mockCtrl.Finish()
+
+	fc, mockComponent, _, cleanup := suite.setupMockFileCacheForFlush(mockCtrl)
+	defer cleanup()
+
+	handle := suite.createFileForFlush(fc, "truncate_during_upload.mp3")
+	defer handle.GetFileObject().Close()
+
+	data := []byte("first half,second half")
+	_, err := fc.WriteFile(&internal.WriteFileOptions{Handle: handle, Offset: 0, Data: data})
+	suite.assert.NoError(err)
+
+	snapshots, finishFirstUpload := expectBlockingUploads(mockComponent, 2)
+	firstFlush := flushAsync(fc, handle)
+	suite.assert.Equal(data, suite.nextUpload(snapshots))
+
+	err = fc.TruncateFile(internal.TruncateFileOptions{Handle: handle, Name: handle.Path, OldSize: -1, NewSize: 10})
+	suite.assert.NoError(err)
+
+	close(finishFirstUpload)
+	suite.assert.NoError(<-firstFlush)
+	suite.assert.True(handle.Dirty(), "truncation made during the upload must keep the handle dirty")
+
+	err = fc.FlushFile(internal.FlushFileOptions{Handle: handle})
+	suite.assert.NoError(err)
+	suite.assertUploaded(snapshots, data[:10])
+	suite.assert.False(handle.Dirty())
+}
+
+// TestFlushFileWaitsForUploadInProgress: a flush with nothing new to upload must not return while another flush of
+// the same handle is still uploading, so that close() only succeeds once the data is in storage. It must not upload
+// the file again either.
+func (suite *fileCacheTestSuite) TestFlushFileWaitsForUploadInProgress() {
+	defer suite.cleanupTest()
+	mockCtrl := gomock.NewController(suite.T())
+	defer mockCtrl.Finish()
+
+	fc, mockComponent, _, cleanup := suite.setupMockFileCacheForFlush(mockCtrl)
+	defer cleanup()
+
+	handle := suite.createFileForFlush(fc, "flush_waits_for_upload.mp3")
+	defer handle.GetFileObject().Close()
+
+	data := []byte("complete file")
+	_, err := fc.WriteFile(&internal.WriteFileOptions{Handle: handle, Offset: 0, Data: data})
+	suite.assert.NoError(err)
+
+	snapshots, finishFirstUpload := expectBlockingUploads(mockComponent, 1)
+	firstFlush := flushAsync(fc, handle)
+	suite.assert.Equal(data, suite.nextUpload(snapshots))
+	suite.assert.True(handle.Dirty(), "handle must not look clean while its data is being uploaded")
+
+	secondFlush := flushAsync(fc, handle)
+	select {
+	case <-secondFlush:
+		suite.Fail("flush returned while the upload of the file was still in progress")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	close(finishFirstUpload)
+	suite.assert.NoError(<-firstFlush)
+	suite.assert.NoError(<-secondFlush)
+	suite.assert.False(handle.Dirty())
+}
+
+// TestFlushFileUploadFailureKeepsDirty: a failed upload must leave the handle dirty, so the next flush retries it.
+func (suite *fileCacheTestSuite) TestFlushFileUploadFailureKeepsDirty() {
+	defer suite.cleanupTest()
+	mockCtrl := gomock.NewController(suite.T())
+	defer mockCtrl.Finish()
+
+	fc, mockComponent, _, cleanup := suite.setupMockFileCacheForFlush(mockCtrl)
+	defer cleanup()
+
+	handle := suite.createFileForFlush(fc, "flush_upload_failure.mp3")
+	defer handle.GetFileObject().Close()
+
+	gomock.InOrder(
+		mockComponent.EXPECT().CopyFromFile(gomock.Any()).Return(syscall.EIO),
+		mockComponent.EXPECT().CopyFromFile(gomock.Any()).Return(nil),
+	)
+
+	err := fc.FlushFile(internal.FlushFileOptions{Handle: handle})
+	suite.assert.Equal(syscall.EIO, err)
+	suite.assert.True(handle.Dirty())
+	suite.assert.False(handle.Flags.IsSet(handlemap.HandleFlagFlushing))
+
+	err = fc.FlushFile(internal.FlushFileOptions{Handle: handle})
+	suite.assert.NoError(err)
+	suite.assert.False(handle.Dirty())
+}
+
 func (suite *fileCacheTestSuite) TestGetAttrCase1() {
 	defer suite.cleanupTest()
 	// Setup
@@ -1690,8 +1932,6 @@ func (suite *fileCacheTestSuite) TestRenameFileInCache() {
 	// Path in fake storage and file cache should be updated
 	_, err = os.Stat(suite.cache_path + "/" + src) // Src does not exist
 	suite.assert.True(os.IsNotExist(err))
-	_, err = os.Stat(suite.cache_path + "/" + dst) // Dst shall exists in cache
-	suite.assert.True(err == nil || os.IsExist(err))
 	_, err = os.Stat(suite.fake_storage_path + "/" + src) // Src does not exist
 	suite.assert.True(os.IsNotExist(err))
 	_, err = os.Stat(suite.fake_storage_path + "/" + dst) // Dst does exist
@@ -1699,6 +1939,153 @@ func (suite *fileCacheTestSuite) TestRenameFileInCache() {
 
 	err = suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: openHandle})
 	suite.assert.NoError(err)
+
+	// With a zero timeout, rename queues the cached destination for deletion.
+	suite.assert.Eventually(func() bool {
+		_, err := os.Stat(suite.cache_path + "/" + dst)
+		return os.IsNotExist(err)
+	}, 5*time.Second, 10*time.Millisecond)
+}
+
+// TestValidateObjectName exercises the containment guard directly, covering
+// names that stay within the cache root and names that escape it.
+func (suite *fileCacheTestSuite) TestValidateObjectName() {
+	defer suite.cleanupTest()
+
+	// Names that stay within the cache root must be accepted.
+	validNames := []string{
+		"",
+		"file",
+		"dir/file",
+		"a/b/c/file.txt",
+		"a/./b",
+		"a..b",
+		"..file",
+		`..\..\etc\crontab`,
+		`dir\file`,
+	}
+	for _, name := range validNames {
+		suite.assert.NoError(suite.fileCache.validateObjectName(name), "expected %q to be valid", name)
+	}
+
+	// Names that escape or leave and re-enter the cache root are invalid.
+	invalidNames := []string{
+		"..",
+		"../file",
+		"../../etc/crontab",
+		"a/../../escape",
+		"a/b/../../../escape",
+		"../" + filepath.Base(suite.cache_path) + "/file",
+		"/etc/crontab",
+		`../dir\file`,
+	}
+	for _, name := range invalidNames {
+		suite.assert.Equal(syscall.EINVAL, suite.fileCache.validateObjectName(name), "expected %q to be rejected", name)
+	}
+}
+
+// TestRenameFilePathTraversal verifies that a rename cannot overwrite a file
+// outside the cache, while a literal backslash name remains valid.
+func (suite *fileCacheTestSuite) TestRenameFilePathTraversal() {
+	defer suite.cleanupTest()
+
+	// Create a canary file outside the cache root that must not be overwritten.
+	victim := filepath.Join(home_dir, "file_cache_victim_"+randomString(6))
+	err := os.WriteFile(victim, []byte("original"), 0644)
+	suite.assert.NoError(err)
+	defer os.Remove(victim)
+
+	src := "payload"
+	createHandle, err := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: src, Mode: 0666})
+	suite.assert.NoError(err)
+	err = suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: createHandle})
+	suite.assert.NoError(err)
+
+	// Build a destination that escapes the cache root and lands on the victim.
+	rel, err := filepath.Rel(suite.cache_path, victim)
+	suite.assert.NoError(err)
+	suite.assert.True(strings.HasPrefix(rel, ".."))
+
+	err = suite.fileCache.RenameFile(internal.RenameFileOptions{Src: src, Dst: rel})
+	suite.assert.Error(err)
+	suite.assert.Equal(syscall.EINVAL, err)
+
+	literal := `..\` + filepath.Base(victim)
+	err = suite.fileCache.RenameFile(internal.RenameFileOptions{Src: src, Dst: literal})
+	suite.assert.NoError(err)
+	_, err = os.Stat(filepath.Join(suite.fake_storage_path, literal))
+	suite.assert.NoError(err)
+
+	// The victim file must remain untouched.
+	data, err := os.ReadFile(victim)
+	suite.assert.NoError(err)
+	suite.assert.Equal("original", string(data))
+}
+
+// TestFileCachePathTraversalRejected verifies that all name-taking file-cache
+// operations reject paths that escape the cache root, covering ".." traversal
+// and absolute-path results.
+func (suite *fileCacheTestSuite) TestFileCachePathTraversalRejected() {
+	defer suite.cleanupTest()
+
+	escapingNames := []string{
+		"../escape",
+		"../../etc/crontab",
+		"a/../../escape",
+		"../" + filepath.Base(suite.cache_path) + "/file",
+		"/absolute",
+		`../dir\file`,
+	}
+
+	for _, name := range escapingNames {
+		_, err := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: name, Mode: 0666})
+		suite.assert.Equal(syscall.EINVAL, err, "CreateFile should reject %s", name)
+
+		_, err = suite.fileCache.OpenFile(internal.OpenFileOptions{Name: name, Mode: 0666})
+		suite.assert.Equal(syscall.EINVAL, err, "OpenFile should reject %s", name)
+
+		err = suite.fileCache.DeleteFile(internal.DeleteFileOptions{Name: name})
+		suite.assert.Equal(syscall.EINVAL, err, "DeleteFile should reject %s", name)
+
+		err = suite.fileCache.DeleteDir(internal.DeleteDirOptions{Name: name})
+		suite.assert.Equal(syscall.EINVAL, err, "DeleteDir should reject %s", name)
+
+		err = suite.fileCache.TruncateFile(internal.TruncateFileOptions{Name: name, NewSize: 0})
+		suite.assert.Equal(syscall.EINVAL, err, "TruncateFile should reject %s", name)
+
+		err = suite.fileCache.Chmod(internal.ChmodOptions{Name: name, Mode: 0666})
+		suite.assert.Equal(syscall.EINVAL, err, "Chmod should reject %s", name)
+
+		err = suite.fileCache.Chown(internal.ChownOptions{Name: name, Owner: 0, Group: 0})
+		suite.assert.Equal(syscall.EINVAL, err, "Chown should reject %s", name)
+
+		_, err = suite.fileCache.GetAttr(internal.GetAttrOptions{Name: name})
+		suite.assert.Equal(syscall.EINVAL, err, "GetAttr should reject %s", name)
+
+		_, err = suite.fileCache.ReadDir(internal.ReadDirOptions{Name: name})
+		suite.assert.Equal(syscall.EINVAL, err, "ReadDir should reject %s", name)
+
+		_, _, err = suite.fileCache.StreamDir(internal.StreamDirOptions{Name: name})
+		suite.assert.Equal(syscall.EINVAL, err, "StreamDir should reject %s", name)
+
+		suite.assert.False(suite.fileCache.IsDirEmpty(internal.IsDirEmptyOptions{Name: name}),
+			"IsDirEmpty should report not empty for %s", name)
+
+		err = suite.fileCache.FileUsed(name)
+		suite.assert.Equal(syscall.EINVAL, err, "FileUsed should reject %s", name)
+
+		err = suite.fileCache.RenameFile(internal.RenameFileOptions{Src: name, Dst: "safe"})
+		suite.assert.Equal(syscall.EINVAL, err, "RenameFile should reject src %s", name)
+
+		err = suite.fileCache.RenameFile(internal.RenameFileOptions{Src: "safe", Dst: name})
+		suite.assert.Equal(syscall.EINVAL, err, "RenameFile should reject dst %s", name)
+
+		err = suite.fileCache.RenameDir(internal.RenameDirOptions{Src: name, Dst: "safe"})
+		suite.assert.Equal(syscall.EINVAL, err, "RenameDir should reject src %s", name)
+
+		err = suite.fileCache.RenameDir(internal.RenameDirOptions{Src: "safe", Dst: name})
+		suite.assert.Equal(syscall.EINVAL, err, "RenameDir should reject dst %s", name)
+	}
 }
 
 func (suite *fileCacheTestSuite) TestRenameFileCase2() {
@@ -1799,8 +2186,6 @@ func (suite *fileCacheTestSuite) TestRenameFileAndCacheCleanupWithNoTimeout() {
 	// Path in fake storage and file cache should be updated
 	_, err = os.Stat(suite.cache_path + "/" + src) // Src does not exist
 	suite.assert.True(os.IsNotExist(err))
-	_, err = os.Stat(suite.cache_path + "/" + dst) // Dst shall exists in cache
-	suite.assert.True(err == nil || os.IsExist(err))
 	_, err = os.Stat(suite.fake_storage_path + "/" + src) // Src does not exist
 	suite.assert.True(os.IsNotExist(err))
 	_, err = os.Stat(suite.fake_storage_path + "/" + dst) // Dst does exist
@@ -1809,9 +2194,178 @@ func (suite *fileCacheTestSuite) TestRenameFileAndCacheCleanupWithNoTimeout() {
 	err = suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: openHandle})
 	suite.assert.NoError(err)
 
-	time.Sleep(1 * time.Second)                    // Wait for the cache cleanup to occur
-	_, err = os.Stat(suite.cache_path + "/" + dst) // Dst shall not exists in cache
-	suite.assert.True(err == nil || os.IsNotExist(err))
+	// With a zero timeout, rename queues the cached destination for deletion.
+	suite.assert.Eventually(func() bool {
+		_, err := os.Stat(suite.cache_path + "/" + dst)
+		return os.IsNotExist(err)
+	}, 5*time.Second, 10*time.Millisecond)
+}
+
+// TestLateFsyncedReleaseKeepsReusedFile covers the kernel delivering a release after the application has
+// renamed the fsynced file and created a new file with the same name.
+func (suite *fileCacheTestSuite) TestLateFsyncedReleaseKeepsReusedFile() {
+	defer suite.cleanupTest()
+	fc := suite.fileCache
+	tmp, final := "file_temp", "file"
+
+	h0, err := fc.CreateFile(internal.CreateFileOptions{Name: tmp, Mode: 0644})
+	suite.Require().NoError(err)
+	_, err = fc.WriteFile(&internal.WriteFileOptions{Handle: h0, Data: []byte("round 1")})
+	suite.Require().NoError(err)
+	suite.Require().NoError(fc.SyncFile(internal.SyncFileOptions{Handle: h0}))
+	suite.Require().NoError(fc.FlushFile(internal.FlushFileOptions{Handle: h0}))
+	suite.Require().NoError(fc.RenameFile(internal.RenameFileOptions{Src: tmp, Dst: final}))
+
+	h1, err := fc.CreateFile(internal.CreateFileOptions{Name: tmp, Mode: 0644})
+	suite.Require().NoError(err)
+	_, err = fc.WriteFile(&internal.WriteFileOptions{Handle: h1, Data: []byte("round 2")})
+	suite.Require().NoError(err)
+	suite.Require().NoError(fc.ReleaseFile(internal.ReleaseFileOptions{Handle: h0}))
+	suite.Require().NoError(fc.ReleaseFile(internal.ReleaseFileOptions{Handle: h1}))
+
+	for name, want := range map[string]string{final: "round 1", tmp: "round 2"} {
+		data, err := os.ReadFile(filepath.Join(suite.fake_storage_path, name))
+		suite.NoError(err)
+		suite.Equal(want, string(data), name)
+	}
+}
+
+func (suite *fileCacheTestSuite) TestConcurrentCloseRenamePurge() {
+	defer suite.cleanupTest()
+
+	fc := suite.fileCache
+	const closeCount = 1050
+	const renameWorkers = 8
+	const renameRounds = 12
+	const openWorkers = 12
+
+	stable := "stable"
+	handle, err := fc.CreateFile(internal.CreateFileOptions{Name: stable, Mode: 0600})
+	suite.Require().NoError(err)
+	_, err = fc.WriteFile(&internal.WriteFileOptions{Handle: handle, Data: []byte("stable")})
+	suite.Require().NoError(err)
+	suite.Require().NoError(fc.ReleaseFile(internal.ReleaseFileOptions{Handle: handle}))
+
+	handles := make([]*handlemap.Handle, closeCount)
+	for i := range handles {
+		handles[i], err = fc.OpenFile(internal.OpenFileOptions{Name: stable, Flags: os.O_RDONLY, Mode: 0600})
+		suite.Require().NoError(err)
+	}
+
+	// Queue a backlog first so cleanup is still busy when the burst of closes and renames starts.
+	for i := 0; i < 1000; i++ {
+		fc.policy.CachePurge(filepath.Join(suite.cache_path, fmt.Sprintf("unused-%d", i)))
+	}
+
+	start := make(chan struct{})
+	errs := make(chan error, closeCount+renameWorkers+openWorkers)
+	var wg sync.WaitGroup
+	run := func(fn func() error) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			if err := fn(); err != nil {
+				errs <- err
+			}
+		}()
+	}
+
+	for _, h := range handles {
+		h := h
+		run(func() error {
+			return fc.ReleaseFile(internal.ReleaseFileOptions{Handle: h})
+		})
+	}
+
+	for worker := 0; worker < renameWorkers; worker++ {
+		src := fmt.Sprintf("file_temp_%d", worker)
+		dst := fmt.Sprintf("file_%d", worker)
+		run(func() error {
+			for round := 0; round < renameRounds; round++ {
+				data := []byte(fmt.Sprintf("small file %d/%d", worker, round))
+				h, err := fc.CreateFile(internal.CreateFileOptions{Name: src, Mode: 0600})
+				if err != nil {
+					return fmt.Errorf("create %s: %w", src, err)
+				}
+				if _, err := fc.WriteFile(&internal.WriteFileOptions{Handle: h, Data: data}); err != nil {
+					return fmt.Errorf("write %s: %w", src, err)
+				}
+				if err := fc.FlushFile(internal.FlushFileOptions{Handle: h}); err != nil {
+					return fmt.Errorf("flush %s: %w", src, err)
+				}
+				if err := fc.SyncFile(internal.SyncFileOptions{Handle: h}); err != nil {
+					return fmt.Errorf("sync %s: %w", src, err)
+				}
+				if err := fc.ReleaseFile(internal.ReleaseFileOptions{Handle: h}); err != nil {
+					return fmt.Errorf("release %s: %w", src, err)
+				}
+				if err := fc.RenameFile(internal.RenameFileOptions{Src: src, Dst: dst}); err != nil {
+					return fmt.Errorf("rename %s to %s: %w", src, dst, err)
+				}
+				h, err = fc.OpenFile(internal.OpenFileOptions{Name: dst, Flags: os.O_RDONLY, Mode: 0600})
+				if err != nil {
+					return fmt.Errorf("open %s: %w", dst, err)
+				}
+				buf := make([]byte, len(data))
+				n, readErr := fc.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Data: buf})
+				releaseErr := fc.ReleaseFile(internal.ReleaseFileOptions{Handle: h})
+				if readErr != nil || n != len(data) || !bytes.Equal(buf, data) {
+					return fmt.Errorf("read %s: got %q (%d bytes), error %v", dst, buf, n, readErr)
+				}
+				if releaseErr != nil {
+					return fmt.Errorf("release %s: %w", dst, releaseErr)
+				}
+			}
+			return nil
+		})
+	}
+
+	for worker := 0; worker < openWorkers; worker++ {
+		run(func() error {
+			for i := 0; i < renameRounds; i++ {
+				h, err := fc.OpenFile(internal.OpenFileOptions{Name: stable, Flags: os.O_RDONLY, Mode: 0600})
+				if err != nil {
+					return err
+				}
+				buf := make([]byte, len("stable"))
+				n, readErr := fc.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Data: buf})
+				releaseErr := fc.ReleaseFile(internal.ReleaseFileOptions{Handle: h})
+				if readErr != nil || n != len(buf) || string(buf) != "stable" {
+					return fmt.Errorf("stable read: got %q (%d bytes), error %v", buf, n, readErr)
+				}
+				if releaseErr != nil {
+					return releaseErr
+				}
+			}
+			return nil
+		})
+	}
+
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+	close(start)
+	select {
+	case <-done:
+	case <-time.After(90 * time.Second):
+		suite.FailNow("close, rename, or open blocked behind cache eviction")
+	}
+	close(errs)
+	for err := range errs {
+		suite.NoError(err)
+	}
+
+	flock := fc.fileLocks.Get(stable)
+	flock.Lock()
+	suite.Equal(uint32(0), flock.Count())
+	flock.Unlock()
+	suite.Eventually(func() bool {
+		_, err := os.Stat(filepath.Join(suite.cache_path, stable))
+		return os.IsNotExist(err)
+	}, 10*time.Second, 10*time.Millisecond)
 }
 
 func (suite *fileCacheTestSuite) TestTruncateFileNotInCache() {

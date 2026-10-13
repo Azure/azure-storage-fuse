@@ -69,6 +69,7 @@ type LogOptions struct {
 	LogFileCount   uint64 `config:"file-count" yaml:"file-count,omitempty"`
 	LogGoroutineID bool   `config:"goroutine-id" yaml:"goroutine-id,omitempty"`
 	TimeTracker    bool   `config:"track-time" yaml:"track-time,omitempty"`
+	LogCompress    bool   `config:"compress" yaml:"compress,omitempty"`
 }
 
 // distributedCacheMountOptions contains only the discovery values mount needs
@@ -468,6 +469,7 @@ var mountCmd = &cobra.Command{
 			Level:          logLevel,
 			TimeTracker:    options.Logging.TimeTracker,
 			LogGoroutineID: options.Logging.LogGoroutineID,
+			LogCompress:    options.Logging.LogCompress,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to initialize logger [%s]", err.Error())
@@ -1024,6 +1026,10 @@ func init() {
 		false, "Enable logging of goroutine IDs. Default is true for LOG_DEBUG level, false otherwise.")
 	config.BindPFlag("logging.goroutine-id", mountCmd.PersistentFlags().Lookup("log-goroutine-id"))
 
+	mountCmd.PersistentFlags().Bool("log-compress",
+		false, "Enable gzip compression of rolled-over log files. Only applies to base logger.")
+	config.BindPFlag("logging.compress", mountCmd.PersistentFlags().Lookup("log-compress"))
+
 	mountCmd.PersistentFlags().Bool("foreground", false, "Mount the system in foreground mode. Default value false.")
 	config.BindPFlag("foreground", mountCmd.PersistentFlags().Lookup("foreground"))
 
@@ -1070,7 +1076,7 @@ func init() {
 
 	mountCmd.PersistentFlags().DurationVar(&options.WaitForMount, "wait-for-mount", 5*time.Second, "Let parent process wait for given timeout before exit")
 
-	mountCmd.PersistentFlags().Bool("disable-kernel-cache", false, "Disable kerneel cache, but keep blobfuse cache. Default value false.")
+	mountCmd.PersistentFlags().Bool("disable-kernel-cache", false, "Disable the kernel cache while retaining Blobfuse caches. Required when blobs can be modified outside Blobfuse; use --attr-cache-timeout to configure attribute freshness.")
 	config.BindPFlag("disable-kernel-cache", mountCmd.PersistentFlags().Lookup("disable-kernel-cache"))
 
 	config.AttachToFlagSet(mountCmd.PersistentFlags())

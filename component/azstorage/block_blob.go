@@ -52,6 +52,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/streaming"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/bloberror"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blockblob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/container"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/service"
@@ -296,6 +297,32 @@ func (bb *BlockBlob) CreateFile(name string, mode os.FileMode) error {
 	return bb.WriteFromBuffer(name, nil, data)
 }
 
+func (bb *BlockBlob) createFileIfAbsent(name string) (*azcore.ETag, error) {
+	etag, err := bb.uploadBuffer(name, nil, nil, &blob.AccessConditions{
+		ModifiedAccessConditions: &blob.ModifiedAccessConditions{IfNoneMatch: to.Ptr(azcore.ETagAny)},
+	})
+	if bloberror.HasCode(err, bloberror.BlobAlreadyExists, bloberror.ConditionNotMet) {
+		return nil, syscall.EEXIST
+	}
+	if err != nil {
+		return nil, err
+	}
+	if etag == nil || *etag == "" {
+		return nil, fmt.Errorf("blob upload returned no ETag for %s; cannot safely set permissions or remove the blob", name)
+	}
+	return etag, nil
+}
+
+func (bb *BlockBlob) deleteFileIfMatch(name string, etag *azcore.ETag) error {
+	blobClient := bb.Container.NewBlobClient(filepath.Join(bb.Config.prefixPath, name))
+	_, err := blobClient.Delete(context.Background(), &blob.DeleteOptions{
+		AccessConditions: &blob.AccessConditions{
+			ModifiedAccessConditions: &blob.ModifiedAccessConditions{IfMatch: etag},
+		},
+	})
+	return err
+}
+
 // CreateDirectory : Create a new directory in the container/virtual directory
 func (bb *BlockBlob) CreateDirectory(name string) error {
 	log.Trace("BlockBlob::CreateDirectory : name %s", name)
@@ -493,6 +520,9 @@ func (bb *BlockBlob) getAttrUsingRest(name string) (attr *internal.ObjAttr, err 
 	if err != nil {
 		serr := storeBlobErrToErr(err)
 		switch serr {
+		case ErrInvalidArgument:
+			log.Err("BlockBlob::getAttrUsingRest : Storage rejected blob name %s [%s]", name, err.Error())
+			return attr, syscall.EINVAL
 		case ErrFileNotFound:
 			return attr, syscall.ENOENT
 		case InvalidPermission:
@@ -540,6 +570,9 @@ func (bb *BlockBlob) getAttrUsingList(name string) (attr *internal.ObjAttr, err 
 		if err != nil {
 			e := storeBlobErrToErr(err)
 			switch e {
+			case ErrInvalidArgument:
+				log.Err("BlockBlob::getAttrUsingList : Storage rejected blob name %s [%s]", name, err.Error())
+				return attr, syscall.EINVAL
 			case ErrFileNotFound:
 				return attr, syscall.ENOENT
 			case InvalidPermission:
@@ -680,8 +713,10 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 	// over BlobItems will fail to identify that directory. In such cases BlobPrefixes help to list all directories
 	// dirList contains all dirs for which we got 0 byte meta file in this iteration, so exclude those and add rest to the list
 	// Note: Since listing is paginated, sometimes the marker file may come in a different iteration from the BlobPrefix. For such
-	// cases we manually call GetAttr to check the existence of the marker file.
-	err = bb.processBlobPrefixes(listBlob.Segment.BlobPrefixes, dirList, &blobList)
+	// cases we manually call GetAttr to check the existence of the marker file. A single-page listing already contains every possible
+	// marker, so it does not need the additional REST calls.
+	err = bb.processBlobPrefixes(listBlob.Segment.BlobPrefixes, dirList, &blobList,
+		isSinglePageListing(marker, listBlob.NextMarker))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -695,6 +730,10 @@ func (bb *BlockBlob) getListPath(prefix string) string {
 		listPath += "/"
 	}
 	return listPath
+}
+
+func isSinglePageListing(marker, nextMarker *string) bool {
+	return (marker == nil || *marker == "") && (nextMarker == nil || *nextMarker == "")
 }
 
 func (bb *BlockBlob) processBlobItems(blobItems []*container.BlobItem) ([]*internal.ObjAttr, map[string]bool, error) {
@@ -798,7 +837,7 @@ func (bb *BlockBlob) dereferenceTime(input *time.Time, defaultTime time.Time) ti
 	return *input
 }
 
-func (bb *BlockBlob) processBlobPrefixes(blobPrefixes []*container.BlobPrefix, dirList map[string]bool, blobList *[]*internal.ObjAttr) error {
+func (bb *BlockBlob) processBlobPrefixes(blobPrefixes []*container.BlobPrefix, dirList map[string]bool, blobList *[]*internal.ObjAttr, singlePageListing bool) error {
 	for _, blobInfo := range blobPrefixes {
 		if _, ok := dirList[*blobInfo.Name]; ok {
 			// marker file found in current iteration, skip adding the directory
@@ -812,6 +851,12 @@ func (bb *BlockBlob) processBlobPrefixes(blobPrefixes []*container.BlobPrefix, d
 				}
 				*blobList = append(*blobList, attr)
 			} else {
+				if singlePageListing {
+					attr := bb.createDirAttr(*blobInfo.Name)
+					*blobList = append(*blobList, attr)
+					continue
+				}
+
 				// marker file not found in current iteration, so we need to manually check attributes via REST
 				_, err := bb.getAttrUsingRest(*blobInfo.Name)
 				// marker file also not found via manual check, safe to add to list
@@ -1197,16 +1242,22 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]*string, fi 
 
 // WriteFromBuffer : Upload from a buffer to a blob
 func (bb *BlockBlob) WriteFromBuffer(name string, metadata map[string]*string, data []byte) error {
-	log.Trace("BlockBlob::WriteFromBuffer : name %s", name)
+	_, err := bb.uploadBuffer(name, metadata, data, nil)
+	return err
+}
+
+func (bb *BlockBlob) uploadBuffer(name string, metadata map[string]*string, data []byte, conditions *blob.AccessConditions) (*azcore.ETag, error) {
+	log.Trace("BlockBlob::uploadBuffer : name %s", name)
 	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
 
-	defer log.TimeTrack(time.Now(), "BlockBlob::WriteFromBuffer", name)
+	defer log.TimeTrack(time.Now(), "BlockBlob::uploadBuffer", name)
 
-	_, err := blobClient.UploadBuffer(context.Background(), data, &blockblob.UploadBufferOptions{
-		BlockSize:   bb.Config.blockSize,
-		Concurrency: bb.Config.maxConcurrency,
-		Metadata:    metadata,
-		AccessTier:  bb.Config.defaultTier,
+	resp, err := blobClient.UploadBuffer(context.Background(), data, &blockblob.UploadBufferOptions{
+		BlockSize:        bb.Config.blockSize,
+		Concurrency:      bb.Config.maxConcurrency,
+		Metadata:         metadata,
+		AccessTier:       bb.Config.defaultTier,
+		AccessConditions: conditions,
 		HTTPHeaders: &blob.HTTPHeaders{
 			BlobContentType: to.Ptr(getContentType(name)),
 		},
@@ -1214,11 +1265,11 @@ func (bb *BlockBlob) WriteFromBuffer(name string, metadata map[string]*string, d
 	})
 
 	if err != nil {
-		log.Err("BlockBlob::WriteFromBuffer : Failed to upload blob %s [%s]", name, err.Error())
-		return err
+		log.Err("BlockBlob::uploadBuffer : Failed to upload blob %s [%s]", name, err.Error())
+		return nil, err
 	}
 
-	return nil
+	return resp.ETag, nil
 }
 
 // GetFileBlockOffsets: store blocks ids and corresponding offsets

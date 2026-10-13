@@ -1,0 +1,16 @@
+[global]
+ioengine=sync
+rw=read
+bs=1M
+size=8G
+numjobs=4
+filename_format=max-read.$jobnum
+direct=1
+allow_file_create=0
+invalidate=1
+runtime=120s
+group_reporting=1
+lat_percentiles=1
+percentile_list=50:95:99:99.9
+
+[cold-sequential-read-4-stream]

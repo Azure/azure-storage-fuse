@@ -211,12 +211,60 @@ func (suite *libfuseTestSuite) TestRmDirError() {
 	testRmDirError(suite)
 }
 
+func (suite *libfuseTestSuite) TestRmDirInvalidPath() {
+	testRmDirInvalidPath(suite)
+}
+
 func (suite *libfuseTestSuite) TestCreate() {
 	testCreate(suite)
 }
 
+func (suite *libfuseTestSuite) TestCreateNativeIO() {
+	testCreateNativeIO(suite)
+}
+
+func (suite *libfuseTestSuite) TestNativeWriteDirty() {
+	testNativeWriteDirty(suite)
+}
+
+func (suite *libfuseTestSuite) TestFlushNativeDirty() {
+	testFlushNativeDirty(suite)
+}
+
+func (suite *libfuseTestSuite) TestFlushNativeWriteDuringUpload() {
+	testFlushNativeWriteDuringUpload(suite)
+}
+
+func (suite *libfuseTestSuite) TestFsyncNativeWrite() {
+	testFsyncNativeWrite(suite)
+}
+
+func (suite *libfuseTestSuite) TestNativeDirtyHandOver() {
+	testNativeDirtyHandOver(suite)
+}
+
+func (suite *libfuseTestSuite) TestNativeWriteDuringHandOver() {
+	testNativeWriteDuringHandOver(suite)
+}
+
 func (suite *libfuseTestSuite) TestCreateError() {
 	testCreateError(suite)
+}
+
+func (suite *libfuseTestSuite) TestCreateUpdatesStats() {
+	testCreateUpdatesStats(suite)
+}
+
+func (suite *libfuseTestSuite) TestCreateErrorDoesNotUpdateStats() {
+	testCreateErrorDoesNotUpdateStats(suite)
+}
+
+func (suite *libfuseTestSuite) TestCreateInvalidArgument() {
+	testCreateInvalidArgument(suite)
+}
+
+func (suite *libfuseTestSuite) TestGetAttrInvalidArgument() {
+	testGetAttrInvalidArgument(suite)
 }
 
 func (suite *libfuseTestSuite) TestOpen() {
@@ -289,6 +337,14 @@ func (suite *libfuseTestSuite) TestRenameDirEnametoolong() {
 	testRenameDirEnametoolong(suite)
 }
 
+func (suite *libfuseTestSuite) TestRenameInvalidPath() {
+	testRenameInvalidPath(suite)
+}
+
+func (suite *libfuseTestSuite) TestRenameBackslashName() {
+	testRenameBackslashName(suite)
+}
+
 func (suite *libfuseTestSuite) TestSymlink() {
 	testSymlink(suite)
 }
@@ -301,12 +357,44 @@ func (suite *libfuseTestSuite) TestReadLink() {
 	testReadLink(suite)
 }
 
+func (suite *libfuseTestSuite) TestReadLinkEmpty() {
+	testReadLinkEmpty(suite)
+}
+
+func (suite *libfuseTestSuite) TestReadLinkMaxTarget() {
+	testReadLinkMaxTarget(suite)
+}
+
 func (suite *libfuseTestSuite) TestReadLinkNotExists() {
 	testReadLinkNotExists(suite)
 }
 
+func (suite *libfuseTestSuite) TestReadLinkGetAttrError() {
+	testReadLinkGetAttrError(suite)
+}
+
+func (suite *libfuseTestSuite) TestReadLinkNilAttr() {
+	testReadLinkNilAttr(suite)
+}
+
 func (suite *libfuseTestSuite) TestReadLinkError() {
 	testReadLinkError(suite)
+}
+
+func (suite *libfuseTestSuite) TestReadLinkTargetTooLong() {
+	testReadLinkTargetTooLong(suite)
+}
+
+func (suite *libfuseTestSuite) TestReadLinkTargetExceedsBuffer() {
+	testReadLinkTargetExceedsBuffer(suite)
+}
+
+func (suite *libfuseTestSuite) TestReadLinkTargetLongerThanAttr() {
+	testReadLinkTargetLongerThanAttr(suite)
+}
+
+func (suite *libfuseTestSuite) TestReadLinkZeroSize() {
+	testReadLinkZeroSize(suite)
 }
 
 func (suite *libfuseTestSuite) TestFsync() {

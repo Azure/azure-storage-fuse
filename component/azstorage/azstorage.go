@@ -165,11 +165,16 @@ func (az *AzStorage) configureAndTest(isParent bool) error {
 	}
 
 	// The daemon runs all pipeline Configure code twice. isParent allows us to only validate credentials in parent mode, preventing a second unnecessary REST call.
+	// skip-mount-validation bypasses that probe entirely. It does not enter BlockBlob/Datalake TestPipeline, so the ADLS Blob+DFS parallel probes are unchanged when the flag is false.
 	if isParent {
-		err = az.storage.TestPipeline()
-		if err != nil {
-			log.Err("AzStorage::configureAndTest : Failed to validate credentials [%s]", err.Error())
-			return fmt.Errorf("failed to authenticate %s credentials with error [%s]", az.Name(), err.Error())
+		if az.stConfig.skipMountValidation {
+			log.Crit("AzStorage::configureAndTest : Authentication validation explicitly skipped. A successful mount does not guarantee access to Storage; authentication, permission, and connectivity failures will surface on subsequent filesystem operations.")
+		} else {
+			err = az.storage.TestPipeline()
+			if err != nil {
+				log.Err("AzStorage::configureAndTest : Failed to validate credentials [%s]", err.Error())
+				return fmt.Errorf("failed to authenticate %s credentials with error [%s]", az.Name(), err.Error())
+			}
 		}
 	}
 
@@ -377,6 +382,7 @@ func (az *AzStorage) CreateFile(options internal.CreateFileOptions) (*handlemap.
 	handle.Mtime = time.Now()
 
 	azStatsCollector.PushEvents(createFile, options.Name, map[string]any{mode: options.Mode.String()})
+	azStatsCollector.UpdateStats(stats_manager.Increment, createFile, (int64)(1))
 
 	// increment open file handles count
 	azStatsCollector.UpdateStats(stats_manager.Increment, openHandles, (int64)(1))
@@ -533,7 +539,19 @@ func (az *AzStorage) CreateLink(options internal.CreateLinkOptions) error {
 
 func (az *AzStorage) ReadLink(options internal.ReadLinkOptions) (string, error) {
 	log.Trace("AzStorage::ReadLink : Read symlink %s", options.Name)
-	data, err := az.storage.ReadBuffer(options.Name, 0, options.Size)
+
+	// Size comes from the caller's GetAttr, so 0 means the symlink blob has no content. Linux refuses to
+	// create such a link (symlink(2) fails with ENOENT for an empty target), but a symlink blob can still be
+	// truncated to 0 bytes or uploaded empty with is_symlink=true. POSIX allows empty symlinks: resolving one
+	// either fails with ENOENT or uses the directory containing the link, and Linux does the latter for an
+	// empty readlink reply. So report an empty target rather than an error. This also keeps it away from
+	// ReadBuffer, which treats a length of 0 as "download the whole blob".
+	if options.Size <= 0 {
+		return "", nil
+	}
+
+	// The blob content is not trusted to be small, never download more than a valid target can hold.
+	data, err := az.storage.ReadBuffer(options.Name, 0, min(options.Size, common.MaxSymlinkTargetLen))
 
 	if err != nil {
 		azStatsCollector.PushEvents(readLink, options.Name, nil)
@@ -698,6 +716,10 @@ func init() {
 
 	capIOps := config.AddInt64Flag("cap-iops", -1, "Limit the total storage operations per second. Default is -1 (no limit)")
 	config.BindPFlag(compName+".cap-iops", capIOps)
+
+	skipMountValidation := config.AddBoolFlag("skip-mount-validation", false, "Skip proactive Storage authentication validation during mount. Authentication is still used for later operations. A successful mount no longer proves Storage access; auth and connectivity failures surface on filesystem operations. Default false.")
+	config.BindPFlag(compName+".skip-mount-validation", skipMountValidation)
+	skipMountValidation.Hidden = true
 
 	config.RegisterFlagCompletionFunc("container-name", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return nil, cobra.ShellCompDirectiveNoFileComp

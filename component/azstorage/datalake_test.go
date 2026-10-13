@@ -228,6 +228,57 @@ func (s *datalakeTestSuite) TestFileSystemNotFound() {
 	s.assert.Contains(err.Error(), "FilesystemNotFound")
 }
 
+// TestPipelineConcurrentProbes validates that the concurrent DFS and Blob
+// validation probes succeed together for a valid HNS account.
+func (s *datalakeTestSuite) TestPipelineConcurrentProbes() {
+	defer s.cleanupTest()
+	// Setup
+	s.tearDownTestHelper(false) // Don't delete the generated container.
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
+		storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsKey, s.container)
+	s.setupTestHelper(config, s.container, true)
+
+	err := s.az.storage.TestPipeline()
+	s.assert.NoError(err)
+}
+
+// TestPipelineConcurrentProbesWithSubdir validates the concurrent probes when a
+// subdirectory is configured (prefix path) as used on latency-critical mounts.
+func (s *datalakeTestSuite) TestPipelineConcurrentProbesWithSubdir() {
+	defer s.cleanupTest()
+	// Setup
+	s.tearDownTestHelper(false) // Don't delete the generated container.
+	subdir := generateDirectoryName()
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n  subdirectory: %s\n  fail-unsupported-op: true",
+		storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsKey, s.container, subdir)
+	s.setupTestHelper(config, s.container, true)
+
+	err := s.az.CreateDir(internal.CreateDirOptions{Name: subdir})
+	s.assert.NoError(err)
+
+	err = s.az.storage.TestPipeline()
+	s.assert.NoError(err)
+}
+
+// TestPipelineConcurrentProbesErrorPrecedence validates that the DFS probe error
+// takes precedence over the Blob probe error when running the probes concurrently.
+func (s *datalakeTestSuite) TestPipelineConcurrentProbesErrorPrecedence() {
+	defer s.cleanupTest()
+	// Setup: mount an FNS account as HNS, DFS probe should report "Account is not HNS"
+	s.tearDownTestHelper(false) // Don't delete the generated container.
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n ",
+		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+	s.setupTestHelper(config, s.container, true)
+
+	err := s.az.CreateDir(internal.CreateDirOptions{Name: generateDirectoryName()})
+	s.assert.NoError(err)
+
+	err = s.az.storage.TestPipeline()
+	s.assert.Error(err)
+	// DFS-first precedence: the Datalake probe error should be surfaced.
+	s.assert.Contains(err.Error(), "Datalake::TestPipeline")
+}
+
 func (s *datalakeTestSuite) TestListContainers() {
 	defer s.cleanupTest()
 	// Setup
@@ -1890,7 +1941,7 @@ func (s *datalakeTestSuite) TestReadLink() {
 	err = s.az.CreateLink(internal.CreateLinkOptions{Name: name, Target: target})
 	s.assert.NoError(err)
 
-	read, err := s.az.ReadLink(internal.ReadLinkOptions{Name: name})
+	read, err := s.az.ReadLink(internal.ReadLinkOptions{Name: name, Size: int64(len(target))})
 	s.assert.NoError(err)
 	s.assert.Equal(target, read)
 }
@@ -1900,7 +1951,7 @@ func (s *datalakeTestSuite) TestReadLinkError() {
 	// Setup
 	name := generateFileName()
 
-	_, err := s.az.ReadLink(internal.ReadLinkOptions{Name: name})
+	_, err := s.az.ReadLink(internal.ReadLinkOptions{Name: name, Size: 1})
 	s.assert.Error(err)
 	s.assert.EqualValues(syscall.ENOENT, err)
 }
@@ -2003,6 +2054,14 @@ func (s *datalakeTestSuite) TestGetAttrError() {
 	_, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
 	s.assert.Error(err)
 	s.assert.EqualValues(syscall.ENOENT, err)
+}
+
+func (s *datalakeTestSuite) TestGetAttrInvalidName() {
+	defer s.cleanupTest()
+	datalake := s.az.storage.(*Datalake)
+
+	_, err := datalake.GetAttr(invalidStorageName)
+	s.assert.ErrorIs(err, syscall.EINVAL)
 }
 
 func (s *datalakeTestSuite) TestChmod() {

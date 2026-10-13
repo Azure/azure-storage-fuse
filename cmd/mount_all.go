@@ -131,6 +131,7 @@ func processCommand() error {
 		FileCount:   options.Logging.LogFileCount,
 		Level:       logLevel,
 		TimeTracker: options.Logging.TimeTracker,
+		LogCompress: options.Logging.LogCompress,
 	})
 
 	if err != nil {

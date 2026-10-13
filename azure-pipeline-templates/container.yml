@@ -69,6 +69,6 @@ steps:
         echo "Deleting Container: $(containerName)"
         az storage container delete --name $(containerName) \
         --account-name ${{ parameters.account_name }} \
-        --account-key ${{ parameters.account_key }} \
+        --account-key ${{ parameters.account_key }}
       displayName: 'Deleting ${{ parameters.account_type }} Container'
       condition: eq(variables['distro'], 'ubuntu')

@@ -147,6 +147,11 @@ func (v Version) NewerThan(v2 Version) bool {
 	return v.compare(v2) == 1
 }
 
+// IsPreview returns whether this version has a pre-release suffix.
+func (v Version) IsPreview() bool {
+	return v.preview
+}
+
 // return the original version string
 func (v Version) String() string {
 	return v.original

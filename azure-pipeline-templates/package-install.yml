@@ -30,7 +30,15 @@ steps:
       fusermount3 -V
       fusermount -V
       echo "***********************Install AzCli*************************"
-      curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+      curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash || true
+      if ! command -v az >/dev/null 2>&1; then
+        echo "AzCli deb install failed (likely unsupported distro codename), falling back to pip install"
+        sudo apt-get install -y python3 python3-venv
+        sudo python3 -m venv --clear /opt/azure-cli
+        sudo /opt/azure-cli/bin/pip install --upgrade pip
+        sudo /opt/azure-cli/bin/pip install azure-cli
+        sudo ln -sf /opt/azure-cli/bin/az /usr/local/bin/az
+      fi
       az --version
     displayName: 'Libfuse Setup ${{ parameters.distro_version }} for ubuntu'
     condition: eq(variables['distro'], 'ubuntu')
@@ -100,6 +108,6 @@ steps:
 
   # MARINER PACKAGE INSTALLATION
   - script: |
-      sudo tdnf install gcc build-essential git fuse3 fuse3-devel python3 -y
+      sudo tdnf install gcc gcc-c++ make git fuse3 fuse3-devel python3 -y
     displayName: 'Libfuse Setup ${{ parameters.distro_version }} for mariner'
     condition: eq(variables['distro'], 'mariner')
