@@ -47,8 +47,8 @@ fi
 BLOBFUSE2_NAMESPACE="${BLOBFUSE2_NAMESPACE:-blobfuse2-dist-cache}"
 BLOBFUSE2_DEPLOYMENT="${BLOBFUSE2_DEPLOYMENT:-blobfuse2-dist-cache}"
 STO_ACC_ENDPOINT="${STO_ACC_ENDPOINT:-https://${STO_ACC_NAME}.blob.core.windows.net}"
-# The tachyon-cache operator names its discovery Service after the Cache CR.
-# deploy-tachyon.sh installs the cache chart without overriding the CR name, so
+# The DACS operator names its discovery Service after the Cache CR.
+# deploy-dacs.sh installs the cache chart without overriding the CR name, so
 # this is always the chart's default 'cache-sample'. It is intentionally not
 # configurable here: the name must stay in sync with the -cacheserver-statefulset
 # default in test/dcache_e2e/main_test.go. Set DCACHE_DISCOVERY_ENDPOINT instead
@@ -91,7 +91,7 @@ cleanup() {
 trap cleanup EXIT
 
 # --- Side-load image into every kind node ---------------------------------
-# See deploy-tachyon.sh for why we use `ctr images import` instead of `kind load`.
+# See deploy-dacs.sh for why we use `ctr images import` instead of `kind load`.
 
 if [[ "$BLOBFUSE2_IMAGE_LOAD" == "true" ]]; then
     if ! command -v kind >/dev/null 2>&1; then

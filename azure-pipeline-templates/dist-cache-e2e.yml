@@ -1,7 +1,7 @@
-# Template: distributed cache E2E on a local kind + Tachyon cluster.
+# Template: distributed cache E2E on a local kind + DACS cluster.
 #
-# Brings up a kind (Kubernetes IN Docker) cluster, deploys the Tachyon
-# cache-server helm chart (pulled directly from an OCI-enabled ACR), builds
+# Brings up a kind (Kubernetes IN Docker) cluster, deploys the DACS
+# Helm chart (pulled anonymously from MCR over OCI), builds
 # the in-cluster blobfuse2 container image from the code under test, deploys
 # it, and runs the dedicated dcache_e2e Go suite.
 #
@@ -22,8 +22,6 @@ parameters:
   - name: account_name
     type: string
   - name: account_key
-    type: string
-  - name: azure_service_connection
     type: string
 
 steps:
@@ -97,27 +95,12 @@ steps:
     timeoutInMinutes: 30
 
   # -------------------------------------------------------------------------
-  # 3. Deploy Tachyon cache-server via helm (chart pulled from ACR over OCI).
-  - task: AzureCLI@2
-    displayName: 'DistCache [${{ parameters.run_idstring }}]: Deploy Tachyon'
-    inputs:
-      azureSubscription: '${{ parameters.azure_service_connection }}'
-      scriptType: bash
-      scriptLocation: inlineScript
-      inlineScript: |
-        set -euo pipefail
-        az --version
-        az account show --query '{name:name, user:user}' -o json
-        $(WORK_DIR)/test/scripts/dcache/deploy-tachyon.sh
+  # 3. Deploy DACS via Helm using public MCR artifacts.
+  - script: |
+      set -euo pipefail
+      $(WORK_DIR)/test/scripts/dcache/deploy-dacs.sh
+    displayName: 'DistCache [${{ parameters.run_idstring }}]: Deploy DACS'
     timeoutInMinutes: 30
-    env:
-      CACHE_SERVER_IMAGE_REGISTRY: $(CACHE_SERVER_IMAGE_REGISTRY)
-      CACHE_SERVER_IMAGE_REPO: $(CACHE_SERVER_IMAGE_REPO)
-      CACHE_SERVER_IMAGE_TAG: $(CACHE_SERVER_IMAGE_TAG)
-      CACHE_CONTROLLER_IMAGE_REPO: $(CACHE_CONTROLLER_IMAGE_REPO)
-      CACHE_SERVER_CHART_REGISTRY: $(CACHE_SERVER_CHART_REGISTRY)
-      CACHE_SERVER_CHART_REPO: $(CACHE_SERVER_CHART_REPO)
-      CACHE_SERVER_CHART_VERSION: $(CACHE_SERVER_CHART_VERSION)
 
   # -------------------------------------------------------------------------
   # 4. Build the in-cluster blobfuse2 container image from the code under

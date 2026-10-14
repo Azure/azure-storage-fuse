@@ -1,7 +1,7 @@
 # distributed_cache nightly E2E helper scripts
 
 These scripts stand up a local [kind](https://kind.sigs.k8s.io/) cluster,
-deploy the [Tachyon](https://github.com/Azure/Tachyon) cache-server via its
+deploy the [DACS](https://github.com/Azure/dacs) cache-server via its
 Helm chart, and deploy blobfuse2 in-cluster for the dedicated `dcache_e2e`
 suite.
 
@@ -13,10 +13,10 @@ for iterative debugging.
 
 | File | Purpose |
 |---|---|
-| `config/nightly.config`     | Shared bash config: kind and Kubernetes versions, cluster shape, image coordinates, and namespace. Every value is overridable via env var. |
+| `config/nightly.config`     | Shared bash config: kind and Kubernetes versions, cluster shape, pinned DACS chart version, and namespace. Cluster settings are overridable via env var. |
 | `install-prereqs.sh`        | Idempotently install docker-ce, the configured kind version, kubectl, and helm. |
 | `setup-kind.sh`             | Create the kind cluster, label worker nodes for cache-server scheduling, and prepare `/var/lib/ssd/cacheserver` on every node container via `docker exec`. |
-| `deploy-tachyon.sh`         | Install the `cache-server-prereq` chart, then the `cache-server` chart, both pulled directly from an OCI-enabled ACR (`oci://...`); imports the image directly into each kind node's containerd store. |
+| `deploy-dacs.sh`            | Install the public DACS OCI chart from MCR; imports the cache-server and controller images directly into each kind node's containerd store. |
 | `deploy-blobfuse2.sh`       | Render `docker/k8s/blobfuse2-dist-cache-deployment.yaml.tmpl` with storage credentials + image ref, side-load the blobfuse2 image into every kind node, apply, and wait for rollout. |
 | `teardown-kind.sh`          | Delete the cluster. Best-effort (runs under `set +e`). |
 
@@ -26,26 +26,17 @@ for iterative debugging.
 # 1. Install prerequisites (one-time).
 ./test/scripts/dcache/install-prereqs.sh
 
-# 2. (Optional) override Tachyon image + chart coordinates. Defaults live in
-#    config/nightly.config (registry + repo pre-populated, tags left blank);
-#    deploy-tachyon.sh auto-resolves the newest image tag AND chart version
-#    via `az acr repository show-tags` when the respective env var is unset.
-#    Override any of these to pin.
-# export CACHE_SERVER_IMAGE_REGISTRY=<acr-name>.azurecr.io
-# export CACHE_SERVER_IMAGE_REPO=cache-server
-# export CACHE_SERVER_IMAGE_TAG=<image-tag>
-# export CACHE_SERVER_CHART_REGISTRY=<other-acr>.azurecr.io
-# export CACHE_SERVER_CHART_REPO=charts/cache-server
-# export CACHE_SERVER_PREREQ_CHART_REPO=charts/cache-server-prereq
-# export CACHE_SERVER_CHART_VERSION=<chart-version>
+# 2. (Optional) override cluster settings. Defaults live in
+#    config/nightly.config. DACS artifacts are pinned to the public release:
+#    chart 0.1.0-alpha.2, images v0.1.0-alpha.2.
+# export CLUSTER_NAME=blobfuse-dcache
+# export CACHE_SERVER_REPLICAS=3
 
-# ACR access: deploy-tachyon.sh calls `az acr login --expose-token` to mint
-# an in-cluster pull secret, so `az login` must already have succeeded with
-# an identity that has AcrPull on the registry.
+# DACS artifacts are public: no Azure login or registry pull secret is needed.
 
-# 3. Bring up the cluster and deploy Tachyon.
+# 3. Bring up the cluster and deploy DACS.
 ./test/scripts/dcache/setup-kind.sh
-./test/scripts/dcache/deploy-tachyon.sh
+./test/scripts/dcache/deploy-dacs.sh
 
 # 4. Build the in-cluster blobfuse2 image from the current tree, then deploy
 #    the pod driven by test/dcache_e2e/. deploy-blobfuse2.sh does NOT pull;
@@ -74,8 +65,14 @@ go test -v -tags=fuse3 ./test/dcache_e2e/...
   `v0.32.0`) and `KIND_NODE_IMAGE` (default `kindest/node:v1.36.1`). Update
   them together when upgrading Kubernetes. k8s 1.35+ requires cgroup v2 on
   the host.
-- `deploy-tachyon.sh` sets `cacheServer.scheduler.enabled=false` because
-  blobfuse2 E2E tests do not need the scheduler component.
+- `setup-kind.sh` labels workers with `dacs.azure.com/processing-unit=cpu`
+  and prepares the chart's hostPath `/var/lib/ssd/cacheserver`.
+  The NVMe/RAID `dacs-prereq` chart is not installed for kind.
+- `deploy-dacs.sh` installs `oci://mcr.microsoft.com/dacs/helmchart/dacs`
+  at version `0.1.0-alpha.2` with a three-server Cache resource named
+  `cache-sample`. The controller and cache-server images use
+  `mcr.microsoft.com/dacs/cache-controller:v0.1.0-alpha.2` and
+  `mcr.microsoft.com/dacs/cache-server:v0.1.0-alpha.2`.
 - Nothing here needs `MINIKUBE_HOME` or `/mnt/minikube`. kind stores node
   container state under Docker's data-root -- if `/` is tight on the agent,
   point Docker's data-root at `/mnt/docker` via `/etc/docker/daemon.json`.
