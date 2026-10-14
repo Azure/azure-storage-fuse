@@ -34,7 +34,7 @@
    SOFTWARE
 */
 
-// Package dcache_e2e tests dist_cache against a kind and Tachyon cluster.
+// Package dcache_e2e tests distributed_cache against a kind and Tachyon cluster.
 // Tests restart the blobfuse2 pod when they require a cold local cache.
 package dcache_e2e
 
@@ -114,7 +114,7 @@ func registerFlags() {
 			"cache-server: label selector used to enumerate cache-server pods")
 	}
 	if flag.Lookup("cacheserver-statefulset") == nil {
-		flag.StringVar(&testCfg.cacheserverStatefulSet, "cacheserver-statefulset", "cacheserver",
+		flag.StringVar(&testCfg.cacheserverStatefulSet, "cacheserver-statefulset", "cache-sample",
 			"cache-server: name of the Tachyon StatefulSet (waited on after a pod is deleted)")
 	}
 	if flag.Lookup("cacheserver-metrics-port") == nil {
@@ -147,6 +147,9 @@ func ensurePodMountArgs() error {
 	if testCfg.dockerBin == "" {
 		return fmt.Errorf("kind fault injection requires -docker-bin")
 	}
+	if testCfg.cacheserverStatefulSet == "" {
+		return fmt.Errorf("cache-server recovery requires -cacheserver-statefulset")
+	}
 	return nil
 }
 
@@ -170,24 +173,26 @@ func TestMain(m *testing.M) {
 	flag.Parse()
 
 	if err := resolveCfg(); err != nil {
-		fmt.Fprintf(os.Stderr, "dist_cache E2E setup failed: %v\n", err)
+		fmt.Fprintf(os.Stderr, "distributed_cache E2E setup failed: %v\n", err)
 		os.Exit(2)
 	}
 
-	fmt.Printf("dist_cache E2E config:\n"+
+	fmt.Printf("distributed_cache E2E config:\n"+
 		"  pod-namespace           = %s\n"+
 		"  pod-deployment          = %s\n"+
 		"  pod-mount-path          = %s\n"+
 		"  docker-bin              = %s\n"+
 		"  cacheserver-namespace   = %s\n"+
 		"  cacheserver-selector    = %s\n"+
+		"  cacheserver-statefulset = %s\n"+
 		"  cacheserver-metrics-port= %d\n"+
 		"  storage-account         = %s\n"+
 		"  storage-endpoint        = %s\n"+
 		"  storage-container       = %s\n",
 		testCfg.podNamespace, testCfg.podDeployment, testCfg.podMountPath,
 		testCfg.dockerBin,
-		testCfg.cacheserverNamespace, testCfg.cacheserverSelector, testCfg.cacheserverMetricsPort,
+		testCfg.cacheserverNamespace, testCfg.cacheserverSelector,
+		testCfg.cacheserverStatefulSet, testCfg.cacheserverMetricsPort,
 		testCfg.storageAccount, testCfg.storageEndpoint, testCfg.storageContainer)
 
 	os.Exit(m.Run())

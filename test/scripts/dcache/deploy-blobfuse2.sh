@@ -47,7 +47,14 @@ fi
 BLOBFUSE2_NAMESPACE="${BLOBFUSE2_NAMESPACE:-blobfuse2-dist-cache}"
 BLOBFUSE2_DEPLOYMENT="${BLOBFUSE2_DEPLOYMENT:-blobfuse2-dist-cache}"
 STO_ACC_ENDPOINT="${STO_ACC_ENDPOINT:-https://${STO_ACC_NAME}.blob.core.windows.net}"
-DCACHE_DISCOVERY_ENDPOINT="${DCACHE_DISCOVERY_ENDPOINT:-cacheserver-discovery.${NAMESPACE:-cache-server}.svc.cluster.local:${CACHE_SERVER_PORT:-9065}}"
+# The tachyon-cache operator names its discovery Service after the Cache CR.
+# deploy-tachyon.sh installs the cache chart without overriding the CR name, so
+# this is always the chart's default 'cache-sample'. It is intentionally not
+# configurable here: the name must stay in sync with the -cacheserver-statefulset
+# default in test/dcache_e2e/main_test.go. Set DCACHE_DISCOVERY_ENDPOINT instead
+# to point blobfuse2 at a different discovery Service.
+CACHE_CR_NAME="cache-sample"
+DCACHE_DISCOVERY_ENDPOINT="${DCACHE_DISCOVERY_ENDPOINT:-${CACHE_CR_NAME}-discovery.${NAMESPACE:-cache-server}.svc.cluster.local:${CACHE_SERVER_PORT:-9065}}"
 BLOBFUSE2_IMAGE_LOAD="${BLOBFUSE2_IMAGE_LOAD:-true}"
 MANIFEST_TEMPLATE="${MANIFEST_TEMPLATE:-$REPO_ROOT/docker/k8s/blobfuse2-dist-cache-deployment.yaml.tmpl}"
 
@@ -130,7 +137,71 @@ echo "Applying rendered manifest ..."
 kubectl apply -f "$RENDERED"
 
 echo "Waiting for rollout of deployment/$BLOBFUSE2_DEPLOYMENT in namespace $BLOBFUSE2_NAMESPACE ..."
-kubectl -n "$BLOBFUSE2_NAMESPACE" rollout status \
-    "deployment/$BLOBFUSE2_DEPLOYMENT" --timeout=5m
+if ! kubectl -n "$BLOBFUSE2_NAMESPACE" rollout status \
+        "deployment/$BLOBFUSE2_DEPLOYMENT" --timeout=5m; then
+    echo ""
+    echo "=========================================="
+    echo "Rollout FAILED - diagnostics"
+    echo "=========================================="
+
+    echo ""
+    echo "--- deployment ---"
+    kubectl -n "$BLOBFUSE2_NAMESPACE" get deploy "$BLOBFUSE2_DEPLOYMENT" -o wide || true
+    kubectl -n "$BLOBFUSE2_NAMESPACE" describe deploy "$BLOBFUSE2_DEPLOYMENT" || true
+
+    echo ""
+    echo "--- pods ---"
+    kubectl -n "$BLOBFUSE2_NAMESPACE" get pods -o wide --show-labels || true
+    for pod in $(kubectl -n "$BLOBFUSE2_NAMESPACE" get pods \
+                 -l "app=$BLOBFUSE2_DEPLOYMENT" \
+                 -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
+        echo ""
+        echo "--- describe pod/$pod ---"
+        kubectl -n "$BLOBFUSE2_NAMESPACE" describe pod "$pod" || true
+        echo ""
+        echo "--- logs pod/$pod (all containers, current) ---"
+        kubectl -n "$BLOBFUSE2_NAMESPACE" logs "$pod" --all-containers=true --tail=200 || true
+        echo ""
+        echo "--- logs pod/$pod (all containers, previous) ---"
+        kubectl -n "$BLOBFUSE2_NAMESPACE" logs "$pod" --all-containers=true --tail=200 --previous || true
+    done
+
+    echo ""
+    echo "--- events ---"
+    kubectl -n "$BLOBFUSE2_NAMESPACE" get events --sort-by=.lastTimestamp || true
+
+    echo ""
+    echo "--- discovery endpoint sanity (does the Service exist?) ---"
+    # DCACHE_DISCOVERY_ENDPOINT is host:port; strip port then FQDN's namespace piece.
+    ep_host="${DCACHE_DISCOVERY_ENDPOINT%:*}"
+    svc_name="${ep_host%%.*}"
+    svc_ns="${NAMESPACE:-cache-server}"
+    echo "expected Service: $svc_name in namespace $svc_ns"
+    kubectl -n "$svc_ns" get svc "$svc_name" -o wide || true
+    kubectl -n "$svc_ns" get endpoints "$svc_name" -o wide || true
+
+    echo ""
+    echo "--- cache-server headless Service + pods (peers blobfuse2 will dial) ---"
+    kubectl -n "$svc_ns" get svc,pods -o wide -l app=cacheserver || true
+
+    echo ""
+    echo "--- DNS probe from a debug pod in $BLOBFUSE2_NAMESPACE ---"
+    kubectl -n "$BLOBFUSE2_NAMESPACE" run dcache-dnsprobe \
+        --rm -i --restart=Never --image=busybox:1.36 --timeout=60s -- \
+        sh -c "
+          set +e
+          echo '# nslookup discovery endpoint'
+          nslookup $ep_host
+          echo '# nslookup headless service ${CACHE_CR_NAME}.$svc_ns.svc.cluster.local'
+          nslookup ${CACHE_CR_NAME}.$svc_ns.svc.cluster.local
+          for i in 0 1 2; do
+            host=${CACHE_CR_NAME}-\$i.${CACHE_CR_NAME}.$svc_ns.svc.cluster.local
+            echo \"# nslookup peer \$host\"
+            nslookup \$host
+          done
+        " || true
+
+    exit 1
+fi
 
 echo "blobfuse2 pod deployed."

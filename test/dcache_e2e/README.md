@@ -1,7 +1,7 @@
-# dist_cache E2E tests (`test/dcache_e2e/`)
+# distributed_cache E2E tests (`test/dcache_e2e/`)
 
-Read-path E2E tests focused on the `dist_cache` component. These tests assert
-`dist_cache` *behaviour* — L2 miss populates, L2 hit serves the same bytes
+Read-path E2E tests focused on the `distributed_cache` component. These tests assert
+`distributed_cache` *behaviour* — L2 miss populates, L2 hit serves the same bytes
 we wrote, and cache-server metrics move in the expected direction.
 
 ## Design
@@ -87,6 +87,9 @@ If pod discovery or the in-pod `curl` fails, the metric-based
 assertions are skipped and only data integrity is enforced. Override the
 pod-local Prometheus port with `-cacheserver-metrics-port` if your
 Tachyon Helm chart exposes it somewhere other than 9096.
+The node-failure test waits for StatefulSet `cache-sample` to recover by
+default; override it with `-cacheserver-statefulset` when using a different
+Cache resource name.
 
 ## Pipeline integration
 

@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # Install docker-ce, kind, kubectl and helm on the ADO agent, idempotently.
-# The dist_cache nightly E2E stage runs on kind (Kubernetes IN Docker).
+# The distributed_cache nightly E2E stage runs on kind (Kubernetes IN Docker).
 
 set -euo pipefail
 
@@ -67,6 +67,24 @@ if ! check_command docker || ! docker buildx version &>/dev/null; then
   echo "Docker CE installed successfully."
 else
   echo "Docker CE and Buildx are already installed."
+fi
+
+# Ensure the pipeline user can talk to the Docker daemon socket.
+# 1ES hosted agents run tasks as a non-root user and do not pre-configure
+# docker group membership, so kind/docker calls fail with:
+#   permission denied while trying to connect to the docker API at
+#   unix:///var/run/docker.sock
+# `usermod -aG docker` alone does not take effect in the current shell
+# (would need a re-login), so we also chmod the socket. This is safe on
+# 1ES hosted pools where each build gets a fresh, ephemeral VM.
+if ! getent group docker >/dev/null; then
+  sudo groupadd docker
+fi
+if ! id -nG "$USER" | tr ' ' '\n' | grep -qx docker; then
+  sudo usermod -aG docker "$USER"
+fi
+if [[ -S /var/run/docker.sock ]]; then
+  sudo chmod a+rw /var/run/docker.sock
 fi
 
 # Install the configured kind version.

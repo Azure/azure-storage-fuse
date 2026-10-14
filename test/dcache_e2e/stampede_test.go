@@ -41,16 +41,15 @@ import (
 	"fmt"
 	"os/exec"
 	"path"
-	"strconv"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
 )
 
-// Kept in sync with docker/k8s/blobfuse2-dist-cache-deployment.yaml.tmpl.
-const blobfuseLogPath = "/var/log/blobfuse2/blobfuse2-block-logs.txt"
-
 const azureGETLogGrep = 15 * time.Second
+
+var azureGETRetryPattern = regexp.MustCompile(`SDK\(Retry\) : =====> Try=[0-9]+ for GET`)
 
 // stampedeReplicas is the fleet size raced against a single Azure GET.
 const stampedeReplicas = 3
@@ -168,23 +167,15 @@ func countAzureGETsForBlob(pods []string, blobPath string) (map[string]int, erro
 }
 
 // Counts `SDK(Retry) : =====> Try=N for GET <url containing blobPath>` lines
-// in the pod's log for any retry number N.
+// in the pod's container log for any retry number N.
 func grepAzureGETsInPod(pod, blobPath string) (int, error) {
 	// The SDK URL-encodes '/' as '%2F' in blob names, so match the encoded form.
 	encodedBlobPath := strings.ReplaceAll(blobPath, "/", "%2F")
-	// `wc -l` always exits 0 with a single integer, avoiding the `grep -c`
-	// quirk of returning "0" with a non-zero exit code on empty input.
-	shell := fmt.Sprintf(
-		`grep -E %s %s 2>/dev/null | grep -F %s 2>/dev/null | wc -l`,
-		shellSingleQuote(`SDK\(Retry\) : =====> Try=[0-9]+ for GET`),
-		blobfuseLogPath,
-		shellSingleQuote(encodedBlobPath),
-	)
 
 	cmd := exec.Command(testCfg.kubectlBin,
 		"-n", testCfg.podNamespace,
-		"exec", pod,
-		"--", "sh", "-c", shell,
+		"logs", pod,
+		"--container=blobfuse2",
 	)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -192,30 +183,28 @@ func grepAzureGETsInPod(pod, blobPath string) (int, error) {
 
 	done := make(chan error, 1)
 	if err := cmd.Start(); err != nil {
-		return 0, fmt.Errorf("kubectl exec start on %s: %w", pod, err)
+		return 0, fmt.Errorf("kubectl logs start on %s: %w", pod, err)
 	}
 	go func() { done <- cmd.Wait() }()
 
 	select {
 	case err := <-done:
 		if err != nil {
-			return 0, fmt.Errorf("kubectl exec grep on %s: %w (stderr: %s)",
+			return 0, fmt.Errorf("kubectl logs on %s: %w (stderr: %s)",
 				pod, err, strings.TrimSpace(stderr.String()))
 		}
 	case <-time.After(azureGETLogGrep):
 		_ = cmd.Process.Kill()
-		return 0, fmt.Errorf("kubectl exec grep on %s: timed out after %s",
+		return 0, fmt.Errorf("kubectl logs on %s: timed out after %s",
 			pod, azureGETLogGrep)
 	}
 
-	line := strings.TrimSpace(stdout.String())
-	n, err := strconv.Atoi(line)
-	if err != nil {
-		return 0, fmt.Errorf("parse grep count %q on %s: %w", line, pod, err)
+	count := 0
+	for _, line := range strings.Split(stdout.String(), "\n") {
+		if azureGETRetryPattern.MatchString(line) &&
+			(strings.Contains(line, encodedBlobPath) || strings.Contains(line, blobPath)) {
+			count++
+		}
 	}
-	return n, nil
-}
-
-func shellSingleQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+	return count, nil
 }

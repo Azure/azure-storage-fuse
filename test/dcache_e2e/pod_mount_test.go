@@ -44,7 +44,6 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -61,7 +60,17 @@ type podMounter struct {
 	logSequence int
 }
 
-const blobfuseDiagnosticLogPath = "/var/log/blobfuse2/blobfuse2-block-logs.txt"
+type podList struct {
+	Items []struct {
+		Metadata struct {
+			Name              string  `json:"name"`
+			DeletionTimestamp *string `json:"deletionTimestamp"`
+		} `json:"metadata"`
+		Status struct {
+			Phase string `json:"phase"`
+		} `json:"status"`
+	} `json:"items"`
+}
 
 // podRolloutTimeout includes the deployment's probe delay.
 const podRolloutTimeout = 120 * time.Second
@@ -94,7 +103,7 @@ func newTestPodMounter(t *testing.T) *podMounter {
 	return m
 }
 
-// collectBlobfuseLogs copies each live pod's file log to the pipeline artifact
+// collectBlobfuseLogs copies each live pod's container log to the pipeline artifact
 // staging directory. Collection is best-effort and disabled outside CI unless
 // DCACHE_LOG_DIR is set explicitly.
 func (m *podMounter) collectBlobfuseLogs(t *testing.T, phase string) {
@@ -120,8 +129,9 @@ func (m *podMounter) collectBlobfuseLogs(t *testing.T, phase string) {
 	for _, pod := range pods {
 		out, err := exec.Command(testCfg.kubectlBin,
 			"-n", m.namespace,
-			"exec", pod,
-			"--", "cat", blobfuseDiagnosticLogPath,
+			"logs", pod,
+			"--container=blobfuse2",
+			"--timestamps=true",
 		).CombinedOutput()
 		fileName := fmt.Sprintf("%02d-%s-%s.log", m.logSequence, phase, pod)
 		filePath := filepath.Join(outDir, fileName)
@@ -132,6 +142,25 @@ func (m *podMounter) collectBlobfuseLogs(t *testing.T, phase string) {
 		if writeErr := os.WriteFile(filePath, out, 0644); writeErr != nil {
 			t.Logf("logs: write %s: %v", filePath, writeErr)
 		}
+	}
+
+	// `kubectl logs` shows what blobfuse2 did, never where it ran or why the
+	// kubelet acted on it. Node placement, restart counts and probe events are
+	// what separate a crashing mount from a pod stranded on a broken node, and
+	// this Deployment is about to be deleted, so capture them now.
+	describe, err := exec.Command(testCfg.kubectlBin,
+		"-n", m.namespace,
+		"describe", "pod",
+		"-l", m.selector,
+	).CombinedOutput()
+	describePath := filepath.Join(outDir,
+		fmt.Sprintf("%02d-%s-describe.txt", m.logSequence, phase))
+	if err != nil {
+		describePath += ".error"
+		t.Logf("logs: describe blobfuse2 pods before %s: %v", phase, err)
+	}
+	if writeErr := os.WriteFile(describePath, describe, 0644); writeErr != nil {
+		t.Logf("logs: write %s: %v", describePath, writeErr)
 	}
 }
 
@@ -358,31 +387,47 @@ func (m *podMounter) ListPods(t *testing.T) []string {
 
 // listLivePodsE returns live (non-terminating) Running pod names, or an error.
 func (m *podMounter) listLivePodsE() ([]string, error) {
+	pods, _, err := m.listPodStateE()
+	return pods, err
+}
+
+// listPodStateE returns live Running pod names and the number of active pods.
+// Active includes terminating pods that may still hold cache memory, but not
+// historical Succeeded or Failed pod objects.
+func (m *podMounter) listPodStateE() ([]string, int, error) {
 	out, err := exec.Command(testCfg.kubectlBin,
 		"-n", m.namespace,
 		"get", "pod",
 		"-l", m.selector,
-		"--field-selector=status.phase=Running",
-		"-o", `jsonpath={range .items[*]}{.metadata.name}{"\t"}{.metadata.deletionTimestamp}{"\n"}{end}`,
+		"-o", "json",
 	).CombinedOutput()
 	if err != nil {
-		return nil, fmt.Errorf("kubectl get pod: %w (out: %s)", err, strings.TrimSpace(string(out)))
+		return nil, 0, fmt.Errorf("kubectl get pod: %w (out: %s)", err, strings.TrimSpace(string(out)))
 	}
-	var pods []string
-	for _, line := range strings.Split(string(out), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
+	pods, total, err := parsePodState(out)
+	if err != nil {
+		return nil, 0, fmt.Errorf("decode pod list: %w", err)
+	}
+	return pods, total, nil
+}
+
+func parsePodState(data []byte) ([]string, int, error) {
+	var list podList
+	if err := json.Unmarshal(data, &list); err != nil {
+		return nil, 0, err
+	}
+	pods := make([]string, 0, len(list.Items))
+	active := 0
+	for _, pod := range list.Items {
+		terminal := pod.Status.Phase == "Succeeded" || pod.Status.Phase == "Failed"
+		if pod.Metadata.DeletionTimestamp != nil || !terminal {
+			active++
 		}
-		name, delTS, _ := strings.Cut(line, "\t")
-		if strings.TrimSpace(delTS) != "" {
-			continue
-		}
-		if name = strings.TrimSpace(name); name != "" {
-			pods = append(pods, name)
+		if pod.Metadata.DeletionTimestamp == nil && pod.Status.Phase == "Running" {
+			pods = append(pods, pod.Metadata.Name)
 		}
 	}
-	return pods, nil
+	return pods, active, nil
 }
 
 // ConcurrentReadFile fires one goroutine per pod, released together through
@@ -480,41 +525,39 @@ func (m *podMounter) WaitDeploymentReady(t *testing.T) {
 		out, err := exec.Command(testCfg.kubectlBin,
 			"-n", m.namespace,
 			"get", "deployment", m.deployment,
-			"-o", `jsonpath={.spec.replicas} {.status.readyReplicas} {.status.replicas}`,
+			"-o", "json",
 		).CombinedOutput()
 		if err != nil {
 			t.Fatalf("pod: wait ready: kubectl get deployment: %v (out: %s)",
 				err, strings.TrimSpace(string(out)))
 		}
-		fields := strings.Fields(strings.TrimSpace(string(out)))
-		spec := fieldOrZero(fields, 0)
-		ready := fieldOrZero(fields, 1)
-		total := fieldOrZero(fields, 2)
+		var deployment struct {
+			Spec struct {
+				Replicas int `json:"replicas"`
+			} `json:"spec"`
+			Status struct {
+				ReadyReplicas int `json:"readyReplicas"`
+				Replicas      int `json:"replicas"`
+			} `json:"status"`
+		}
+		if err := json.Unmarshal(out, &deployment); err != nil {
+			t.Fatalf("pod: wait ready: decode deployment status: %v", err)
+		}
+		spec := deployment.Spec.Replicas
+		ready := deployment.Status.ReadyReplicas
+		total := deployment.Status.Replicas
 
-		livePods, listErr := m.listLivePodsE()
+		livePods, activePods, listErr := m.listPodStateE()
 		live := len(livePods)
 
-		if listErr == nil && spec == ready && total == spec && live == spec {
+		if listErr == nil && spec == ready && total == spec && live == spec && activePods == spec {
 			t.Logf("pod: deployment ready at replicas=%d (live pods=%d)", spec, live)
 			return
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("pod: deployment not ready after %s (spec=%d ready=%d total=%d live=%d listErr=%v)",
-				scaleWaitTimeout, spec, ready, total, live, listErr)
+			t.Fatalf("pod: deployment not ready after %s (spec=%d ready=%d statusTotal=%d live=%d activePods=%d listErr=%v)",
+				scaleWaitTimeout, spec, ready, total, live, activePods, listErr)
 		}
 		time.Sleep(2 * time.Second)
 	}
-}
-
-// fieldOrZero returns fields[i] as int, or 0 when the field is missing/empty.
-// A missing readyReplicas serialises as an absent jsonpath field.
-func fieldOrZero(fields []string, i int) int {
-	if i >= len(fields) {
-		return 0
-	}
-	n, err := strconv.Atoi(fields[i])
-	if err != nil {
-		return 0
-	}
-	return n
 }

@@ -116,20 +116,26 @@ func TestNodeFailure_L2PartialLossFallsBackToBlob(t *testing.T) {
 	if victimNode == "" {
 		t.Fatalf("no cache-server worker can be failed without also killing blobfuse pod %s on %s", clientPod, clientNode)
 	}
-	t.Logf("node failure: killing kind node %s hosting %s; blobfuse pod %s remains on %s",
+	t.Logf("node failure: failing kind node %s hosting %s; blobfuse pod %s remains on %s",
 		victimNode, victimPod, clientPod, clientNode)
 
+	// Registered before the restore cleanup so it runs after it (cleanups are LIFO).
+	t.Cleanup(func() { logDiscoveryBackends(t, "after-node-restore") })
 	t.Cleanup(func() { restoreKindNode(t, victimNode) })
-	killKindNode(t, victimNode)
+	failKindNode(t, victimNode, victimPod)
 	if err := waitKindNodeReady(victimNode, false); err != nil {
 		t.Fatal(err)
 	}
 	t.Logf("node failure: %s is NotReady", victimNode)
+	logDiscoveryBackends(t, "after-node-fail")
 
-	// Drop the local cache so the next read must consult L2.
+	// Drop the local cache so the next read must consult L2. The replacement
+	// pod re-runs discovery as it mounts, so the endpoint state bracketing
+	// this call is what determined the new client's hash ring.
 	m.Remount(t)
+	logDiscoveryBackends(t, "after-remount")
 
-	// The victim pod's kubelet is gone; a kubectl-exec scrape against it
+	// The victim pod's kubelet is stopped; a kubectl-exec scrape against it
 	// hangs and invalidates the whole aggregate. Excluding it keeps the
 	// before/after delta on the same survivor set.
 	before, ok := scrapeCacheServerMetricsExcluding(t, victimPod)

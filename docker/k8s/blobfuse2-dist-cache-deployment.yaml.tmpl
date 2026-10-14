@@ -23,12 +23,13 @@ stringData:
 
     logging:
       level: log_debug
-      file-path: "/var/log/blobfuse2/blobfuse2-block-logs.txt"
+      # Write directly to the container stream captured by `kubectl logs`.
+      file-path: "/dev/stdout"
       type: base
 
     components:
       - libfuse
-      - dist_cache
+      - distributed_cache
       - attr_cache
       - azstorage
 
@@ -38,12 +39,12 @@ stringData:
       negative-entry-expiration-sec: 0
       ignore-open-flags: true
 
-    dist_cache:
+    distributed_cache:
       discovery-endpoint: "${DCACHE_DISCOVERY_ENDPOINT}"
-      # block_cache is auto-injected as dist_cache's L1. Tune it here;
+      # block_cache is auto-injected as distributed_cache's L1. Tune it here;
       # normalizeDistCacheConfig fans these onto block_cache.* at mount time.
       block-size-mb: 16
-      mem-size-mb: 4096
+      mem-size-mb: 1024
       prefetch: 32
       parallelism: 128
 
@@ -90,6 +91,15 @@ spec:
           image: ${BLOBFUSE2_IMAGE}
           # Image is side-loaded into kind nodes by deploy-blobfuse2.sh.
           imagePullPolicy: IfNotPresent
+          command:
+            - blobfuse2
+          args:
+            - mount
+            - /mnt/blobfuse_mnt
+            - --config-file=/usr/share/blobfuse2/config.yaml
+            - --ignore-open-flags
+            - --foreground=true
+            - --disable-version-check=true
           securityContext:
             # Required for SYS_ADMIN + /dev/fuse access.
             privileged: true
@@ -101,21 +111,12 @@ spec:
               mountPath: /usr/share/blobfuse2/config.yaml
               subPath: config.yaml
               readOnly: true
-            - name: blobfuse2-logs
-              mountPath: /var/log/blobfuse2
-          resources:
-            requests:
-              cpu: "500m"
-              memory: "1Gi"
-            limits:
-              cpu: "2"
-              memory: "4Gi"
           readinessProbe:
             exec:
               command:
                 - sh
                 - -c
-                - "mount | grep -q ' on /mnt/blobfuse_mnt '"
+                - mount | grep -q ' on /mnt/blobfuse_mnt ' && ls -d /mnt/blobfuse_mnt/. >/dev/null
             periodSeconds: 2
             timeoutSeconds: 2
             failureThreshold: 30
@@ -124,14 +125,19 @@ spec:
               command:
                 - sh
                 - -c
-                - "mount | grep -q ' on /mnt/blobfuse_mnt '"
+                - mount | grep -q ' on /mnt/blobfuse_mnt ' && ls -d /mnt/blobfuse_mnt/. >/dev/null
             initialDelaySeconds: 30
             periodSeconds: 30
             timeoutSeconds: 5
             failureThreshold: 3
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2"
+              memory: "4Gi"
       volumes:
         - name: blobfuse2-config
           secret:
             secretName: blobfuse2-config
-        - name: blobfuse2-logs
-          emptyDir: {}
