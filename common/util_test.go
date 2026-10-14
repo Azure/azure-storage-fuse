@@ -515,8 +515,6 @@ func (suite *utilTestSuite) TestIsValidObjectNameValid() {
 		"a..b",
 		"..file",
 		"file..",
-		`..\..\etc\crontab`,
-		`dir\file`,
 	}
 
 	for _, name := range validNames {
@@ -541,16 +539,24 @@ func (suite *utilTestSuite) TestIsValidObjectNameInvalid() {
 	}
 }
 
-// TestIsValidObjectNameBackslashTraversal verifies that backslashes remain
-// literal Linux filename characters instead of becoming path separators.
-func (suite *utilTestSuite) TestIsValidObjectNameBackslashTraversal() {
-	normalized := NormalizeObjectName(`..\..\etc\crontab`)
-	suite.assert.Equal(`..\..\etc\crontab`, normalized)
-	suite.assert.True(IsValidObjectName(normalized))
+// TestIsValidObjectNameBackslash verifies that names containing a backslash are rejected.
+// Azure Storage treats '\' as '/', so `dir\file` would be stored as dir/file and
+// `..\..\etc\crontab` would resolve outside the mount root.
+func (suite *utilTestSuite) TestIsValidObjectNameBackslash() {
+	invalidNames := []string{
+		`\`,
+		`dir\file`,
+		`PRQ\STUV`,
+		`..\..\etc\crontab`,
+		`..\container-b\file`,
+		`a/b\c`,
+		`\leading`,
+		`trailing\`,
+	}
 
-	local := NormalizeObjectName(`dir\file`)
-	suite.assert.Equal(`dir\file`, local)
-	suite.assert.True(IsValidObjectName(local))
+	for _, name := range invalidNames {
+		suite.assert.False(IsValidObjectName(name), "expected %q to be invalid", name)
+	}
 }
 
 func (suite *utilTestSuite) TestGetFuseMinorVersion() {

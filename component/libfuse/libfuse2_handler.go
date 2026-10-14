@@ -371,12 +371,16 @@ func (lf *Libfuse) fillStat(attr *internal.ObjAttr, stbuf *C.stat_t) {
 //export libfuse2_getattr
 func libfuse2_getattr(path *C.char, stbuf *C.stat_t) C.int {
 	name := trimFusePath(path)
-	name = common.NormalizeObjectName(name)
 	//log.Trace("Libfuse::libfuse2_getattr : %s", name)
 
 	// Return the default configuration for the root
 	if name == "" {
 		return C.get_root_properties(stbuf)
+	}
+
+	// A name containing a backslash can never exist because Azure Storage treats '\' as '/'.
+	if !common.IsValidObjectName(name) {
+		return -C.ENOENT
 	}
 
 	// TODO: How does this work if we trim the path?
@@ -411,7 +415,6 @@ func libfuse2_getattr(path *C.char, stbuf *C.stat_t) C.int {
 //export libfuse_statfs
 func libfuse_statfs(path *C.char, buf *C.statvfs_t) C.int {
 	name := trimFusePath(path)
-	name = common.NormalizeObjectName(name)
 	log.Trace("Libfuse::libfuse2_statfs : %s", name)
 
 	attr, populated, err := fuseFS.NextComponent().StatFs()
@@ -445,8 +448,12 @@ func libfuse_statfs(path *C.char, buf *C.statvfs_t) C.int {
 //export libfuse_mkdir
 func libfuse_mkdir(path *C.char, mode C.mode_t) C.int {
 	name := trimFusePath(path)
-	name = common.NormalizeObjectName(name)
 	log.Trace("Libfuse::libfuse2_mkdir : %s", name)
+
+	if !common.IsValidObjectName(name) {
+		log.Err("Libfuse::libfuse2_mkdir : invalid name %s", name)
+		return -C.EINVAL
+	}
 
 	err := fuseFS.NextComponent().CreateDir(internal.CreateDirOptions{Name: name, Mode: fs.FileMode(uint32(mode) & 0xffffffff)})
 	if err != nil {
@@ -473,7 +480,10 @@ func libfuse_mkdir(path *C.char, mode C.mode_t) C.int {
 //export libfuse_opendir
 func libfuse_opendir(path *C.char, fi *C.fuse_file_info_t) C.int {
 	name := trimFusePath(path)
-	name = common.NormalizeObjectName(name)
+	if !common.IsValidObjectName(name) {
+		log.Err("Libfuse::libfuse2_opendir : invalid name %s", name)
+		return -C.EINVAL
+	}
 	if name != "" {
 		name = name + "/"
 	}
@@ -587,7 +597,6 @@ func libfuse2_readdir(_ *C.char, buf unsafe.Pointer, filler C.fuse_fill_dir_t, o
 //export libfuse_rmdir
 func libfuse_rmdir(path *C.char) C.int {
 	name := trimFusePath(path)
-	name = common.NormalizeObjectName(name)
 	log.Trace("Libfuse::libfuse2_rmdir : %s", name)
 
 	// IsDirEmpty cannot report EINVAL, so reject an invalid name before calling it.
@@ -636,8 +645,12 @@ func newFileHandle(handle *handlemap.Handle) C.uint64_t {
 //export libfuse_create
 func libfuse_create(path *C.char, mode C.mode_t, fi *C.fuse_file_info_t) C.int {
 	name := trimFusePath(path)
-	name = common.NormalizeObjectName(name)
 	log.Trace("Libfuse::libfuse2_create : %s", name)
+
+	if !common.IsValidObjectName(name) {
+		log.Err("Libfuse::libfuse2_create : invalid name %s", name)
+		return -C.EINVAL
+	}
 
 	handle, err := fuseFS.NextComponent().CreateFile(internal.CreateFileOptions{Name: name, Mode: fs.FileMode(uint32(mode) & 0xffffffff)})
 	if err != nil {
@@ -671,8 +684,11 @@ func libfuse_create(path *C.char, mode C.mode_t, fi *C.fuse_file_info_t) C.int {
 //export libfuse_open
 func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 	name := trimFusePath(path)
-	name = common.NormalizeObjectName(name)
 	log.Trace("Libfuse::libfuse2_open : %s", name)
+	if !common.IsValidObjectName(name) {
+		log.Err("Libfuse::libfuse2_open : invalid name %s", name)
+		return -C.EINVAL
+	}
 	// TODO: Should this sit behind a user option? What if we change something to support these in the future?
 	// Mask out SYNC and DIRECT flags since write operation will fail
 	if fi.flags&C.O_SYNC != 0 || fi.flags&C.__O_DIRECT != 0 {
@@ -902,9 +918,13 @@ func libfuse_fsync(path *C.char, datasync C.int, fi *C.fuse_file_info_t) C.int {
 //export libfuse2_truncate
 func libfuse2_truncate(path *C.char, off C.off_t) C.int {
 	name := trimFusePath(path)
-	name = common.NormalizeObjectName(name)
 
 	log.Trace("Libfuse::libfuse2_truncate : %s size %d", name, off)
+
+	if !common.IsValidObjectName(name) {
+		log.Err("Libfuse::libfuse2_truncate : invalid name %s", name)
+		return -C.EINVAL
+	}
 
 	err := fuseFS.NextComponent().TruncateFile(
 		internal.TruncateFileOptions{
@@ -931,8 +951,12 @@ func libfuse2_truncate(path *C.char, off C.off_t) C.int {
 //export libfuse_unlink
 func libfuse_unlink(path *C.char) C.int {
 	name := trimFusePath(path)
-	name = common.NormalizeObjectName(name)
 	log.Trace("Libfuse::libfuse2_unlink : %s", name)
+
+	if !common.IsValidObjectName(name) {
+		log.Err("Libfuse::libfuse2_unlink : invalid name %s", name)
+		return -C.EINVAL
+	}
 
 	err := fuseFS.NextComponent().DeleteFile(internal.DeleteFileOptions{Name: name})
 	if err != nil {
@@ -959,9 +983,7 @@ func libfuse_unlink(path *C.char) C.int {
 //export libfuse2_rename
 func libfuse2_rename(src *C.char, dst *C.char) C.int {
 	srcPath := trimFusePath(src)
-	srcPath = common.NormalizeObjectName(srcPath)
 	dstPath := trimFusePath(dst)
-	dstPath = common.NormalizeObjectName(dstPath)
 	log.Trace("Libfuse::libfuse2_rename : %s -> %s", srcPath, dstPath)
 	// Note: When running other commands from the command line, a lot of them seemed to handle some cases like ENOENT themselves.
 	// Rename did not, so we manually check here.
@@ -972,8 +994,8 @@ func libfuse2_rename(src *C.char, dst *C.char) C.int {
 		return -C.ENOENT
 	}
 
-	// Reject absolute names and ".." segments that escape the mount root. A backslash is an
-	// ordinary filename character, so `..\..\etc\crontab` is a single valid name.
+	// Reject absolute names, ".." segments that escape the mount root, and names containing a
+	// backslash, which Azure Storage would store under a different path.
 	if !common.IsValidObjectName(srcPath) || !common.IsValidObjectName(dstPath) {
 		log.Err("Libfuse::libfuse2_rename : invalid path in rename src: [%s] dst: [%s]", srcPath, dstPath)
 		return -C.EINVAL
@@ -1046,10 +1068,14 @@ func libfuse2_rename(src *C.char, dst *C.char) C.int {
 //export libfuse_symlink
 func libfuse_symlink(target *C.char, link *C.char) C.int {
 	name := trimFusePath(link)
-	name = common.NormalizeObjectName(name)
 	targetPath := C.GoString(target)
-	targetPath = common.NormalizeObjectName(targetPath)
 	log.Trace("Libfuse::libfuse2_symlink : Received for %s -> %s", name, targetPath)
+
+	// The target is stored as link content, so only the link name is validated.
+	if !common.IsValidObjectName(name) {
+		log.Err("Libfuse::libfuse2_symlink : invalid name %s", name)
+		return -C.EINVAL
+	}
 
 	err := fuseFS.NextComponent().CreateLink(internal.CreateLinkOptions{Name: name, Target: targetPath})
 	if err != nil {
@@ -1068,11 +1094,15 @@ func libfuse_symlink(target *C.char, link *C.char) C.int {
 //export libfuse_readlink
 func libfuse_readlink(path *C.char, buf *C.char, size C.size_t) C.int {
 	name := trimFusePath(path)
-	name = common.NormalizeObjectName(name)
 	//log.Trace("Libfuse::libfuse_readlink : Received for %s", name)
 
 	// buf must have room for at least the terminating NUL
 	if size == 0 {
+		return -C.EINVAL
+	}
+
+	if !common.IsValidObjectName(name) {
+		log.Err("Libfuse::libfuse2_readlink : invalid name %s", name)
 		return -C.EINVAL
 	}
 
@@ -1125,8 +1155,12 @@ func libfuse_readlink(path *C.char, buf *C.char, size C.size_t) C.int {
 //export libfuse_fsyncdir
 func libfuse_fsyncdir(path *C.char, datasync C.int, fi *C.fuse_file_info_t) C.int {
 	name := trimFusePath(path)
-	name = common.NormalizeObjectName(name)
 	log.Trace("Libfuse::libfuse2_fsyncdir : %s", name)
+
+	if !common.IsValidObjectName(name) {
+		log.Err("Libfuse::libfuse2_fsyncdir : invalid name %s", name)
+		return -C.EINVAL
+	}
 
 	options := internal.SyncDirOptions{Name: name}
 	// If the datasync parameter is non-zero, then only the user data should be flushed, not the metadata.
@@ -1149,8 +1183,12 @@ func libfuse_fsyncdir(path *C.char, datasync C.int, fi *C.fuse_file_info_t) C.in
 //export libfuse2_chmod
 func libfuse2_chmod(path *C.char, mode C.mode_t) C.int {
 	name := trimFusePath(path)
-	name = common.NormalizeObjectName(name)
 	log.Trace("Libfuse::libfuse2_chmod : %s", name)
+
+	if !common.IsValidObjectName(name) {
+		log.Err("Libfuse::libfuse2_chmod : invalid name %s", name)
+		return -C.EINVAL
+	}
 
 	err := fuseFS.NextComponent().Chmod(
 		internal.ChmodOptions{
@@ -1178,7 +1216,6 @@ func libfuse2_chmod(path *C.char, mode C.mode_t) C.int {
 //export libfuse2_chown
 func libfuse2_chown(path *C.char, uid C.uid_t, gid C.gid_t) C.int {
 	name := trimFusePath(path)
-	name = common.NormalizeObjectName(name)
 	log.Trace("Libfuse::libfuse2_chown : %s", name)
 	// TODO: Implement
 	return 0
@@ -1189,7 +1226,6 @@ func libfuse2_chown(path *C.char, uid C.uid_t, gid C.gid_t) C.int {
 //export libfuse2_utimens
 func libfuse2_utimens(path *C.char, tv *C.timespec_t) C.int {
 	name := trimFusePath(path)
-	name = common.NormalizeObjectName(name)
 	log.Trace("Libfuse::libfuse2_utimens : %s", name)
 	// TODO: is the conversion from [2]timespec to *timespec ok?
 	// TODO: Implement

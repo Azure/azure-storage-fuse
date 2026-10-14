@@ -345,6 +345,14 @@ func (suite *libfuseTestSuite) TestRenameBackslashName() {
 	testRenameBackslashName(suite)
 }
 
+func (suite *libfuseTestSuite) TestBackslashNameRejected() {
+	testBackslashNameRejected(suite)
+}
+
+func (suite *libfuseTestSuite) TestSymlinkBackslashTarget() {
+	testSymlinkBackslashTarget(suite)
+}
+
 func (suite *libfuseTestSuite) TestSymlink() {
 	testSymlink(suite)
 }
