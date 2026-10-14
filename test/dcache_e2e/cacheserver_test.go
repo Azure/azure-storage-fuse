@@ -154,6 +154,25 @@ func getPodNode(namespace, pod string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
+// runningContainersOfPod returns the ids of pod's running containers as seen by
+// the container runtime on node. The pod labels are what kubelet stamps on every
+// container it creates, so this identifies the victim exactly rather than relying
+// on a node-wide container-name match.
+func runningContainersOfPod(t *testing.T, node string, pod string) []string {
+	t.Helper()
+	ids, err := exec.Command(testCfg.dockerBin, "exec", node,
+		"crictl", "ps",
+		"--label", "io.kubernetes.pod.name="+pod,
+		"--label", "io.kubernetes.pod.namespace="+testCfg.cacheserverNamespace,
+		"--state", "Running", "-q",
+	).CombinedOutput()
+	if err != nil {
+		t.Fatalf("kind: list running containers of pod %s on node %s: %v (out: %s)",
+			pod, node, err, strings.TrimSpace(string(ids)))
+	}
+	return strings.Fields(string(ids))
+}
+
 // failKindNode takes a worker out of service without destroying it.
 //
 // Stopping kubelet makes the node miss its heartbeat lease, so the node
@@ -166,12 +185,14 @@ func getPodNode(namespace, pod string) (string, error) {
 // The cache-server container is then stopped directly. kubelet is already down
 // and cannot restart it, so the server is genuinely absent rather than merely
 // unnamed: a client still holding a cached DNS answer is refused instead of
-// served, which keeps the blob-fallback assertion honest.
+// served, which keeps the blob-fallback assertion honest. The container is
+// resolved from the victim pod's own identity and its absence is fatal, so the
+// test can never pass without the fault having been injected.
 //
 // Nothing is destroyed. The node container, its network namespace, pod IPs,
 // iptables, kindnet routes and /dev/fuse all survive, so restoreKindNode is one
 // systemctl start rather than the cluster-wide rebuild a `docker kill` forces.
-func failKindNode(t *testing.T, node string) {
+func failKindNode(t *testing.T, node string, pod string) {
 	t.Helper()
 	label, err := exec.Command(testCfg.dockerBin, "inspect",
 		"--format", `{{index .Config.Labels "io.x-k8s.kind.cluster"}}`, node,
@@ -192,26 +213,31 @@ func failKindNode(t *testing.T, node string) {
 	}
 	t.Logf("kind: stopped kubelet on node %s", node)
 
-	ids, err := exec.Command(testCfg.dockerBin, "exec", node,
-		"crictl", "ps", "--name", "cacheserver", "--state", "Running", "-q",
-	).CombinedOutput()
-	if err != nil {
-		t.Fatalf("kind: list cache-server containers on node %s: %v (out: %s)",
-			node, err, strings.TrimSpace(string(ids)))
-	}
-	running := strings.Fields(string(ids))
+	// Resolved from the pod's own identity rather than a node-wide name match,
+	// so this cannot stop an unrelated container or silently match nothing.
+	// kubelet is already stopped, so the container cannot be restarted under us
+	// and the ids stay valid.
+	running := runningContainersOfPod(t, node, pod)
 	if len(running) == 0 {
-		t.Logf("kind: WARNING: no running cache-server container on node %s; "+
-			"the victim is unaddressable by name but nothing was stopped", node)
+		t.Fatalf("kind: no running container found for cache-server pod %s on node %s; "+
+			"cannot confirm the cache server was stopped, so the fault was not injected",
+			pod, node)
 	}
 	for _, id := range running {
 		out, err := exec.Command(testCfg.dockerBin, "exec", node,
 			"crictl", "stop", "--timeout", "5", id).CombinedOutput()
 		if err != nil {
-			t.Fatalf("kind: stop cache-server container %s on node %s: %v (out: %s)",
-				id, node, err, strings.TrimSpace(string(out)))
+			t.Fatalf("kind: stop container %s of cache-server pod %s on node %s: %v (out: %s)",
+				id, pod, node, err, strings.TrimSpace(string(out)))
 		}
-		t.Logf("kind: stopped cache-server container %s on node %s", id, node)
+		t.Logf("kind: stopped container %s of cache-server pod %s on node %s", id, pod, node)
+	}
+
+	// A zero exit from crictl stop is not proof of the post-state, so observe it.
+	// This also catches a container that came up between the two queries.
+	if left := runningContainersOfPod(t, node, pod); len(left) != 0 {
+		t.Fatalf("kind: cache-server pod %s on node %s still has running containers %v after stop; "+
+			"the fault was not injected", pod, node, left)
 	}
 }
 

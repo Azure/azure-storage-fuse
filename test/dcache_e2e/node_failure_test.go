@@ -122,7 +122,7 @@ func TestNodeFailure_L2PartialLossFallsBackToBlob(t *testing.T) {
 	// Registered before the restore cleanup so it runs after it (cleanups are LIFO).
 	t.Cleanup(func() { logDiscoveryBackends(t, "after-node-restore") })
 	t.Cleanup(func() { restoreKindNode(t, victimNode) })
-	failKindNode(t, victimNode)
+	failKindNode(t, victimNode, victimPod)
 	if err := waitKindNodeReady(victimNode, false); err != nil {
 		t.Fatal(err)
 	}
