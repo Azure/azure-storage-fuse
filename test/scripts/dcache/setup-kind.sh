@@ -1,20 +1,19 @@
 #!/bin/bash
 #
-# Bring up a local kind cluster shaped for Tachyon cache-server pods.
+# Bring up a local kind cluster shaped for DACS cache-server pods.
 #
 # Design notes:
 #   * We generate the kind Cluster config on the fly from KIND_NODES so the
 #     shape stays in one place (config/nightly.config).
 #   * After the cluster is up we:
-#       1. Label worker nodes with the two `processing-unit` labels that the
-#          vienna-tachyon Helm chart's nodeSelector expects.
+#       1. Label worker nodes with the DACS `processing-unit` label that the
+#          Helm chart's cache.nodeSelectorKey expects.
 #       2. Prepare /var/lib/ssd/cacheserver on every node container. The
-#          Helm chart's `useHostPath: true` value points here and the pod
+#          Helm chart's `cache.storage.hostPath` value points here and the pod
 #          fails to schedule if the directory does not already exist.
 #          `docker exec` is the kind equivalent of `minikube ssh -n <node>`.
 #
-# Keep the labeling + hostPath prep in sync with the assumptions in
-# vienna-tachyon/helm/cache-server/values.yaml.
+# Keep the labeling + hostPath prep in sync with the DACS chart's values.yaml.
 
 set -euo pipefail
 
@@ -83,13 +82,12 @@ kubectl wait --for=condition=Ready node --all --timeout=120s
 echo ""
 echo "Labeling worker nodes for cache-server scheduling..."
 for node in $(kubectl get nodes -l '!node-role.kubernetes.io/control-plane' -o jsonpath='{.items[*].metadata.name}'); do
-    kubectl label node "$node" singularity.azure.com/processing-unit=system --overwrite
-    kubectl label node "$node" nexus.azure.com/processing-unit=cpu --overwrite
-    echo "Labeled $node with system and cpu labels"
+    kubectl label node "$node" dacs.azure.com/processing-unit=cpu --overwrite
+    echo "Labeled $node with the DACS cpu label"
 done
 
 # --- Prepare /var/lib/ssd/cacheserver on every node -----------------------
-# The Helm chart mounts /var/lib/ssd/cacheserver as a hostPath (useHostPath=true).
+# The Helm chart mounts /var/lib/ssd/cacheserver via cache.storage.hostPath.
 # In kind, "the node" is a docker container named `<cluster>-control-plane`,
 # `<cluster>-worker`, `<cluster>-worker2`, ...
 echo ""
@@ -103,7 +101,7 @@ done
 # --- Debug dump -----------------------------------------------------------
 echo ""
 echo "Node labels:"
-kubectl get nodes --show-labels | grep -E "(nexus\.azure\.com/processing-unit|singularity\.azure\.com/processing-unit)" || true
+kubectl get nodes --show-labels | grep 'dacs\.azure\.com/processing-unit' || true
 
 echo ""
 echo "Cluster setup complete!"

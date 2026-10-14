@@ -641,7 +641,7 @@ func (dc *DistCache) resolveMemBudget() int64 {
 
 // schedulePopulate spawns an async upload for the given chunk. It never
 // blocks: if the buffer pool is exhausted, the populate is dropped and
-// logged. This is intentional — read latency must not depend on dcache
+// logged. This is intentional - read latency must not depend on dcache
 // cluster health. Memory is bounded by cap(dc.bufs) since every in-flight
 // upload holds exactly one buffer for its lifetime.
 //
