@@ -42,6 +42,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/bloberror"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/container"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake/datalakeerror"
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -53,6 +54,8 @@ import (
 type utilsTestSuite struct {
 	suite.Suite
 }
+
+const invalidStorageName = "invalid-\x01-name"
 
 func (s *utilsTestSuite) TestContentType() {
 	assert := assert.New(s.T())
@@ -495,6 +498,8 @@ func (s *utilsTestSuite) TestStoreDatalakeErrToErr() {
 		{name: "LeaseIDMissing", code: datalakeerror.LeaseIDMissing, expected: BlobIsUnderLease},
 		{name: "AuthorizationPermissionMismatch", code: datalakeerror.AuthorizationPermissionMismatch, expected: InvalidPermission},
 		{name: "PathIsTooDeep", code: datalakeerror.PathIsTooDeep, expected: ErrPathTooDeep},
+		{name: "InvalidURI", code: datalakeerror.InvalidURI, expected: ErrInvalidArgument},
+		{name: "InvalidQueryParameterValue", code: datalakeerror.InvalidQueryParameterValue, expected: ErrInvalidArgument},
 		{name: "Unknown", code: datalakeerror.StorageErrorCode("UnknownCode"), expected: ErrUnknown},
 	}
 
@@ -509,6 +514,15 @@ func (s *utilsTestSuite) TestStoreDatalakeErrToErr() {
 	// nil error returns ErrNoErr
 	result := storeDatalakeErrToErr(nil)
 	assert.Equal(uint16(ErrNoErr), result)
+}
+
+func (s *utilsTestSuite) TestStoreBlobInvalidArgumentErrToErr() {
+	assert := assert.New(s.T())
+
+	for _, code := range []bloberror.Code{bloberror.InvalidURI, bloberror.InvalidQueryParameterValue} {
+		respErr := &azcore.ResponseError{ErrorCode: string(code)}
+		assert.Equal(uint16(ErrInvalidArgument), storeBlobErrToErr(respErr))
+	}
 }
 
 func (s *utilsTestSuite) TestRemovePrefixPath() {

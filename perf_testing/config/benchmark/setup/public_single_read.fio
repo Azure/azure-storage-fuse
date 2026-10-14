@@ -1,0 +1,13 @@
+[global]
+ioengine=sync
+rw=write
+bs=10M
+size=320G
+filename=public-single-read.data
+direct=1
+fallocate=none
+create_on_open=1
+end_fsync=1
+group_reporting=1
+
+[prepare-public-single-read]

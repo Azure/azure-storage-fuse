@@ -34,10 +34,13 @@
 package log
 
 import (
+	"compress/gzip"
+	"io"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"runtime/debug"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -436,4 +439,118 @@ func (lts *LoggerTestSuite) TestSetupCrashOutputRegistersHookAndHandler() {
 
 func TestLoggerTestSuite(t *testing.T) {
 	suite.Run(t, new(LoggerTestSuite))
+}
+
+func newCompressionTestLogger(t *testing.T, compress bool) (*BaseLogger, string) {
+	t.Helper()
+
+	logFile := filepath.Join(t.TempDir(), "blobfuse2.log")
+	logger, err := newBaseLogger(LogFileConfig{
+		LogFile:      logFile,
+		LogSize:      1024 * 1024,
+		LogFileCount: 3,
+		LogLevel:     common.ELogLevel.LOG_DEBUG(),
+		LogCompress:  compress,
+	})
+	if err != nil {
+		t.Fatalf("newBaseLogger: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := logger.Destroy(); err != nil {
+			t.Errorf("Destroy: %v", err)
+		}
+	})
+
+	return logger, logFile
+}
+
+func readCompressedLog(t *testing.T, path string) string {
+	t.Helper()
+
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatalf("open compressed log: %v", err)
+	}
+	defer file.Close()
+
+	reader, err := gzip.NewReader(file)
+	if err != nil {
+		t.Fatalf("create gzip reader: %v", err)
+	}
+	defer reader.Close()
+
+	content, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("read compressed log: %v", err)
+	}
+	return string(content)
+}
+
+func TestBaseLoggerCompressesRotatedFile(t *testing.T) {
+	logger, logFile := newCompressionTestLogger(t, true)
+	logger.logger.Println("compressed-entry")
+
+	if err := logger.LogRotate(); err != nil {
+		t.Fatalf("LogRotate: %v", err)
+	}
+	logger.compressWg.Wait()
+
+	if content := readCompressedLog(t, logFile+".1.gz"); !strings.Contains(content, "compressed-entry") {
+		t.Fatalf("compressed log does not contain entry: %q", content)
+	}
+	if _, err := os.Stat(logFile + ".1"); !os.IsNotExist(err) {
+		t.Fatalf("plain rotated log still exists: %v", err)
+	}
+}
+
+func TestBaseLoggerPreservesOrderAcrossRapidCompressedRotations(t *testing.T) {
+	logger, logFile := newCompressionTestLogger(t, true)
+
+	logger.logger.Println("first-rotation")
+	if err := logger.LogRotate(); err != nil {
+		t.Fatalf("first LogRotate: %v", err)
+	}
+	logger.logger.Println("second-rotation")
+	if err := logger.LogRotate(); err != nil {
+		t.Fatalf("second LogRotate: %v", err)
+	}
+	logger.logger.Println("third-rotation")
+	if err := logger.LogRotate(); err != nil {
+		t.Fatalf("third LogRotate: %v", err)
+	}
+	logger.compressWg.Wait()
+
+	if content := readCompressedLog(t, logFile+".1.gz"); !strings.Contains(content, "third-rotation") {
+		t.Fatalf("newest compressed log has wrong content: %q", content)
+	}
+	if content := readCompressedLog(t, logFile+".2.gz"); !strings.Contains(content, "second-rotation") {
+		t.Fatalf("older compressed log has wrong content: %q", content)
+	}
+	if _, err := os.Stat(logFile + ".3.gz"); !os.IsNotExist(err) {
+		t.Fatalf("compressed log retention exceeded file count: %v", err)
+	}
+}
+
+func TestLogRotateDoesNotWaitForCompression(t *testing.T) {
+	logger, _ := newCompressionTestLogger(t, false)
+	logger.compressWg.Add(1)
+
+	rotationDone := make(chan error, 1)
+	go func() {
+		rotationDone <- logger.LogRotate()
+	}()
+
+	select {
+	case err := <-rotationDone:
+		logger.compressWg.Done()
+		if err != nil {
+			t.Fatalf("LogRotate: %v", err)
+		}
+	case <-time.After(time.Second):
+		logger.compressWg.Done()
+		if err := <-rotationDone; err != nil {
+			t.Fatalf("LogRotate after compression release: %v", err)
+		}
+		t.Fatal("LogRotate waited for in-flight compression")
+	}
 }

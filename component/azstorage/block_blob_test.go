@@ -807,6 +807,47 @@ func (s *blockBlobTestSuite) TestStreamDirSmallCountNoDuplicates() {
 	s.assert.Len(blobList, 5)
 }
 
+func TestIsSinglePageListing(t *testing.T) {
+	tests := []struct {
+		name       string
+		marker     *string
+		nextMarker *string
+		expected   bool
+	}{
+		{name: "nil markers", expected: true},
+		{name: "empty markers", marker: to.Ptr(""), nextMarker: to.Ptr(""), expected: true},
+		{name: "first page", nextMarker: to.Ptr("next")},
+		{name: "middle page", marker: to.Ptr("current"), nextMarker: to.Ptr("next")},
+		{name: "last page", marker: to.Ptr("current")},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, test.expected, isSinglePageListing(test.marker, test.nextMarker))
+		})
+	}
+}
+
+func TestProcessBlobPrefixesSinglePageSkipsMarkerLookups(t *testing.T) {
+	bb := &BlockBlob{}
+	blobPrefixes := make([]*container.BlobPrefix, 0, 201)
+	for index := 0; index < 200; index++ {
+		blobPrefixes = append(blobPrefixes, &container.BlobPrefix{Name: to.Ptr(fmt.Sprintf("virtual-%03d/", index))})
+	}
+	blobPrefixes = append(blobPrefixes, &container.BlobPrefix{Name: to.Ptr("directory-with-marker/")})
+
+	dirList := map[string]bool{"directory-with-marker/": true}
+	blobList := make([]*internal.ObjAttr, 0)
+	err := bb.processBlobPrefixes(blobPrefixes, dirList, &blobList, true)
+
+	assert.NoError(t, err)
+	assert.Len(t, blobList, 200)
+	for _, attr := range blobList {
+		assert.True(t, attr.IsDir())
+		assert.NotEqual(t, "directory-with-marker", attr.Path)
+	}
+}
+
 func (s *blockBlobTestSuite) TestRenameDir() {
 	defer s.cleanupTest()
 	// Test handling "dir" and "dir/"
@@ -1967,7 +2008,7 @@ func (s *blockBlobTestSuite) TestReadLink() {
 	err = s.az.CreateLink(internal.CreateLinkOptions{Name: name, Target: target})
 	s.assert.NoError(err)
 
-	read, err := s.az.ReadLink(internal.ReadLinkOptions{Name: name})
+	read, err := s.az.ReadLink(internal.ReadLinkOptions{Name: name, Size: int64(len(target))})
 	s.assert.NoError(err)
 	s.assert.Equal(target, read)
 }
@@ -1977,7 +2018,7 @@ func (s *blockBlobTestSuite) TestReadLinkError() {
 	// Setup
 	name := generateFileName()
 
-	_, err := s.az.ReadLink(internal.ReadLinkOptions{Name: name})
+	_, err := s.az.ReadLink(internal.ReadLinkOptions{Name: name, Size: 1})
 	s.assert.Error(err)
 	s.assert.EqualValues(syscall.ENOENT, err)
 }
@@ -2318,6 +2359,17 @@ func (s *blockBlobTestSuite) TestGetAttrError() {
 			s.assert.EqualValues(syscall.ENOENT, err)
 		})
 	}
+}
+
+func (s *blockBlobTestSuite) TestGetAttrInvalidName() {
+	defer s.cleanupTest()
+	blockBlob := s.az.storage.(*BlockBlob)
+
+	_, err := blockBlob.getAttrUsingRest(invalidStorageName)
+	s.assert.ErrorIs(err, syscall.EINVAL)
+
+	_, err = blockBlob.getAttrUsingList(invalidStorageName)
+	s.assert.ErrorIs(err, syscall.EINVAL)
 }
 
 // If support for chown or chmod are ever added to blob, add tests for error cases and modify the following tests.

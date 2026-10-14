@@ -38,10 +38,18 @@ package libfuse
 // #cgo CFLAGS: -DFUSE_USE_VERSION=39 -D_FILE_OFFSET_BITS=64
 // #cgo LDFLAGS: -lfuse3 -ldl
 // #include "libfuse_wrapper.h"
+//
+// // mark_native_write : set the dirty mark the way a native write does, without writing to a file
+// static void mark_native_write(file_handle_t* handle_obj)
+// {
+//     __atomic_store_n(&handle_obj->dirty, 1, __ATOMIC_RELEASE);
+// }
 import "C"
 import (
 	"errors"
 	"io/fs"
+	"os"
+	"runtime"
 	"strings"
 	"syscall"
 	"unsafe"
@@ -51,6 +59,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
+	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
@@ -104,6 +113,27 @@ func (suite *libfuseTestSuite) setupTestHelper(config string) {
 func (suite *libfuseTestSuite) cleanupTest() {
 	// suite.libfuse.Stop()
 	suite.mockCtrl.Finish()
+}
+
+func (suite *libfuseTestSuite) TestKernelListCacheKernelSupport() {
+	conn := C.fuse_conn_info_t{}
+	conn.proto_major = 7
+	conn.proto_minor = 27
+	support := C.kernel_supports_dir_cache(&conn)
+	switch support {
+	case -1:
+		suite.T().Skip("cache_readdir requires libfuse 3.5 or newer build headers")
+	case -2:
+		suite.T().Skip("kernel list caching requires a libfuse 3.16.1 or newer runtime")
+	}
+
+	suite.assert.Equal(C.int(0), support)
+	conn.proto_minor = 28
+	support = C.kernel_supports_dir_cache(&conn)
+	suite.assert.Equal(C.int(1), support)
+	conn.proto_major = 8
+	support = C.kernel_supports_dir_cache(&conn)
+	suite.assert.Equal(C.int(1), support)
 }
 
 func testMkDir(suite *libfuseTestSuite) {
@@ -174,6 +204,16 @@ func testRmDirError(suite *libfuseTestSuite) {
 	suite.assert.Equal(C.int(-C.EIO), err)
 }
 
+func testRmDirInvalidPath(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	path := C.CString("/../escape")
+	defer C.free(unsafe.Pointer(path))
+
+	// The mock fails the test if IsDirEmpty or DeleteDir is called.
+	err := libfuse_rmdir(path)
+	suite.assert.Equal(C.int(-C.EINVAL), err)
+}
+
 func testCreate(suite *libfuseTestSuite) {
 	defer suite.cleanupTest()
 	name := "path"
@@ -195,6 +235,243 @@ func testCreate(suite *libfuseTestSuite) {
 	suite.assert.NotEqual(stbuf.st_mtim.tv_sec, C.long(0))
 }
 
+// testCreateNativeIO : created files are served natively like opened files, unless file_cache offloads their IO
+func testCreateNativeIO(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	name := "path"
+	path := C.CString("/" + name)
+	defer C.free(unsafe.Pointer(path))
+	options := internal.CreateFileOptions{Name: name, Mode: fs.FileMode(0775)}
+
+	cached := handlemap.NewHandle(name)
+	cached.UnixFD = 42
+	cached.Flags.Set(handlemap.HandleFlagCached)
+	offloaded := handlemap.NewHandle(name) // file_cache with offload-io: true
+	offloaded.UnixFD = 43
+
+	for _, tc := range []struct {
+		handle *handlemap.Handle
+		fd     uint64
+	}{{cached, 42}, {offloaded, 0}} {
+		suite.mock.EXPECT().CreateFile(options).Return(tc.handle, nil)
+		info := &C.fuse_file_info_t{}
+		suite.assert.Equal(C.int(0), libfuse_create(path, 0775, info))
+
+		fobj := (*fileHandle)(unsafe.Pointer(uintptr(info.fh)))
+		suite.assert.Equal(tc.fd, fobj.fd)
+		C.release_native_file_object(info)
+		handlemap.Delete(tc.handle.ID)
+	}
+}
+
+// testNativeWriteDirty : a native write marks the handle dirty only if it changed the file
+func testNativeWriteDirty(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	path := C.CString("/path")
+	defer C.free(unsafe.Pointer(path))
+	data := C.CString("data")
+	defer C.free(unsafe.Pointer(data))
+
+	f, err := os.CreateTemp("", "native_write")
+	suite.assert.NoError(err)
+	defer os.Remove(f.Name())
+	defer f.Close()
+	readOnly, err := os.Open(f.Name())
+	suite.assert.NoError(err)
+	defer readOnly.Close()
+
+	for _, tc := range []struct {
+		file  *os.File
+		ret   C.int
+		dirty C.uint8_t
+	}{{readOnly, -C.EBADF, 0}, {f, 4, 1}} {
+		handle := handlemap.NewHandle("path")
+		fobj := C.allocate_native_file_object(C.uint64_t(tc.file.Fd()), C.uint64_t(uintptr(unsafe.Pointer(handle))))
+		info := &C.fuse_file_info_t{}
+		info.fh = C.uint64_t(uintptr(unsafe.Pointer(fobj)))
+
+		ret := C.native_write_file(path, data, 4, 0, info)
+		suite.assert.Equal(tc.ret, ret)
+		suite.assert.Equal(tc.dirty, fobj.dirty)
+		C.release_native_file_object(info)
+	}
+}
+
+// newNativeFileObject : a new handle, and the file info with the native file object that libfuse_open gives libfuse
+func newNativeFileObject(name string) (*handlemap.Handle, *C.file_handle_t, *C.fuse_file_info_t) {
+	handle := handlemap.NewHandle(name)
+	fi := &C.fuse_file_info_t{}
+	fi.fh = newFileHandle(handle)
+	return handle, (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh))), fi
+}
+
+// testFlushNativeDirty : flush uploads a file changed by native writes, retries a failed upload, and does not upload
+// the file again once it is uploaded
+func testFlushNativeDirty(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	path := C.CString("/path")
+	defer C.free(unsafe.Pointer(path))
+	handle, fobj, fi := newNativeFileObject("path")
+	defer C.release_native_file_object(fi)
+
+	options := internal.FlushFileOptions{Handle: handle}
+	upload := func(opts internal.FlushFileOptions) error {
+		opts.Handle.Flags.Clear(handlemap.HandleFlagDirty)
+		return nil
+	}
+
+	suite.assert.Equal(C.int(0), libfuse_flush(path, fi))
+
+	fobj.dirty = 1
+	suite.mock.EXPECT().FlushFile(options).Return(syscall.EIO)
+	suite.assert.Equal(C.int(-C.EIO), libfuse_flush(path, fi))
+
+	suite.mock.EXPECT().FlushFile(options).DoAndReturn(upload)
+	suite.assert.Equal(C.int(0), libfuse_flush(path, fi))
+
+	suite.assert.Equal(C.int(0), libfuse_flush(path, fi))
+}
+
+// testFlushNativeWriteDuringUpload : flush takes the dirty mark of native writes before uploading, so a native write
+// that lands while the upload is in progress stays pending for the next flush or release
+func testFlushNativeWriteDuringUpload(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	path := C.CString("/path")
+	defer C.free(unsafe.Pointer(path))
+	handle, fobj, fi := newNativeFileObject("path")
+
+	fobj.dirty = 1
+	suite.mock.EXPECT().FlushFile(internal.FlushFileOptions{Handle: handle}).DoAndReturn(
+		func(internal.FlushFileOptions) error {
+			suite.assert.True(handle.Dirty())
+			suite.assert.EqualValues(0, fobj.dirty)
+
+			// The upload succeeds while the application keeps writing through the native path
+			handle.Flags.Clear(handlemap.HandleFlagDirty)
+			fobj.dirty = 1
+			return nil
+		})
+	suite.assert.Equal(C.int(0), libfuse_flush(path, fi))
+	suite.assert.EqualValues(1, fobj.dirty)
+
+	suite.mock.EXPECT().ReleaseFile(internal.ReleaseFileOptions{Handle: handle}).DoAndReturn(
+		func(internal.ReleaseFileOptions) error {
+			suite.assert.True(handle.Dirty())
+			return nil
+		})
+	suite.assert.Equal(C.int(0), libfuse_release(path, fi))
+}
+
+// testFsyncNativeWrite : fsync takes the dirty mark of native writes, so that sync-to-flush uploads them, also for a
+// created file whose handle is clean after an earlier flush. Closing the file afterwards does not upload it again.
+func testFsyncNativeWrite(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	name := "path"
+	path := C.CString("/" + name)
+	defer C.free(unsafe.Pointer(path))
+	data := C.CString("data")
+	defer C.free(unsafe.Pointer(data))
+
+	f, err := os.CreateTemp("", "native_fsync")
+	suite.Require().NoError(err)
+	defer os.Remove(f.Name())
+	defer f.Close()
+
+	// file_cache holds the created file locally, so it is written natively
+	handle := handlemap.NewHandle(name)
+	handle.UnixFD = uint64(f.Fd())
+	handle.Flags.Set(handlemap.HandleFlagCached)
+	suite.mock.EXPECT().CreateFile(internal.CreateFileOptions{Name: name, Mode: fs.FileMode(0775)}).Return(handle, nil)
+	fi := &C.fuse_file_info_t{}
+	suite.Require().Equal(C.int(0), libfuse_create(path, 0775, fi))
+	written := C.native_write_file(path, data, 4, 0, fi)
+	suite.Require().Equal(C.int(4), written)
+
+	suite.mock.EXPECT().SyncFile(internal.SyncFileOptions{Handle: handle}).DoAndReturn(
+		func(options internal.SyncFileOptions) error {
+			suite.assert.True(options.Handle.Dirty(), "fsync must see the native write")
+			options.Handle.Flags.Clear(handlemap.HandleFlagDirty) // uploaded, as with sync-to-flush
+			return nil
+		})
+	suite.assert.Equal(C.int(0), libfuse_fsync(path, C.int(0), fi))
+
+	// Nothing changed since the sync, so closing the file uploads nothing
+	suite.assert.Equal(C.int(0), libfuse_flush(path, fi))
+	suite.mock.EXPECT().ReleaseFile(internal.ReleaseFileOptions{Handle: handle}).DoAndReturn(
+		func(options internal.ReleaseFileOptions) error {
+			suite.assert.False(options.Handle.Dirty())
+			return nil
+		})
+	suite.assert.Equal(C.int(0), libfuse_release(path, fi))
+}
+
+// testNativeDirtyHandOver : when two flushes of a handle take a pending native dirty mark at the same moment, neither
+// may see the handle clean, or it would return before the upload. The mark is in transit only for an instant, so the
+// two flushes are started together many times.
+func testNativeDirtyHandOver(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	handle, fobj, fi := newNativeFileObject("path")
+	defer C.release_native_file_object(fi)
+
+	for round := 0; round < 200000; round++ {
+		handle.Flags.Clear(handlemap.HandleFlagDirty)
+		fobj.dirty = 1 // a native write is pending
+		start, sawDirty := make(chan struct{}), make(chan bool, 2)
+		for flush := 0; flush < 2; flush++ {
+			go func() {
+				<-start
+				markNativeWritesDirty(fobj, handle)
+				sawDirty <- handle.Dirty()
+			}()
+		}
+		close(start)
+		if first, second := <-sawDirty, <-sawDirty; !first || !second {
+			suite.FailNowf("a flush saw the handle clean while a native write was pending", "round %d", round)
+		}
+	}
+}
+
+// testNativeWriteDuringHandOver : two flushes of a handle carry its native dirty mark over at the same moment, while
+// the upload that one of them starts hands the handle's dirty state over to Flushing, as FlushFile does, and the
+// application writes again. That write must stay marked, in the native handle or the handle, or no later flush or
+// close would upload it. The interleavings that lose it last only an instant, so the round is repeated many times.
+func testNativeWriteDuringHandOver(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	handle, fobj, fi := newNativeFileObject("path")
+	defer C.release_native_file_object(fi)
+
+	for round := 0; round < 200000; round++ {
+		handle.Flags.Clear(handlemap.HandleFlagDirty)
+		handle.Flags.Clear(handlemap.HandleFlagFlushing)
+		fobj.dirty = 1 // a native write is pending
+		start, done := make(chan struct{}), make(chan struct{}, 3)
+		for flush := 0; flush < 2; flush++ {
+			go func() {
+				<-start
+				markNativeWritesDirty(fobj, handle)
+				done <- struct{}{}
+			}()
+		}
+		go func() {
+			<-start
+			for !handle.Flags.IsSet(handlemap.HandleFlagDirty) {
+				runtime.Gosched() // until a flush has carried the pending write over
+			}
+			handle.Flags.Set(handlemap.HandleFlagFlushing) // that flush uploads the file...
+			handle.Flags.Clear(handlemap.HandleFlagDirty)
+			C.mark_native_write(fobj) // ...while the application writes again
+			done <- struct{}{}
+		}()
+		close(start)
+		for i := 0; i < 3; i++ {
+			<-done
+		}
+		if fobj.dirty == 0 && !handle.Flags.IsSet(handlemap.HandleFlagDirty) {
+			suite.FailNowf("the write made during the upload is no longer marked", "round %d", round)
+		}
+	}
+}
+
 func testCreateError(suite *libfuseTestSuite) {
 	defer suite.cleanupTest()
 	name := "path"
@@ -207,6 +484,75 @@ func testCreateError(suite *libfuseTestSuite) {
 
 	err := libfuse_create(path, 0775, info)
 	suite.assert.Equal(C.int(-C.EIO), err)
+}
+
+// enableLibfuseStats turns on stats collection for the test and returns the libfuse collector.
+func enableLibfuseStats(suite *libfuseTestSuite) *stats_manager.StatsCollector {
+	stats_manager.EnableForTest(suite.T())
+	prev := libfuseStatsCollector
+	libfuseStatsCollector = stats_manager.NewStatsCollector(suite.libfuse.Name())
+	suite.T().Cleanup(func() { libfuseStatsCollector = prev })
+	return libfuseStatsCollector
+}
+
+func testCreateUpdatesStats(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	collector := enableLibfuseStats(suite)
+	name := "path"
+	path := C.CString("/" + name)
+	defer C.free(unsafe.Pointer(path))
+	mode := fs.FileMode(0775)
+	info := &C.fuse_file_info_t{}
+	options := internal.CreateFileOptions{Name: name, Mode: mode}
+	suite.mock.EXPECT().CreateFile(options).Return(&handlemap.Handle{}, nil)
+
+	err := libfuse_create(path, 0775, info)
+	suite.assert.Equal(C.int(0), err)
+
+	stats := collector.StopAndGetStats()
+	suite.assert.Equal(int64(1), stats[createFile])
+	suite.assert.Equal(int64(1), stats[openHandles])
+}
+
+func testCreateErrorDoesNotUpdateStats(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	collector := enableLibfuseStats(suite)
+	name := "path"
+	path := C.CString("/" + name)
+	defer C.free(unsafe.Pointer(path))
+	mode := fs.FileMode(0775)
+	info := &C.fuse_file_info_t{}
+	options := internal.CreateFileOptions{Name: name, Mode: mode}
+	suite.mock.EXPECT().CreateFile(options).Return(&handlemap.Handle{}, errors.New("failed to create file"))
+
+	err := libfuse_create(path, 0775, info)
+	suite.assert.Equal(C.int(-C.EIO), err)
+
+	stats := collector.StopAndGetStats()
+	suite.assert.NotContains(stats, createFile)
+	suite.assert.NotContains(stats, openHandles)
+}
+
+func testCreateInvalidArgument(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	path := C.CString("/path")
+	defer C.free(unsafe.Pointer(path))
+	suite.mock.EXPECT().CreateFile(internal.CreateFileOptions{Name: "path", Mode: 0600}).Return(nil, errors.Join(syscall.EINVAL, errors.New("DFS rejected permissions")))
+
+	err := libfuse_create(path, 0600, &C.fuse_file_info_t{})
+	suite.assert.Equal(C.int(-C.EINVAL), err)
+}
+
+func testGetAttrInvalidArgument(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+
+	name := "service-rejected-name"
+	path := C.CString("/" + name)
+	defer C.free(unsafe.Pointer(path))
+
+	suite.mock.EXPECT().GetAttr(internal.GetAttrOptions{Name: name}).Return(nil, syscall.EINVAL)
+	result := libfuse_getattr(path, &C.stat_t{}, &C.fuse_file_info_t{})
+	suite.assert.Equal(C.int(-C.EINVAL), result)
 }
 
 func testOpen(suite *libfuseTestSuite) {
@@ -400,7 +746,7 @@ func testFTruncate(suite *libfuseTestSuite) {
 	size := int64(1024)
 
 	handle := handlemap.NewHandle(name)
-	ret_val := C.allocate_native_file_object(C.uint64_t(handle.UnixFD), C.uint64_t(uintptr(unsafe.Pointer(handle))), C.uint64_t(handle.Size))
+	ret_val := C.allocate_native_file_object(C.uint64_t(handle.UnixFD), C.uint64_t(uintptr(unsafe.Pointer(handle))))
 	fi := C.fuse_file_info_t{}
 	fi.fh = C.uint64_t(uintptr(unsafe.Pointer(ret_val)))
 
@@ -419,7 +765,7 @@ func testFTruncateError(suite *libfuseTestSuite) {
 	size := int64(1024)
 
 	handle := handlemap.NewHandle(name)
-	ret_val := C.allocate_native_file_object(C.uint64_t(handle.UnixFD), C.uint64_t(uintptr(unsafe.Pointer(handle))), C.uint64_t(handle.Size))
+	ret_val := C.allocate_native_file_object(C.uint64_t(handle.UnixFD), C.uint64_t(uintptr(unsafe.Pointer(handle))))
 	fi := C.fuse_file_info_t{}
 	fi.fh = C.uint64_t(uintptr(unsafe.Pointer(ret_val)))
 
@@ -488,6 +834,37 @@ func testRenameDirEnametoolong(suite *libfuseTestSuite) {
 	suite.assert.Equal(C.int(-C.ENAMETOOLONG), err)
 }
 
+func testRenameInvalidPath(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	valid := C.CString("/file")
+	invalid := C.CString("/../escape")
+	defer C.free(unsafe.Pointer(valid))
+	defer C.free(unsafe.Pointer(invalid))
+
+	// The mock fails the test if any component method is called.
+	suite.assert.Equal(C.int(-C.EINVAL), libfuse_rename(invalid, valid, 0))
+	suite.assert.Equal(C.int(-C.EINVAL), libfuse_rename(valid, invalid, 0))
+}
+
+func testRenameBackslashName(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	src := "src"
+	dst := `..\..\etc\crontab`
+	srcPath := C.CString("/" + src)
+	dstPath := C.CString("/" + dst)
+	defer C.free(unsafe.Pointer(srcPath))
+	defer C.free(unsafe.Pointer(dstPath))
+
+	// The backslash name must reach the next component unchanged, not as "../../etc/crontab".
+	srcAttr := &internal.ObjAttr{Name: src}
+	suite.mock.EXPECT().GetAttr(internal.GetAttrOptions{Name: src}).Return(srcAttr, nil)
+	suite.mock.EXPECT().GetAttr(internal.GetAttrOptions{Name: dst}).Return(nil, syscall.ENOENT)
+	suite.mock.EXPECT().RenameFile(internal.RenameFileOptions{Src: src, Dst: dst, SrcAttr: srcAttr}).Return(nil)
+
+	err := libfuse_rename(srcPath, dstPath, 0)
+	suite.assert.Equal(C.int(0), err)
+}
+
 func testSymlink(suite *libfuseTestSuite) {
 	defer suite.cleanupTest()
 	name := "path"
@@ -523,17 +900,56 @@ func testReadLink(suite *libfuseTestSuite) {
 	name := "path"
 	path := C.CString("/" + name)
 	defer C.free(unsafe.Pointer(path))
-	options := internal.ReadLinkOptions{Name: name}
-	suite.mock.EXPECT().ReadLink(options).Return("target", nil)
-	attr := &internal.ObjAttr{}
+	target := "target"
 	getAttrOpt := internal.GetAttrOptions{Name: name}
-	suite.mock.EXPECT().GetAttr(getAttrOpt).Return(attr, nil)
+	suite.mock.EXPECT().GetAttr(getAttrOpt).Return(&internal.ObjAttr{Size: int64(len(target))}, nil)
+	options := internal.ReadLinkOptions{Name: name, Size: int64(len(target))}
+	suite.mock.EXPECT().ReadLink(options).Return(target, nil)
 
-	// https://stackoverflow.com/questions/41953619/how-to-initialise-empty-c-cstring-in-cgo
-	buf := C.CString("")
+	buf := (*C.char)(C.malloc(7))
+	defer C.free(unsafe.Pointer(buf))
 	err := libfuse_readlink(path, buf, 7)
 	suite.assert.Equal(C.int(0), err)
-	suite.assert.Equal("target", C.GoString(buf))
+	got := C.GoString(buf)
+	suite.assert.Equal(target, got)
+}
+
+func testReadLinkEmpty(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	name := "path"
+	path := C.CString("/" + name)
+	defer C.free(unsafe.Pointer(path))
+	getAttrOpt := internal.GetAttrOptions{Name: name}
+	suite.mock.EXPECT().GetAttr(getAttrOpt).Return(&internal.ObjAttr{}, nil)
+	options := internal.ReadLinkOptions{Name: name}
+	suite.mock.EXPECT().ReadLink(options).Return("", nil)
+
+	buf := C.CString("x")
+	defer C.free(unsafe.Pointer(buf))
+	err := libfuse_readlink(path, buf, 2)
+	suite.assert.Equal(C.int(0), err)
+	suite.assert.Empty(C.GoString(buf))
+}
+
+func testReadLinkMaxTarget(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	name := "path"
+	path := C.CString("/" + name)
+	defer C.free(unsafe.Pointer(path))
+	target := strings.Repeat("A", common.MaxSymlinkTargetLen)
+	getAttrOpt := internal.GetAttrOptions{Name: name}
+	suite.mock.EXPECT().GetAttr(getAttrOpt).Return(&internal.ObjAttr{Size: int64(len(target))}, nil)
+	options := internal.ReadLinkOptions{Name: name, Size: int64(len(target))}
+	suite.mock.EXPECT().ReadLink(options).Return(target, nil)
+
+	// libfuse passes a PATH_MAX + 1 byte buffer
+	const bufSize = 4097
+	buf := (*C.char)(C.malloc(bufSize))
+	defer C.free(unsafe.Pointer(buf))
+	err := libfuse_readlink(path, buf, bufSize)
+	suite.assert.Equal(C.int(0), err)
+	got := C.GoString(buf)
+	suite.assert.Equal(target, got)
 }
 
 func testReadLinkNotExists(suite *libfuseTestSuite) {
@@ -541,16 +957,41 @@ func testReadLinkNotExists(suite *libfuseTestSuite) {
 	name := "path"
 	path := C.CString("/" + name)
 	defer C.free(unsafe.Pointer(path))
-	options := internal.ReadLinkOptions{Name: name}
-	suite.mock.EXPECT().ReadLink(options).Return("", syscall.ENOENT)
-	attr := &internal.ObjAttr{}
 	getAttrOpt := internal.GetAttrOptions{Name: name}
-	suite.mock.EXPECT().GetAttr(getAttrOpt).Return(attr, nil)
+	suite.mock.EXPECT().GetAttr(getAttrOpt).Return(nil, syscall.ENOENT)
 
 	buf := C.CString("")
-	err := libfuse_readlink(path, buf, 7)
+	defer C.free(unsafe.Pointer(buf))
+	err := libfuse_readlink(path, buf, 1)
 	suite.assert.Equal(C.int(-C.ENOENT), err)
-	suite.assert.NotEqual("target", C.GoString(buf))
+}
+
+func testReadLinkGetAttrError(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	name := "path"
+	path := C.CString("/" + name)
+	defer C.free(unsafe.Pointer(path))
+	getAttrOpt := internal.GetAttrOptions{Name: name}
+	suite.mock.EXPECT().GetAttr(getAttrOpt).Return(nil, errors.New("failed to get attr"))
+
+	buf := C.CString("")
+	defer C.free(unsafe.Pointer(buf))
+	err := libfuse_readlink(path, buf, 1)
+	suite.assert.Equal(C.int(-C.EIO), err)
+}
+
+func testReadLinkNilAttr(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	name := "path"
+	path := C.CString("/" + name)
+	defer C.free(unsafe.Pointer(path))
+	getAttrOpt := internal.GetAttrOptions{Name: name}
+	suite.mock.EXPECT().GetAttr(getAttrOpt).Return(nil, nil)
+
+	buf := C.CString("")
+	defer C.free(unsafe.Pointer(buf))
+	err := libfuse_readlink(path, buf, 1)
+	suite.assert.Equal(C.int(-C.EIO), err)
 }
 
 func testReadLinkError(suite *libfuseTestSuite) {
@@ -558,15 +999,88 @@ func testReadLinkError(suite *libfuseTestSuite) {
 	name := "path"
 	path := C.CString("/" + name)
 	defer C.free(unsafe.Pointer(path))
-	options := internal.ReadLinkOptions{Name: name}
-	suite.mock.EXPECT().ReadLink(options).Return("", errors.New("failed to read link"))
 	getAttrOpt := internal.GetAttrOptions{Name: name}
-	suite.mock.EXPECT().GetAttr(getAttrOpt).Return(nil, nil)
+	suite.mock.EXPECT().GetAttr(getAttrOpt).Return(&internal.ObjAttr{Size: 6}, nil)
+	options := internal.ReadLinkOptions{Name: name, Size: 6}
+	suite.mock.EXPECT().ReadLink(options).Return("", errors.New("failed to read link"))
 
-	buf := C.CString("")
+	buf := (*C.char)(C.malloc(7))
+	defer C.free(unsafe.Pointer(buf))
 	err := libfuse_readlink(path, buf, 7)
 	suite.assert.Equal(C.int(-C.EIO), err)
-	suite.assert.NotEqual("target", C.GoString(buf))
+}
+
+// A target longer than PATH_MAX - 1 is rejected before anything is downloaded.
+func testReadLinkTargetTooLong(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	name := "path"
+	path := C.CString("/" + name)
+	defer C.free(unsafe.Pointer(path))
+	getAttrOpt := internal.GetAttrOptions{Name: name}
+	suite.mock.EXPECT().GetAttr(getAttrOpt).Return(&internal.ObjAttr{Size: 16 << 20}, nil)
+
+	const bufSize = 4097
+	buf := (*C.char)(C.malloc(bufSize))
+	defer C.free(unsafe.Pointer(buf))
+	err := libfuse_readlink(path, buf, bufSize)
+	suite.assert.Equal(C.int(-C.ENAMETOOLONG), err)
+}
+
+// A target that does not fit in a buffer smaller than PATH_MAX is rejected as well.
+func testReadLinkTargetExceedsBuffer(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	name := "path"
+	path := C.CString("/" + name)
+	defer C.free(unsafe.Pointer(path))
+	getAttrOpt := internal.GetAttrOptions{Name: name}
+	const bufSize = 16
+	suite.mock.EXPECT().GetAttr(getAttrOpt).Return(&internal.ObjAttr{Size: bufSize}, nil)
+
+	buf := (*C.char)(C.malloc(bufSize))
+	defer C.free(unsafe.Pointer(buf))
+	err := libfuse_readlink(path, buf, bufSize)
+	suite.assert.Equal(C.int(-C.ENAMETOOLONG), err)
+}
+
+// If the next component returns more than it was asked for, nothing may be written past the buffer.
+func testReadLinkTargetLongerThanAttr(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	name := "path"
+	path := C.CString("/" + name)
+	defer C.free(unsafe.Pointer(path))
+
+	const bufSize = 16
+	const allocSize = 64
+	target := strings.Repeat("A", 32)
+
+	getAttrOpt := internal.GetAttrOptions{Name: name}
+	suite.mock.EXPECT().GetAttr(getAttrOpt).Return(&internal.ObjAttr{Size: 6}, nil)
+	options := internal.ReadLinkOptions{Name: name, Size: 6}
+	suite.mock.EXPECT().ReadLink(options).Return(target, nil)
+
+	mem := C.malloc(allocSize)
+	defer C.free(mem)
+	raw := unsafe.Slice((*byte)(mem), allocSize)
+	for i := range raw {
+		raw[i] = 0xAA
+	}
+
+	err := libfuse_readlink(path, (*C.char)(mem), bufSize)
+	suite.assert.Equal(C.int(-C.ENAMETOOLONG), err)
+	for i := range raw {
+		suite.assert.Equal(byte(0xAA), raw[i], "byte %d of the buffer was modified", i)
+	}
+}
+
+func testReadLinkZeroSize(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	path := C.CString("/path")
+	defer C.free(unsafe.Pointer(path))
+
+	buf := C.CString("")
+	defer C.free(unsafe.Pointer(buf))
+	err := libfuse_readlink(path, buf, 0)
+	suite.assert.Equal(C.int(-C.EINVAL), err)
 }
 
 func testFsync(suite *libfuseTestSuite) {

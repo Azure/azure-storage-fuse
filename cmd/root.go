@@ -126,7 +126,7 @@ func beginDetectNewVersion() chan any {
 		defer close(completed)
 
 		// Validate that the compiled-in version string is well-formed.
-		_, err := common.ParseVersion(common.Blobfuse2Version)
+		currentVersion, err := common.ParseVersion(common.Blobfuse2Version)
 		if err != nil {
 			log.Err("beginDetectNewVersion: error parsing Blobfuse2Version [%s]", err.Error())
 			completed <- err.Error()
@@ -157,6 +157,11 @@ func beginDetectNewVersion() chan any {
 				fmt.Fprintf(stderr, "WARNING: Visit %s to see the list of known issues associated with your current version [%s]\n", warningsPage, common.Blobfuse2Version)
 				log.Warn("WARNING: Visit %s to see the list of known issues associated with your current version [%s]\n", warningsPage, common.Blobfuse2Version)
 			}
+		}
+
+		// Preview releases do not have a release/latest sentinel.
+		if currentVersion.IsPreview() {
+			return
 		}
 
 		// --- Latest-version check ---

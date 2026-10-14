@@ -212,9 +212,18 @@ func GetCurrentUser() (uint32, uint32, error) {
 	return uint32(userUID), uint32(userGID), nil
 }
 
-// normalizeObjectName : If file contains \\ in name replace it with ..
+// NormalizeObjectName preserves Linux filenames; a backslash is not a path separator.
 func NormalizeObjectName(name string) string {
-	return strings.ReplaceAll(name, "\\", "/")
+	return name
+}
+
+// IsValidObjectName rejects absolute and escaping relative paths.
+// An empty name refers to the mount root.
+func IsValidObjectName(name string) bool {
+	if name == "" {
+		return true
+	}
+	return filepath.IsLocal(name)
 }
 
 // List all mount points which were mounted using blobfuse2
@@ -303,6 +312,17 @@ type BitMap64 uint64
 // IsSet : Check whether the given bit is set or not
 func (bm *BitMap64) IsSet(bit uint64) bool {
 	return (atomic.LoadUint64((*uint64)(bm)) & (1 << bit)) != 0
+}
+
+// IsAnySet : Check whether any of the given bits is set, reading the bitmap only once
+func (bm *BitMap64) IsAnySet(bits ...uint64) bool {
+	loaded := atomic.LoadUint64((*uint64)(bm))
+	for _, bit := range bits {
+		if (loaded & (1 << bit)) != 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // Set : Set the given bit in bitmap

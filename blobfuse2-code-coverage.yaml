@@ -38,6 +38,12 @@ stages:
               distro_version: 'ubuntu_22_x86'
               fuselib: 'libfuse3-dev'
               tags: 'fuse3'
+            Ubuntu-26:
+              AgentName: 'blobfuse-ubuntu26'
+              distro: 'ubuntu'
+              distro_version: 'ubuntu_26_x86'
+              fuselib: 'libfuse3-dev'
+              tags: 'fuse3'
 
         pool:
           name: "blobfuse-ubuntu-pool"

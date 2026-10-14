@@ -40,6 +40,25 @@ steps:
     workingDirectory: ${{ parameters.work_dir }}
     displayName: "Building Blobfuse2"
 
+  # Verify that fuse3 release headers expose cache_readdir and that blobfuse2's
+  # compatibility check recognizes the libfuse 3.16.1 forwarding boundary.
+  # Older runtimes are supported build targets; blobfuse2 detects them at mount
+  # time and disables kernel list caching with an accurate warning.
+  - script: |
+      if [[ "${{ parameters.tags }}" != "fuse3" ]]; then
+        exit 0
+      fi
+
+      fuse_version=`pkg-config --modversion fuse3`
+      echo "Building with libfuse ${fuse_version}"
+
+      gcc $(pkg-config --cflags fuse3) tools/check_kernel_list_cache.c \
+        $(pkg-config --libs fuse3) \
+        -o /tmp/check-kernel-list-cache
+      /tmp/check-kernel-list-cache
+    workingDirectory: ${{ parameters.work_dir }}
+    displayName: "Verify kernel list cache compatibility detection"
+
   # Verifying whether built binary is correct
   - script: |
       sudo chmod +x ./blobfuse2
@@ -62,6 +81,30 @@ steps:
       ./bfusemon --version
     workingDirectory: ${{ parameters.work_dir }}
     displayName: "Test bfusemon binary built"
+    continueOnError: false
+
+  - script: |
+      set -euo pipefail
+
+      go_version=$(awk '$1 == "go" { print $2; exit }' go.mod)
+      crypto_version=$(go list -m -f '{{.Version}}' golang.org/x/crypto)
+
+      blobfuse_metadata=$(go version -m ./blobfuse2)
+      bfusemon_metadata=$(go version -m ./bfusemon)
+      echo "$blobfuse_metadata"
+      echo "$bfusemon_metadata"
+
+      grep -Fq "./blobfuse2: go${go_version}" <<< "$blobfuse_metadata"
+      grep -Fq "$(printf '\tdep\tgolang.org/x/crypto\t%s' "$crypto_version")" <<< "$blobfuse_metadata"
+      grep -Fq "microsoft_systemcrypto=1" <<< "$blobfuse_metadata"
+      grep -Fq "./bfusemon: go${go_version}" <<< "$bfusemon_metadata"
+      grep -Fq "microsoft_systemcrypto=1" <<< "$bfusemon_metadata"
+
+      go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
+      "$(go env GOPATH)/bin/govulncheck" -mode=binary -show=verbose ./blobfuse2
+      "$(go env GOPATH)/bin/govulncheck" -mode=binary -show=verbose ./bfusemon
+    workingDirectory: ${{ parameters.work_dir }}
+    displayName: "Verify release binary security metadata"
     continueOnError: false
 
   # Run Unit tests if parameters is true

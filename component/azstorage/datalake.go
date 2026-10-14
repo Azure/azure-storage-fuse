@@ -41,6 +41,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -50,6 +51,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake/datalakeerror"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake/directory"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake/file"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake/filesystem"
@@ -192,6 +194,31 @@ func (dl *Datalake) TestPipeline() error {
 		return nil
 	}
 
+	// The DFS and Blob validation probes use separate clients and have no result
+	// dependency, so run them concurrently to reduce mount latency. The DFS-first
+	// error precedence is preserved when evaluating the results below.
+	var wg sync.WaitGroup
+	var dfsErr, blobErr error
+
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		dfsErr = dl.testDFSPipeline()
+	}()
+	go func() {
+		defer wg.Done()
+		blobErr = dl.BlockBlob.TestPipeline()
+	}()
+	wg.Wait()
+
+	if dfsErr != nil {
+		return dfsErr
+	}
+	return blobErr
+}
+
+// testDFSPipeline : Validate the credentials using the DFS endpoint
+func (dl *Datalake) testDFSPipeline() error {
 	maxResults := int32(2)
 	listPathPager := dl.Filesystem.NewListPathsPager(false, &filesystem.ListPathsOptions{
 		MaxResults: &maxResults,
@@ -220,7 +247,7 @@ func (dl *Datalake) TestPipeline() error {
 		}
 	}
 
-	return dl.BlockBlob.TestPipeline()
+	return nil
 }
 
 // IsAccountADLS : Check account is ADLS or not
@@ -242,14 +269,19 @@ func (dl *Datalake) SetPrefixPath(path string) error {
 // CreateFile : Create a new file in the filesystem/directory
 func (dl *Datalake) CreateFile(name string, mode os.FileMode) error {
 	log.Trace("Datalake::CreateFile : name %s", name)
-	err := dl.BlockBlob.CreateFile(name, mode)
+	etag, err := dl.BlockBlob.createFileIfAbsent(name)
 	if err != nil {
 		log.Err("Datalake::CreateFile : Failed to create file %s [%s]", name, err.Error())
 		return err
 	}
-	err = dl.ChangeMod(name, mode)
+
+	err = dl.changeMod(name, mode, etag)
 	if err != nil {
 		log.Err("Datalake::CreateFile : Failed to set permissions on file %s [%s]", name, err.Error())
+		if cleanupErr := dl.BlockBlob.deleteFileIfMatch(name, etag); cleanupErr != nil {
+			log.Err("Datalake::CreateFile : Failed to remove partially created file %s [%s]", name, cleanupErr.Error())
+			return errors.Join(err, fmt.Errorf("failed to remove partially created file %s: %w", name, cleanupErr))
+		}
 		return err
 	}
 
@@ -406,6 +438,9 @@ func (dl *Datalake) GetAttr(name string) (blobAttr *internal.ObjAttr, err error)
 	if err != nil {
 		e := storeDatalakeErrToErr(err)
 		switch e {
+		case ErrInvalidArgument:
+			log.Err("Datalake::GetAttr : Storage rejected path name %s [%s]", name, err.Error())
+			return blobAttr, syscall.EINVAL
 		case ErrFileNotFound:
 			return blobAttr, syscall.ENOENT
 		case InvalidPermission:
@@ -564,6 +599,10 @@ func (dl *Datalake) TruncateFile(options internal.TruncateFileOptions) error {
 
 // ChangeMod : Change mode of a path
 func (dl *Datalake) ChangeMod(name string, mode os.FileMode) error {
+	return dl.changeMod(name, mode, nil)
+}
+
+func (dl *Datalake) changeMod(name string, mode os.FileMode, etag *azcore.ETag) error {
 	log.Trace("Datalake::ChangeMod : Change mode of file %s to %s", name, mode)
 	fileClient := dl.Filesystem.NewFileClient(filepath.Join(dl.Config.prefixPath, name))
 
@@ -583,11 +622,22 @@ func (dl *Datalake) ChangeMod(name string, mode os.FileMode) error {
 	*/
 
 	newPerm := getACLPermissions(mode)
-	_, err := fileClient.SetAccessControl(context.Background(), &file.SetAccessControlOptions{
+	options := &file.SetAccessControlOptions{
 		Permissions: &newPerm,
-	})
+	}
+	if etag != nil {
+		options.AccessConditions = &file.AccessConditions{
+			ModifiedAccessConditions: &file.ModifiedAccessConditions{IfMatch: etag},
+		}
+	}
+	_, err := fileClient.SetAccessControl(context.Background(), options)
 	if err != nil {
 		log.Err("Datalake::ChangeMod : Failed to change mode of file %s to %s [%s]", name, mode, err.Error())
+		// The DFS endpoint can reject a path that the Blob endpoint accepted. Match the SDK
+		// error code before conversion so this mapping does not depend on storeDatalakeErrToErr.
+		if datalakeerror.HasCode(err, datalakeerror.InvalidURI, datalakeerror.OutOfRangeInput) {
+			return errors.Join(syscall.EINVAL, err)
+		}
 		e := storeDatalakeErrToErr(err)
 		switch e {
 		case ErrFileNotFound:

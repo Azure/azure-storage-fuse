@@ -1,0 +1,16 @@
+[global]
+ioengine=sync
+rw=write
+bs=1M
+size=16G
+filename=sequential-write.data
+direct=1
+fallocate=none
+create_on_open=1
+end_fsync=1
+runtime=120s
+group_reporting=1
+lat_percentiles=1
+percentile_list=50:95:99:99.9
+
+[durable-sequential-write]

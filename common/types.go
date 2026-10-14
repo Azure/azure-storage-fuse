@@ -47,7 +47,7 @@ import (
 
 // Standard config default values
 const (
-	blobfuse2Version_ = "2.5.5"
+	blobfuse2Version_ = "2.5.6"
 
 	DefaultMaxLogFileSize = 512
 	DefaultLogFileCount   = 10
@@ -64,6 +64,10 @@ const (
 	DefaultFilePermissionBits       os.FileMode = 0755
 	DefaultDirectoryPermissionBits  os.FileMode = 0775
 	DefaultAllowOtherPermissionBits os.FileMode = 0777
+
+	// MaxSymlinkTargetLen is the longest symlink target, excluding the terminating NUL, that the
+	// kernel accepts in a FUSE readlink reply (PATH_MAX - 1).
+	MaxSymlinkTargetLen = 4095
 
 	MbToBytes     = 1024 * 1024
 	GbToBytes     = 1024 * MbToBytes
@@ -177,6 +181,7 @@ type LogConfig struct {
 	TimeTracker    bool
 	Tag            string // logging tag which can be either blobfuse2 or bfusemon
 	LogGoroutineID bool   // whether to log goroutine id in each log line
+	LogCompress    bool   // compress rolled-over log files (base logger only)
 }
 
 // Flags for block

@@ -34,6 +34,7 @@
 package azstorage
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blockblob"
@@ -469,6 +470,79 @@ func (s *configTestSuite) TestRateLimitConfig() {
 	assert.NoError(err)
 	assert.Equal(int64(200), az.stConfig.capMbpsRead)
 	assert.Equal(int64(-1), az.stConfig.capIOps)
+}
+
+func (s *configTestSuite) TestSkipMountValidationConfig() {
+	defer config.ResetConfig()
+	assert := assert.New(s.T())
+
+	az := &AzStorage{}
+	opt := AzStorageOptions{
+		AccountName: "abcd",
+		Container:   "abcd",
+		AccountType: "block",
+	}
+	err := ParseAndValidateConfig(az, opt)
+	assert.NoError(err)
+	assert.False(az.stConfig.skipMountValidation)
+
+	opt.SkipMountValidation = false
+	err = ParseAndValidateConfig(az, opt)
+	assert.NoError(err)
+	assert.False(az.stConfig.skipMountValidation)
+
+	opt.SkipMountValidation = true
+	err = ParseAndValidateConfig(az, opt)
+	assert.NoError(err)
+	assert.True(az.stConfig.skipMountValidation)
+	// Account type and auth selection are unchanged by the skip flag.
+	assert.Equal(EAccountType.BLOCK(), az.stConfig.authConfig.AccountType)
+	assert.Equal(EAuthType.MSI(), az.stConfig.authConfig.AuthMode)
+}
+
+func (s *configTestSuite) TestSkipMountValidationRequiresAccountType() {
+	defer config.ResetConfig()
+	assert := assert.New(s.T())
+
+	az := &AzStorage{}
+	opt := AzStorageOptions{
+		AccountName:         "abcd",
+		Container:           "abcd",
+		SkipMountValidation: true,
+	}
+
+	err := ParseAndValidateConfig(az, opt)
+	assert.EqualError(err, "account type must be explicitly provided when skip-mount-validation is enabled")
+}
+
+func (s *configTestSuite) TestSkipMountValidationYaml() {
+	defer config.ResetConfig()
+	assert := assert.New(s.T())
+
+	cfg := `
+azstorage:
+  account-name: abcd
+  container: cnt
+  type: adls
+  mode: sas
+  sas: "?sv=2020-08-04&sig=not-a-secret"
+  skip-mount-validation: true
+`
+	err := config.ReadConfigFromReader(strings.NewReader(cfg))
+	assert.NoError(err)
+
+	opt := AzStorageOptions{}
+	err = config.UnmarshalKey(compName, &opt)
+	assert.NoError(err)
+	assert.True(opt.SkipMountValidation)
+
+	az := &AzStorage{}
+	err = ParseAndValidateConfig(az, opt)
+	assert.NoError(err)
+	assert.True(az.stConfig.skipMountValidation)
+	assert.Equal(EAccountType.ADLS(), az.stConfig.authConfig.AccountType)
+	assert.Equal(EAuthType.SAS(), az.stConfig.authConfig.AuthMode)
+	assert.NotContains(az.stConfig.authConfig.SASKey, "account-key")
 }
 
 func TestConfigTestSuite(t *testing.T) {

@@ -178,6 +178,24 @@ func (suite *utilTestSuite) TestBitmapReset() {
 	suite.assert.False(ok)
 }
 
+func (suite *utilTestSuite) TestBitmapIsAnySet() {
+	var bitmap BitMap64
+
+	suite.assert.False(bitmap.IsAnySet())
+	suite.assert.False(bitmap.IsAnySet(1, 3))
+
+	bitmap.Set(3)
+	suite.assert.True(bitmap.IsAnySet(3))
+	suite.assert.True(bitmap.IsAnySet(1, 3))
+	suite.assert.False(bitmap.IsAnySet(1, 2))
+
+	bitmap.Set(63)
+	suite.assert.True(bitmap.IsAnySet(0, 63))
+
+	bitmap.Clear(3)
+	suite.assert.False(bitmap.IsAnySet(1, 3))
+}
+
 func (suite *utilTestSuite) TestIsMountActiveNoMount() {
 	var out bytes.Buffer
 	cmd := exec.Command("../blobfuse2", "unmount", "all")
@@ -483,6 +501,56 @@ func (suite *utilTestSuite) TestCRC64() {
 	crc1 := GetCRC64(data, len(data))
 
 	suite.assert.NotEqual(crc, crc1)
+}
+
+func (suite *utilTestSuite) TestIsValidObjectNameValid() {
+	validNames := []string{
+		"",
+		"file",
+		"dir/file",
+		"a/b/c/file.txt",
+		"a/./b",
+		".hidden",
+		"file with spaces",
+		"a..b",
+		"..file",
+		"file..",
+		`..\..\etc\crontab`,
+		`dir\file`,
+	}
+
+	for _, name := range validNames {
+		suite.assert.True(IsValidObjectName(name), "expected %q to be valid", name)
+	}
+}
+
+func (suite *utilTestSuite) TestIsValidObjectNameInvalid() {
+	invalidNames := []string{
+		"..",
+		"../file",
+		"../../etc/crontab",
+		"a/../../escape",
+		"a/b/../../../escape",
+		"/etc/crontab",
+		"/absolute",
+		`../dir\file`,
+	}
+
+	for _, name := range invalidNames {
+		suite.assert.False(IsValidObjectName(name), "expected %q to be invalid", name)
+	}
+}
+
+// TestIsValidObjectNameBackslashTraversal verifies that backslashes remain
+// literal Linux filename characters instead of becoming path separators.
+func (suite *utilTestSuite) TestIsValidObjectNameBackslashTraversal() {
+	normalized := NormalizeObjectName(`..\..\etc\crontab`)
+	suite.assert.Equal(`..\..\etc\crontab`, normalized)
+	suite.assert.True(IsValidObjectName(normalized))
+
+	local := NormalizeObjectName(`dir\file`)
+	suite.assert.Equal(`dir\file`, local)
+	suite.assert.True(IsValidObjectName(local))
 }
 
 func (suite *utilTestSuite) TestGetFuseMinorVersion() {

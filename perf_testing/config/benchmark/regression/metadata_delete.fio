@@ -1,0 +1,10 @@
+[global]
+ioengine=filedelete
+rw=write
+filesize=4K
+nrfiles=250
+numjobs=8
+filename_format=metadata.$jobnum.$filenum
+group_reporting=1
+
+[metadata-delete-2k]
