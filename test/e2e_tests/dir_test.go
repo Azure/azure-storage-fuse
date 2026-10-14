@@ -136,14 +136,35 @@ func (suite *dirTestSuite) TestDirCreateSplChar() {
 	suite.dirTestCleanup([]string{dirName})
 }
 
-// # Create Directory with slash in name
+// # Create Directory with a backslash in name: Azure Storage treats '\' as '/', so it is rejected
 func (suite *dirTestSuite) TestDirCreateSlashChar() {
 	dirName := suite.testPath + "/" + "PRQ\\STUV"
 	err := os.Mkdir(dirName, 0777)
-	suite.NoError(err)
+	suite.ErrorIs(err, syscall.EINVAL)
 
-	// cleanup
-	suite.dirTestCleanup([]string{dirName})
+	// Nothing may be created under either name.
+	_, err = os.Stat(dirName)
+	suite.True(os.IsNotExist(err))
+	_, err = os.Stat(suite.testPath + "/PRQ")
+	suite.True(os.IsNotExist(err))
+}
+
+// # Create a directory and a file whose backslash names would climb out of the test directory
+func (suite *dirTestSuite) TestDirCreateBackslashTraversal() {
+	escaped := "escaped-" + getTestDirName(6)
+	for _, name := range []string{"..\\" + escaped, "x\\..\\..\\" + escaped} {
+		err := os.Mkdir(suite.testPath+"/"+name, 0777)
+		suite.ErrorIs(err, syscall.EINVAL)
+
+		_, err = os.OpenFile(suite.testPath+"/"+name+".txt", os.O_CREATE|os.O_WRONLY, 0777)
+		suite.ErrorIs(err, syscall.EINVAL)
+	}
+
+	// Nothing may appear in the mount root, the parent of the test directory.
+	_, err := os.Stat(pathPtr + "/" + escaped)
+	suite.True(os.IsNotExist(err))
+	_, err = os.Stat(pathPtr + "/" + escaped + ".txt")
+	suite.True(os.IsNotExist(err))
 }
 
 // # Rename a directory
