@@ -296,8 +296,11 @@ kubectl get pods -n "$NAMESPACE" -o wide || true
 echo ""
 
 echo "Cacheserver pod DNS names (useful for debugging server-list):"
+# Per-pod DNS resolves under the StatefulSet's governing Service, which the
+# cache-controller names after the Cache CR ('cache-sample' by default), not
+# after the 'app: cacheserver' label.
 for pod in $(kubectl get pods -n "$NAMESPACE" -l app=cacheserver -o jsonpath='{.items[*].metadata.name}'); do
-    echo "  $pod.cacheserver.$NAMESPACE.svc.cluster.local:$CACHE_SERVER_PORT"
+    echo "  $pod.cache-sample.$NAMESPACE.svc.cluster.local:$CACHE_SERVER_PORT"
 done
 
 echo ""

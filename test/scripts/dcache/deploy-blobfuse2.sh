@@ -47,10 +47,13 @@ fi
 BLOBFUSE2_NAMESPACE="${BLOBFUSE2_NAMESPACE:-blobfuse2-dist-cache}"
 BLOBFUSE2_DEPLOYMENT="${BLOBFUSE2_DEPLOYMENT:-blobfuse2-dist-cache}"
 STO_ACC_ENDPOINT="${STO_ACC_ENDPOINT:-https://${STO_ACC_NAME}.blob.core.windows.net}"
-# The tachyon-cache operator names its discovery Service after the Cache CR
-# (default CR name is 'cache-sample' when installed with cache.enabled=true).
-# Override CACHE_CR_NAME if a non-default CR name is used.
-CACHE_CR_NAME="${CACHE_CR_NAME:-cache-sample}"
+# The tachyon-cache operator names its discovery Service after the Cache CR.
+# deploy-tachyon.sh installs the cache chart without overriding the CR name, so
+# this is always the chart's default 'cache-sample'. It is intentionally not
+# configurable here: the name must stay in sync with the -cacheserver-statefulset
+# default in test/dcache_e2e/main_test.go. Set DCACHE_DISCOVERY_ENDPOINT instead
+# to point blobfuse2 at a different discovery Service.
+CACHE_CR_NAME="cache-sample"
 DCACHE_DISCOVERY_ENDPOINT="${DCACHE_DISCOVERY_ENDPOINT:-${CACHE_CR_NAME}-discovery.${NAMESPACE:-cache-server}.svc.cluster.local:${CACHE_SERVER_PORT:-9065}}"
 BLOBFUSE2_IMAGE_LOAD="${BLOBFUSE2_IMAGE_LOAD:-true}"
 MANIFEST_TEMPLATE="${MANIFEST_TEMPLATE:-$REPO_ROOT/docker/k8s/blobfuse2-dist-cache-deployment.yaml.tmpl}"
