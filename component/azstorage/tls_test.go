@@ -102,6 +102,39 @@ func TestTLSHotReloadUsesUpdatedTrustBundle(t *testing.T) {
 	require.NoError(t, response.Body.Close())
 }
 
+func TestTLSHotReloadDetectsSameSizeSameTimestampUpdate(t *testing.T) {
+	serverCertificate, trustedBundle := createTestCertificate(t, 4)
+	_, untrustedBundle := createTestCertificate(t, 5)
+	require.Equal(t, len(trustedBundle), len(untrustedBundle))
+
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		_, _ = response.Write([]byte("ok"))
+	}))
+	server.TLS = &tls.Config{ // #nosec G402 -- test server configuration.
+		MinVersion:   tls.VersionTLS12,
+		Certificates: []tls.Certificate{serverCertificate},
+	}
+	server.StartTLS()
+	defer server.Close()
+
+	trustStorePath := filepath.Join(t.TempDir(), "ca-bundle.pem")
+	modTime := time.Now().Add(-time.Minute)
+	writeTrustBundle(t, trustStorePath, trustedBundle, modTime)
+
+	roundTripper, err := newTLSHotReloadTransport(&http.Transport{}, trustStorePath, 0)
+	require.NoError(t, err)
+	client := &http.Client{Transport: roundTripper}
+
+	response, err := client.Get(server.URL)
+	require.NoError(t, err)
+	require.NoError(t, response.Body.Close())
+
+	writeTrustBundle(t, trustStorePath, untrustedBundle, modTime)
+	_, err = client.Get(server.URL)
+	require.Error(t, err)
+	assert.True(t, isTLSCertificateError(err))
+}
+
 type tlsRetryRoundTripper struct {
 	attempts       int
 	idleCloseCalls int
@@ -168,6 +201,22 @@ func TestInvalidTLSBundleFailsTransportCreation(t *testing.T) {
 
 	_, err := newTLSHotReloadTransport(&http.Transport{}, trustStorePath, 0)
 	assert.ErrorContains(t, err, "contains no certificates")
+}
+
+func TestTLSHotReloadUsesNativeCertificateVerification(t *testing.T) {
+	_, bundle := createTestCertificate(t, 6)
+	trustStorePath := filepath.Join(t.TempDir(), "ca-bundle.pem")
+	writeTrustBundle(t, trustStorePath, bundle, time.Now())
+
+	roundTripper, err := newTLSHotReloadTransport(&http.Transport{}, trustStorePath, 0)
+	require.NoError(t, err)
+	transport := roundTripper.(*tlsHotReloadTransport)
+	activeTransport := transport.activeTransport().(*http.Transport)
+
+	require.NotNil(t, activeTransport.TLSClientConfig)
+	assert.False(t, activeTransport.TLSClientConfig.InsecureSkipVerify)
+	assert.Nil(t, activeTransport.TLSClientConfig.VerifyConnection)
+	assert.NotNil(t, activeTransport.TLSClientConfig.RootCAs)
 }
 
 func TestTLSCertificateErrorDetection(t *testing.T) {

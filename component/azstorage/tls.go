@@ -7,6 +7,7 @@ package azstorage
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
@@ -21,30 +22,26 @@ import (
 )
 
 type reloadableTrustStore struct {
-	path     string
-	mutex    sync.Mutex
-	fileInfo os.FileInfo
+	path        string
+	mutex       sync.Mutex
+	fingerprint [sha256.Size]byte
+	initialized bool
 }
 
 func newReloadableTrustStore(path string) (*reloadableTrustStore, error) {
 	store := &reloadableTrustStore{path: path}
-	if _, err := store.load(); err != nil {
+	if _, _, err := store.reload(); err != nil {
 		return nil, err
 	}
-	fileInfo, err := os.Stat(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to inspect TLS trust store %q: %w", path, err)
-	}
-	store.fileInfo = fileInfo
 	return store, nil
 }
 
-func (store *reloadableTrustStore) load() (*x509.CertPool, error) {
-	// Build a fresh pool so each TLS handshake observes the current bundle.
+func (store *reloadableTrustStore) load() (*x509.CertPool, [sha256.Size]byte, error) {
 	bundle, err := os.ReadFile(store.path)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read TLS trust store %q: %w", store.path, err)
+		return nil, [sha256.Size]byte{}, fmt.Errorf("failed to read TLS trust store %q: %w", store.path, err)
 	}
+	fingerprint := sha256.Sum256(bundle)
 
 	pool := x509.NewCertPool()
 	certificateCount := 0
@@ -59,7 +56,7 @@ func (store *reloadableTrustStore) load() (*x509.CertPool, error) {
 		}
 		certificates, parseErr := x509.ParseCertificates(block.Bytes)
 		if parseErr != nil {
-			return nil, fmt.Errorf("failed to parse TLS trust store %q: %w", store.path, parseErr)
+			return nil, [sha256.Size]byte{}, fmt.Errorf("failed to parse TLS trust store %q: %w", store.path, parseErr)
 		}
 		for _, certificate := range certificates {
 			pool.AddCert(certificate)
@@ -68,51 +65,26 @@ func (store *reloadableTrustStore) load() (*x509.CertPool, error) {
 	}
 
 	if certificateCount == 0 {
-		return nil, fmt.Errorf("TLS trust store %q contains no certificates", store.path)
+		return nil, [sha256.Size]byte{}, fmt.Errorf("TLS trust store %q contains no certificates", store.path)
 	}
-	return pool, nil
+	return pool, fingerprint, nil
 }
 
-func (store *reloadableTrustStore) changed() (bool, error) {
-	fileInfo, err := os.Stat(store.path)
-	if err != nil {
-		return true, fmt.Errorf("failed to inspect TLS trust store %q: %w", store.path, err)
-	}
-
+func (store *reloadableTrustStore) reload() (*x509.CertPool, bool, error) {
 	store.mutex.Lock()
 	defer store.mutex.Unlock()
 
-	// SameFile detects atomic replacement; mtime and size detect in-place updates.
-	changed := store.fileInfo == nil ||
-		!os.SameFile(store.fileInfo, fileInfo) ||
-		!store.fileInfo.ModTime().Equal(fileInfo.ModTime()) ||
-		store.fileInfo.Size() != fileInfo.Size()
-	store.fileInfo = fileInfo
-	return changed, nil
-}
-
-func (store *reloadableTrustStore) verifyConnection(state tls.ConnectionState) error {
-	if len(state.PeerCertificates) == 0 {
-		return errors.New("TLS peer provided no certificates")
-	}
-
-	roots, err := store.load()
+	roots, fingerprint, err := store.load()
 	if err != nil {
-		return err
+		return nil, false, err
 	}
 
-	intermediates := x509.NewCertPool()
-	for _, certificate := range state.PeerCertificates[1:] {
-		intermediates.AddCert(certificate)
+	changed := !store.initialized || store.fingerprint != fingerprint
+	if changed {
+		store.fingerprint = fingerprint
+		store.initialized = true
 	}
-
-	_, err = state.PeerCertificates[0].Verify(x509.VerifyOptions{
-		DNSName:       state.ServerName,
-		Intermediates: intermediates,
-		Roots:         roots,
-		KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-	})
-	return err
+	return roots, changed, nil
 }
 
 type closeIdleRoundTripper interface {
@@ -121,9 +93,12 @@ type closeIdleRoundTripper interface {
 }
 
 type tlsHotReloadTransport struct {
-	transport  closeIdleRoundTripper
-	trustStore *reloadableTrustStore
-	backoff    time.Duration
+	mutex       sync.RWMutex
+	reloadMutex sync.Mutex
+	template    *http.Transport
+	transport   closeIdleRoundTripper
+	trustStore  *reloadableTrustStore
+	backoff     time.Duration
 }
 
 func newTLSHotReloadTransport(transport *http.Transport, trustStorePath string, backoff time.Duration) (http.RoundTripper, error) {
@@ -132,32 +107,77 @@ func newTLSHotReloadTransport(transport *http.Transport, trustStorePath string, 
 		return nil, err
 	}
 
-	tlsConfig := &tls.Config{ // #nosec G402 -- VerifyConnection performs full chain and hostname verification.
-		MinVersion:         tls.VersionTLS12,
-		InsecureSkipVerify: true, // Verification is performed below with the current trust bundle.
-		VerifyConnection:   store.verifyConnection,
+	roots, _, err := store.reload()
+	if err != nil {
+		return nil, err
 	}
-	transport.TLSClientConfig = tlsConfig
+
+	template := transport.Clone()
+	activeTransport := newTransportGeneration(template, roots)
 
 	return &tlsHotReloadTransport{
-		transport:  transport,
+		template:   template,
+		transport:  activeTransport,
 		trustStore: store,
 		backoff:    backoff,
 	}, nil
 }
 
-func (transport *tlsHotReloadTransport) RoundTrip(request *http.Request) (*http.Response, error) {
-	// Retire pooled connections when the configured bundle changes.
-	if changed, changeErr := transport.trustStore.changed(); changed {
-		transport.transport.CloseIdleConnections()
-		if changeErr != nil {
-			log.Warn("tlsHotReloadTransport::RoundTrip : TLS trust store change check failed: %s", changeErr)
-		} else {
-			log.Info("tlsHotReloadTransport::RoundTrip : TLS trust store changed; idle connections closed")
-		}
+func newTransportGeneration(template *http.Transport, roots *x509.CertPool) *http.Transport {
+	transport := template.Clone()
+	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: roots}
+	if transport.TLSClientConfig != nil {
+		tlsConfig = transport.TLSClientConfig.Clone()
+		tlsConfig.MinVersion = max(tlsConfig.MinVersion, tls.VersionTLS12)
+		tlsConfig.RootCAs = roots
+		tlsConfig.InsecureSkipVerify = false
+	}
+	// Session resumption can bypass certificate verification, so each trust-store
+	// generation starts without a cache inherited from the previous generation.
+	tlsConfig.ClientSessionCache = nil
+	transport.TLSClientConfig = tlsConfig
+	return transport
+}
+
+func (transport *tlsHotReloadTransport) activeTransport() closeIdleRoundTripper {
+	transport.mutex.RLock()
+	defer transport.mutex.RUnlock()
+	return transport.transport
+}
+
+func (transport *tlsHotReloadTransport) reloadTransport() (bool, error) {
+	if transport.trustStore == nil {
+		return false, nil
 	}
 
-	response, err := transport.transport.RoundTrip(request)
+	transport.reloadMutex.Lock()
+	defer transport.reloadMutex.Unlock()
+
+	roots, changed, err := transport.trustStore.reload()
+	if err != nil || !changed {
+		return changed, err
+	}
+
+	nextTransport := newTransportGeneration(transport.template, roots)
+	transport.mutex.Lock()
+	retiredTransport := transport.transport
+	transport.transport = nextTransport
+	transport.mutex.Unlock()
+	retiredTransport.CloseIdleConnections()
+	return true, nil
+}
+
+func (transport *tlsHotReloadTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	changed, reloadErr := transport.reloadTransport()
+	if reloadErr != nil {
+		return nil, reloadErr
+	}
+	if changed {
+		log.Info("tlsHotReloadTransport::RoundTrip : TLS trust store changed; transport rotated")
+	}
+
+	activeTransport := transport.activeTransport()
+	response, err := activeTransport.RoundTrip(request)
 	if err == nil || !isTLSCertificateError(err) {
 		return response, err
 	}
@@ -171,16 +191,19 @@ func (transport *tlsHotReloadTransport) RoundTrip(request *http.Request) (*http.
 	// Retry once outside the SDK retry policy so a rotated bundle can recover
 	// the connection that first observed the new certificate chain.
 	log.Warn("tlsHotReloadTransport::RoundTrip : TLS authentication failed; reloading trust store and reconnecting after %s", transport.backoff)
-	transport.transport.CloseIdleConnections()
+	activeTransport.CloseIdleConnections()
 	if waitErr := waitForTLSRetry(request.Context(), transport.backoff); waitErr != nil {
 		return nil, waitErr
 	}
+	if _, reloadErr = transport.reloadTransport(); reloadErr != nil {
+		return nil, reloadErr
+	}
 
-	return transport.transport.RoundTrip(retryRequest)
+	return transport.activeTransport().RoundTrip(retryRequest)
 }
 
 func (transport *tlsHotReloadTransport) CloseIdleConnections() {
-	transport.transport.CloseIdleConnections()
+	transport.activeTransport().CloseIdleConnections()
 }
 
 func cloneRequestForRetry(request *http.Request) (*http.Request, error) {
