@@ -1145,8 +1145,11 @@ func (bb *BlockBlob) calculateBlockSize(name string, fileSize int64) (blockSize 
 	return blockSize, nil
 }
 
+// validateFileSizeForBlockSize : Check that a file fits in a block blob when uploaded with the given block size.
+// A block can not be larger than MaxStageBlockBytes, so a larger block size does not raise the limit beyond MaxBlobSize.
+// Capping the block size first also keeps a large configured block size from overflowing the limit.
 func validateFileSizeForBlockSize(fileSize int64, blockSize int64) error {
-	if fileSize > blockSize*blockblob.MaxBlocks {
+	if fileSize > min(blockSize, blockblob.MaxStageBlockBytes)*blockblob.MaxBlocks {
 		return syscall.EFBIG
 	}
 	return nil

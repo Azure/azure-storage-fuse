@@ -2523,6 +2523,15 @@ func TestValidateFileSizeForBlockSize(t *testing.T) {
 
 	assert.NoError(t, validateFileSizeForBlockSize(maxFileSize, blockSize))
 	assert.Equal(t, syscall.EFBIG, validateFileSizeForBlockSize(maxFileSize+1, blockSize))
+
+	// The limit never exceeds the maximum block blob size, even for block sizes above the maximum block size
+	for _, size := range []int64{blockblob.MaxStageBlockBytes, 2 * blockblob.MaxStageBlockBytes, math.MaxInt64 / 2} {
+		assert.NoError(t, validateFileSizeForBlockSize(MaxBlobSize, size))
+		assert.Equal(t, syscall.EFBIG, validateFileSizeForBlockSize(MaxBlobSize+1, size))
+	}
+
+	// A block size large enough to overflow the limit does not reject small files
+	assert.NoError(t, validateFileSizeForBlockSize(1, math.MaxInt64/2))
 }
 
 func (s *blockBlobTestSuite) TestGetFileBlockOffsetsSmallFile() {
