@@ -1099,7 +1099,7 @@ func TestSchedulePopulate_BufferReturnedAfterUpload(t *testing.T) {
 	require.Equal(t, int32(1), uploads.Load())
 	require.Equal(t, 1, len(dc.bufs), "buffer must be returned after upload completes")
 
-	// Second populate re-uses the returned buffer.
+	// Second populate reuses the returned buffer.
 	dc.schedulePopulate("f", "e", 1, []byte("more"))
 	dc.inflight.Wait()
 	assert.Equal(t, int32(2), uploads.Load())

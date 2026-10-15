@@ -14,7 +14,7 @@ we wrote, and cache-server metrics move in the expected direction.
   cleanup. Tests that need to clear local `block_cache` restart their clone.
 * **Behaviour + metrics.** Data integrity is asserted by MD5 on every
   read. Cache behaviour is asserted by diffing Prometheus counters from
-  the Tachyon cache-server pods between snapshots. When metric endpoints
+  the DACS cache-server pods between snapshots. When metric endpoints
   are not configured (local iteration), the metric assertions are logged
   as skipped and the MD5 assertion still runs.
 
@@ -36,9 +36,9 @@ we wrote, and cache-server metrics move in the expected direction.
 
 Prerequisites (in addition to the standard `blobfuse2` build):
 
-1. A kind cluster with Tachyon deployed. Use
+1. A kind cluster with DACS deployed. Use
    [test/scripts/dcache/setup-kind.sh](../scripts/dcache/setup-kind.sh) +
-  [deploy-tachyon.sh](../scripts/dcache/deploy-tachyon.sh).
+  [deploy-dacs.sh](../scripts/dcache/deploy-dacs.sh).
   The pod suite uses in-cluster discovery and scrapes Prometheus through
   `kubectl exec`.
 2. A running blobfuse2 Deployment in the kind cluster. Deploy it with
@@ -86,7 +86,7 @@ hosting the active blobfuse2 pod, and restarts the node in `t.Cleanup`.
 If pod discovery or the in-pod `curl` fails, the metric-based
 assertions are skipped and only data integrity is enforced. Override the
 pod-local Prometheus port with `-cacheserver-metrics-port` if your
-Tachyon Helm chart exposes it somewhere other than 9096.
+DACS Helm chart exposes it somewhere other than 9096.
 The node-failure test waits for StatefulSet `cache-sample` to recover by
 default; override it with `-cacheserver-statefulset` when using a different
 Cache resource name.

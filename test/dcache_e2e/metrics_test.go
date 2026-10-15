@@ -54,7 +54,7 @@ const metricsScrapeTimeout = 5 * time.Second
 // exposes the Prometheus port.
 const cacheServerContainerName = "cacheserver"
 
-// cacheServerRequestCounter is the Tachyon Prometheus counter name.
+// cacheServerRequestCounter is the DACS Prometheus counter name.
 const cacheServerRequestCounter = "cache_server_request_counter"
 
 // CacheServerMetrics aggregates cache_server_request_counter samples across

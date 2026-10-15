@@ -82,12 +82,11 @@ parameters:
     type: boolean
     default: true
 
-  # Distributed cache E2E: runs kind + Tachyon (image + chart pulled from
-  # the configured ACR, both auto-resolved to the newest published tag) on
+  # Distributed cache E2E: runs kind + DACS (pinned public MCR artifacts) on
   # an amd64 nightly agent. Off by default; queue the pipeline with this
   # parameter set to true to opt in.
   - name: dist_cache_test
-    displayName: 'Run distributed cache E2E tests (requires kind + Tachyon image)'
+    displayName: 'Run distributed cache E2E tests (requires kind + DACS image)'
     type: boolean
     default: false
 
@@ -1454,9 +1453,8 @@ stages:
 
   # -----------------------------------------------------------------------
   # Distributed cache E2E.
-  # Gated on the `dist_cache_test` parameter so nightly runs stay green until
-  # the ACR image tag + chart version are populated below. Queue a manual run
-  # with the parameter set to true.
+  # Gated on the `dist_cache_test` parameter. Queue a manual run with the
+  # parameter set to true.
   - ${{ if eq(parameters.dist_cache_test, true) }}:
     - stage: DistCacheValidation
       dependsOn: BuildAndTest
@@ -1481,32 +1479,6 @@ stages:
               value: '$(Pipeline.Workspace)/blob_mnt'
             - name: TEMP_DIR
               value: '$(Pipeline.Workspace)/blobfuse2_tmp'
-            # Tachyon image + chart coordinates. Both _TAG and _CHART_VERSION
-            # are left empty on purpose: deploy-tachyon.sh auto-resolves the
-            # newest pushed tag from ACR via `az acr repository show-tags`
-            # (symmetrical for image and chart). Override any of these via
-            # the NightlyBlobFuse variable group to pin.
-            - name: CACHE_SERVER_IMAGE_REGISTRY
-              value: 'storagedevextachyonacr.azurecr.io'
-            - name: CACHE_SERVER_IMAGE_REPO
-              value: 'cache-server'
-            - name: CACHE_SERVER_IMAGE_TAG
-              value: ''  # auto-resolved by deploy-tachyon.sh when empty
-            # Tachyon control-plane (manager/controller) image. Data plane
-            # (cache-server) and control plane (cache-controller) are pushed
-            # to the same ACR with the same tag; deploy-tachyon.sh side-loads
-            # both into the kind cluster.
-            - name: CACHE_CONTROLLER_IMAGE_REPO
-              value: 'cache-controller'
-            # Helm chart is pulled directly from ACR via OCI. Defaults to the
-            # same registry as the image; override only if the chart lives in
-            # a different ACR.
-            - name: CACHE_SERVER_CHART_REGISTRY
-              value: 'storagedevextachyonacr.azurecr.io'
-            - name: CACHE_SERVER_CHART_REPO
-              value: 'charts/tachyon-cache'
-            - name: CACHE_SERVER_CHART_VERSION
-              value: ''  # auto-resolved by deploy-tachyon.sh when empty
             - name: GOPATH
               value: '$(Pipeline.Workspace)/go'
             - name: ROOT_DIR
@@ -1520,15 +1492,14 @@ stages:
 
             # Run the dedicated dist_cache pod tests against a single kind
             # cluster (cluster setup + teardown happens once). The template
-            # authenticates to ACR through the WIF service connection and
-            # builds the in-cluster blobfuse2 image from the code under test.
+            # pulls public DACS artifacts and builds the in-cluster blobfuse2
+            # image from the code under test.
             - template: 'azure-pipeline-templates/dist-cache-e2e.yml'
               parameters:
                 run_idstring: 'DistCache'
                 distro_name: $(AgentName)
                 account_name: $(BF2_BLK_ACC_NAME)
                 account_key: $(BF2_BLK_ACC_KEY)
-                azure_service_connection: 'BlobFuse-WIF-CI'
 
             - template: 'azure-pipeline-templates/cleanup.yml'
               parameters:

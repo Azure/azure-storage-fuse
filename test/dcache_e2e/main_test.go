@@ -34,7 +34,7 @@
    SOFTWARE
 */
 
-// Package dcache_e2e tests distributed_cache against a kind and Tachyon cluster.
+// Package dcache_e2e tests distributed_cache against a kind and DACS cluster.
 // Tests restart the blobfuse2 pod when they require a cold local cache.
 package dcache_e2e
 
@@ -107,7 +107,7 @@ func registerFlags() {
 	}
 	if flag.Lookup("cacheserver-namespace") == nil {
 		flag.StringVar(&testCfg.cacheserverNamespace, "cacheserver-namespace", "cache-server",
-			"cache-server: Kubernetes namespace containing the Tachyon StatefulSet")
+			"cache-server: Kubernetes namespace containing the DACS StatefulSet")
 	}
 	if flag.Lookup("cacheserver-selector") == nil {
 		flag.StringVar(&testCfg.cacheserverSelector, "cacheserver-selector", "app=cacheserver",
@@ -115,7 +115,7 @@ func registerFlags() {
 	}
 	if flag.Lookup("cacheserver-statefulset") == nil {
 		flag.StringVar(&testCfg.cacheserverStatefulSet, "cacheserver-statefulset", "cache-sample",
-			"cache-server: name of the Tachyon StatefulSet (waited on after a pod is deleted)")
+			"cache-server: name of the DACS StatefulSet (waited on after a pod is deleted)")
 	}
 	if flag.Lookup("cacheserver-metrics-port") == nil {
 		flag.IntVar(&testCfg.cacheserverMetricsPort, "cacheserver-metrics-port", 9096,
