@@ -1110,7 +1110,7 @@ func (bb *BlockBlob) calculateBlockSize(name string, fileSize int64) (blockSize 
 	// If bufferSize > (BlockBlobMaxStageBlockBytes * BlockBlobMaxBlocks), then error
 	if fileSize > MaxBlobSize {
 		log.Err("BlockBlob::calculateBlockSize : buffer is too large to upload to a block blob %s", name)
-		err = errors.New("buffer is too large to upload to a block blob")
+		err = syscall.EFBIG
 		return 0, err
 	}
 
@@ -1143,6 +1143,16 @@ func (bb *BlockBlob) calculateBlockSize(name string, fileSize int64) (blockSize 
 
 	log.Info("BlockBlob::calculateBlockSize : %s size %v, blockSize %v", name, fileSize, blockSize)
 	return blockSize, nil
+}
+
+// validateFileSizeForBlockSize : Check that a file fits in a block blob when uploaded with the given block size.
+// A block can not be larger than MaxStageBlockBytes, so a larger block size does not raise the limit beyond MaxBlobSize.
+// Capping the block size first also keeps a large configured block size from overflowing the limit.
+func validateFileSizeForBlockSize(fileSize int64, blockSize int64) error {
+	if fileSize > min(blockSize, blockblob.MaxStageBlockBytes)*blockblob.MaxBlocks {
+		return syscall.EFBIG
+	}
+	return nil
 }
 
 // track the progress of upload of blobs where every 100MB of data uploaded is being tracked. It also tracks the completion of upload
@@ -1181,6 +1191,11 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]*string, fi 
 		if err != nil {
 			return err
 		}
+	}
+	err = validateFileSizeForBlockSize(stat.Size(), blockSize)
+	if err != nil {
+		log.Err("BlockBlob::WriteFromFile : file %s exceeds maximum size for configured block size %d", name, blockSize)
+		return err
 	}
 
 	// Compute md5 of this file is requested by user

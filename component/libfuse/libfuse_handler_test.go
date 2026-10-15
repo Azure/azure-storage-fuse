@@ -295,11 +295,27 @@ func (suite *libfuseTestSuite) TestOpenError() {
 	testOpenError(suite)
 }
 
+func (suite *libfuseTestSuite) TestOpenNoSpace() {
+	testOpenNoSpace(suite)
+}
+
 // read
 
 // write
 
+func (suite *libfuseTestSuite) TestWriteFileTooLarge() {
+	testWriteFileTooLarge(suite)
+}
+
+func (suite *libfuseTestSuite) TestWriteFileNoSpace() {
+	testWriteFileNoSpace(suite)
+}
+
 // flush
+
+func (suite *libfuseTestSuite) TestFlushFileTooLarge() {
+	testFlushFileTooLarge(suite)
+}
 
 func (suite *libfuseTestSuite) TestTruncate() {
 	testTruncate(suite)
@@ -307,6 +323,14 @@ func (suite *libfuseTestSuite) TestTruncate() {
 
 func (suite *libfuseTestSuite) TestTruncateError() {
 	testTruncateError(suite)
+}
+
+func (suite *libfuseTestSuite) TestTruncateFileTooLarge() {
+	testTruncateFileTooLarge(suite)
+}
+
+func (suite *libfuseTestSuite) TestTruncateNoSpace() {
+	testTruncateNoSpace(suite)
 }
 
 func (suite *libfuseTestSuite) TestFTruncate() {

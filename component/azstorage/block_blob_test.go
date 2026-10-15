@@ -2493,12 +2493,12 @@ func (s *blockBlobTestSuite) TestBlockSize() {
 
 	// Boundary condition 1 bytes more then max expected file size
 	block, err = bb.calculateBlockSize(name, (blockblob.MaxStageBlockBytes*blockblob.MaxBlocks)+1)
-	s.assert.Error(err)
+	s.assert.Equal(syscall.EFBIG, err)
 	s.assert.EqualValues(0, block)
 
 	// Boundary condition 5 bytes more then max expected file size
 	block, err = bb.calculateBlockSize(name, (blockblob.MaxStageBlockBytes*blockblob.MaxBlocks)+5)
-	s.assert.Error(err)
+	s.assert.Equal(syscall.EFBIG, err)
 	s.assert.EqualValues(0, block)
 
 	// Boundary condition file size one block short of file blocks
@@ -2513,8 +2513,25 @@ func (s *blockBlobTestSuite) TestBlockSize() {
 
 	// For filesize 200TB, error is expected as max 190TB only supported
 	block, err = bb.calculateBlockSize(name, (200 * 1024 * 1024 * 1024 * 1024))
-	s.assert.Error(err)
+	s.assert.Equal(syscall.EFBIG, err)
 	s.assert.EqualValues(0, block)
+}
+
+func TestValidateFileSizeForBlockSize(t *testing.T) {
+	const blockSize = 8 * MB
+	maxFileSize := int64(blockSize * blockblob.MaxBlocks)
+
+	assert.NoError(t, validateFileSizeForBlockSize(maxFileSize, blockSize))
+	assert.Equal(t, syscall.EFBIG, validateFileSizeForBlockSize(maxFileSize+1, blockSize))
+
+	// The limit never exceeds the maximum block blob size, even for block sizes above the maximum block size
+	for _, size := range []int64{blockblob.MaxStageBlockBytes, 2 * blockblob.MaxStageBlockBytes, math.MaxInt64 / 2} {
+		assert.NoError(t, validateFileSizeForBlockSize(MaxBlobSize, size))
+		assert.Equal(t, syscall.EFBIG, validateFileSizeForBlockSize(MaxBlobSize+1, size))
+	}
+
+	// A block size large enough to overflow the limit does not reject small files
+	assert.NoError(t, validateFileSizeForBlockSize(1, math.MaxInt64/2))
 }
 
 func (s *blockBlobTestSuite) TestGetFileBlockOffsetsSmallFile() {
