@@ -33,3 +33,4 @@ azstorage:
   account-key: <ACCOUNT_KEY>
   mode: key
   container: <CONTAINER_NAME>
+  # tls-trust-store-path: /etc/ssl/certs/ca-certificates.crt

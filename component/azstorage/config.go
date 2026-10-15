@@ -180,6 +180,7 @@ type AzStorageOptions struct {
 	MaxRetryDelay           int32  `config:"max-retry-delay-sec" yaml:"max-retry-delay-sec,omitempty"`
 	HttpProxyAddress        string `config:"http-proxy" yaml:"http-proxy,omitempty"`
 	HttpsProxyAddress       string `config:"https-proxy" yaml:"https-proxy,omitempty"`
+	TLSTrustStorePath       string `config:"tls-trust-store-path" yaml:"tls-trust-store-path,omitempty"`
 	FailUnsupportedOp       bool   `config:"fail-unsupported-op" yaml:"fail-unsupported-op,omitempty"`
 	AuthResourceString      string `config:"auth-resource" yaml:"auth-resource,omitempty"`
 	UpdateMD5               bool   `config:"update-md5" yaml:"update-md5"`
@@ -403,6 +404,7 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	az.stConfig.cancelListForSeconds = opt.CancelListForSeconds
 
 	az.stConfig.telemetry = opt.Telemetry
+	az.stConfig.tlsTrustStorePath = opt.TLSTrustStorePath
 
 	httpProxyProvided := opt.HttpProxyAddress != ""
 	httpsProxyProvided := opt.HttpsProxyAddress != ""

@@ -63,3 +63,5 @@ azstorage:
   clientsecret: <storage account client secret for SPN>
   oauth-token-path: <path to file containing the OAuth token>
   workload-identity-token: <service account token for workload identity>
+  # Optional: PEM CA bundle to reload for every new TLS connection.
+  tls-trust-store-path: <path to TLS trust store>
