@@ -1449,6 +1449,7 @@ func (bb *BlockBlob) createNewBlocksTruncate(blockList *common.BlockOffsetList, 
 
 			if lastBlock.EndIndex-lastBlock.StartIndex < blockSize {
 				// last block is smaller than block size, so adjust it
+				existingSize := lastBlock.EndIndex - lastBlock.StartIndex
 				lastBlock.EndIndex = min(lastBlock.StartIndex+blockSize, options.NewSize)
 
 				lastBlock.Data = make([]byte, lastBlock.EndIndex-lastBlock.StartIndex)
@@ -1457,7 +1458,8 @@ func (bb *BlockBlob) createNewBlocksTruncate(blockList *common.BlockOffsetList, 
 				// create the new block id for this block otherwise it would corrupt the state of the blob.
 				lastBlock.Id = common.GetBlockID(blockList.BlockIdLength)
 
-				err := bb.readRangeInBuffer(options.Name, lastBlock.StartIndex, lastBlock.EndIndex-lastBlock.StartIndex, lastBlock.Data)
+				// Only the existing part of the block is in storage, the extended part stays zero-filled.
+				err := bb.readRangeInBuffer(options.Name, lastBlock.StartIndex, existingSize, lastBlock.Data)
 				if err != nil {
 					log.Err("BlockBlob::createNewBlocksTruncate : Failed to adjust last block %s [%v]", options.Name, err)
 					return err

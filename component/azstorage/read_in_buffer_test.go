@@ -203,3 +203,54 @@ func TestBlockBlobReadRangeInBufferShortRead(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "short read")
 }
+
+// blockListWithPartialLastBlock : block list of a 10 byte blob made of an 8 byte block and a partial 2 byte block
+func blockListWithPartialLastBlock() *common.BlockOffsetList {
+	return &common.BlockOffsetList{
+		BlockIdLength: 16,
+		BlockList: []*common.Block{
+			{StartIndex: 0, EndIndex: 8, Id: common.GetBlockID(16)},
+			{StartIndex: 8, EndIndex: 10, Id: common.GetBlockID(16)},
+		},
+	}
+}
+
+func TestCreateNewBlocksTruncatePartialLastBlock(t *testing.T) {
+	_, bb, _ := newFakeBlobStorage(t, []byte("0123456789"))
+
+	// Extending past the last block fills it up to the block size and appends a new block for the rest
+	blockList := blockListWithPartialLastBlock()
+	oldID := blockList.BlockList[1].Id
+	err := bb.createNewBlocksTruncate(blockList, &internal.TruncateFileOptions{Name: "f", OldSize: 10, NewSize: 20, BlockSize: 8})
+	require.NoError(t, err)
+	require.Len(t, blockList.BlockList, 3)
+
+	last := blockList.BlockList[1]
+	assert.EqualValues(t, 8, last.StartIndex)
+	assert.EqualValues(t, 16, last.EndIndex)
+	assert.Equal(t, append([]byte("89"), make([]byte, 6)...), last.Data)
+	assert.True(t, last.Dirty())
+	assert.NotEqual(t, oldID, last.Id)
+
+	assert.EqualValues(t, 16, blockList.BlockList[2].StartIndex)
+	assert.EqualValues(t, 20, blockList.BlockList[2].EndIndex)
+	assert.True(t, blockList.IsBlockListModified())
+
+	// Extending within the last block only grows that block
+	blockList = blockListWithPartialLastBlock()
+	err = bb.createNewBlocksTruncate(blockList, &internal.TruncateFileOptions{Name: "f", OldSize: 10, NewSize: 12, BlockSize: 8})
+	require.NoError(t, err)
+	require.Len(t, blockList.BlockList, 2)
+	assert.EqualValues(t, 12, blockList.BlockList[1].EndIndex)
+	assert.Equal(t, []byte("89\x00\x00"), blockList.BlockList[1].Data)
+}
+
+func TestCreateNewBlocksTruncateBlobShrunk(t *testing.T) {
+	// The blob lost its last byte after the block list was fetched, so the existing data of the last block is short
+	_, bb, _ := newFakeBlobStorage(t, []byte("012345678"))
+
+	blockList := blockListWithPartialLastBlock()
+	err := bb.createNewBlocksTruncate(blockList, &internal.TruncateFileOptions{Name: "f", OldSize: 10, NewSize: 20, BlockSize: 8})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "short read")
+}
