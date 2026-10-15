@@ -821,6 +821,8 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 			return -C.ENOENT
 		} else if os.IsPermission(err) {
 			return -C.EACCES
+		} else if errors.Is(err, syscall.ENOSPC) {
+			return -C.ENOSPC
 		} else {
 			return -C.EIO
 		}
@@ -1077,6 +1079,9 @@ func libfuse_truncate(path *C.char, off C.off_t, fi *C.fuse_file_info_t) C.int {
 		}
 		if errors.Is(err, syscall.EFBIG) {
 			return -C.EFBIG
+		}
+		if errors.Is(err, syscall.ENOSPC) {
+			return -C.ENOSPC
 		}
 		return -C.EIO
 	}

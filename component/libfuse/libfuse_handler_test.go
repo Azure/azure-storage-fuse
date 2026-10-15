@@ -295,6 +295,10 @@ func (suite *libfuseTestSuite) TestOpenError() {
 	testOpenError(suite)
 }
 
+func (suite *libfuseTestSuite) TestOpenNoSpace() {
+	testOpenNoSpace(suite)
+}
+
 // read
 
 // write
@@ -323,6 +327,10 @@ func (suite *libfuseTestSuite) TestTruncateError() {
 
 func (suite *libfuseTestSuite) TestTruncateFileTooLarge() {
 	testTruncateFileTooLarge(suite)
+}
+
+func (suite *libfuseTestSuite) TestTruncateNoSpace() {
+	testTruncateNoSpace(suite)
 }
 
 func (suite *libfuseTestSuite) TestFTruncate() {

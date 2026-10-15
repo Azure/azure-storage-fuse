@@ -714,6 +714,22 @@ func testOpenError(suite *libfuseTestSuite) {
 	suite.assert.Equal(C.int(-C.EIO), err)
 }
 
+func testOpenNoSpace(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	name := "path"
+	path := C.CString("/" + name)
+	defer C.free(unsafe.Pointer(path))
+	mode := fs.FileMode(fuseFS.filePermission)
+	flags := C.O_RDWR & 0xffffffff
+	info := &C.fuse_file_info_t{}
+	info.flags = C.O_RDWR
+	options := internal.OpenFileOptions{Name: name, Flags: flags, Mode: mode}
+	suite.mock.EXPECT().OpenFile(options).Return(nil, syscall.ENOSPC)
+
+	err := libfuse_open(path, info)
+	suite.assert.Equal(C.int(-C.ENOSPC), err)
+}
+
 func testWriteFileTooLarge(suite *libfuseTestSuite) {
 	defer suite.cleanupTest()
 	name := "path"
@@ -802,6 +818,19 @@ func testTruncateFileTooLarge(suite *libfuseTestSuite) {
 
 	result := libfuse2_truncate(path, C.off_t(size))
 	suite.assert.Equal(C.int(-C.EFBIG), result)
+}
+
+func testTruncateNoSpace(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	name := "path"
+	path := C.CString("/" + name)
+	defer C.free(unsafe.Pointer(path))
+	size := int64(1024)
+	options := internal.TruncateFileOptions{Name: name, OldSize: -1, NewSize: size}
+	suite.mock.EXPECT().TruncateFile(options).Return(syscall.ENOSPC)
+
+	result := libfuse2_truncate(path, C.off_t(size))
+	suite.assert.Equal(C.int(-C.ENOSPC), result)
 }
 
 // This test is no-op in libfuse2.
