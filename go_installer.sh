@@ -7,10 +7,10 @@ work_dir=$(echo "$1" | sed 's:/*$::')
 
 # Microsoft build of Go (FIPS-capable; ships systemcrypto GOEXPERIMENT).
 # Pinned to a specific patch version for reproducible builds. Override by
-# exporting GO_VERSION before run (either a specific version like "1.26.8"
+# exporting GO_VERSION before run (either a specific version like "1.26.9"
 # or a major.minor stream like "1.26" which the aka.ms redirector resolves
 # to the latest patch in that line).
-version="${GO_VERSION:-1.26.8}"
+version="${GO_VERSION:-1.26.9}"
 arch=$(dpkg --print-architecture 2>/dev/null || true)
 if [ -z "$arch" ]; then
   case "$(uname -m)" in

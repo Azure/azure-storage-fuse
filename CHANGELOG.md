@@ -1,4 +1,4 @@
-## 2.5.6 (Unreleased)
+## 2.5.6~preview.2 (Unreleased)
 **Breaking Changes**
 - File and directory names that contain a backslash (`\`) are now rejected with `EINVAL`. Azure Storage treats `\` as `/`, so earlier versions created a different path than the one requested: for example, `touch 'a\b'` created a directory `a` containing a file `b`. ([PR #2395](https://github.com/Azure/azure-storage-fuse/pull/2395))
 
@@ -17,8 +17,9 @@
 - Reject file and directory names that contain a backslash (`\`) before they reach any component. Azure Storage treats `\` as `/`, so such a name could resolve to a path outside the mounted container or subdirectory. Names that would resolve outside the local file-cache directory are also rejected. ([PR #2354](https://github.com/Azure/azure-storage-fuse/pull/2354), [PR #2395](https://github.com/Azure/azure-storage-fuse/pull/2395))
 
 **Other Changes**
+- Prepare the Tachyon preview for Ubuntu 20.04, 22.04, 24.04, and 26.04 package feeds only, while retaining the existing cross-distro test coverage.
 - Run the ADLS DFS and Blob pre-mount validation concurrently to reduce mount latency ([PR #2341](https://github.com/Azure/azure-storage-fuse/pull/2341))
-- Build release binaries with Microsoft Go 1.26.8 and `golang.org/x/crypto` 0.56.0, and verify their embedded security metadata and reachable vulnerabilities before packaging ([Issue #2350](https://github.com/Azure/azure-storage-fuse/issues/2350))
+- Build release binaries with Microsoft Go 1.26.9, `golang.org/x/crypto` 0.57.0, and `golang.org/x/net` 0.60.0, and verify their embedded security metadata and reachable vulnerabilities before packaging ([Issue #2350](https://github.com/Azure/azure-storage-fuse/issues/2350))
 - Serve reads and writes of files created through a fuse3 mount natively in C, like files opened with `open()` and like fuse2 builds. Until now, every read and write to a newly created file went through Go, which costs more CPU and throughput. ([PR #2387](https://github.com/Azure/azure-storage-fuse/pull/2387))
 
 ## 2.5.6~preview.1 (2026-09-25)
