@@ -2257,8 +2257,9 @@ func (s *datalakeTestSuite) TestFlushFileUpdateChunkedFile() {
 	_, err = rand.Read(updatedBlock)
 	s.assert.NoError(err)
 	h.CacheObj.BlockOffsetList.BlockList[1].Data = make([]byte, blockSize)
-	err = s.az.storage.ReadInBuffer(name, int64(blockSize), int64(blockSize), h.CacheObj.BlockOffsetList.BlockList[1].Data, nil)
+	n, err := s.az.storage.ReadInBuffer(name, int64(blockSize), int64(blockSize), h.CacheObj.BlockOffsetList.BlockList[1].Data, nil)
 	s.assert.NoError(err)
+	s.assert.Equal(blockSize, n)
 	copy(h.CacheObj.BlockOffsetList.BlockList[1].Data[MB:2*MB+MB], updatedBlock)
 	h.CacheObj.BlockList[1].Flags.Set(common.DirtyBlock)
 
@@ -2297,8 +2298,9 @@ func (s *datalakeTestSuite) TestFlushFileTruncateUpdateChunkedFile() {
 	// truncate block
 	h.CacheObj.BlockOffsetList.BlockList[1].Data = make([]byte, blockSize/2)
 	h.CacheObj.BlockOffsetList.BlockList[1].EndIndex = int64(blockSize + blockSize/2)
-	err = s.az.storage.ReadInBuffer(name, int64(blockSize), int64(blockSize)/2, h.CacheObj.BlockOffsetList.BlockList[1].Data, nil)
+	n, err := s.az.storage.ReadInBuffer(name, int64(blockSize), int64(blockSize)/2, h.CacheObj.BlockOffsetList.BlockList[1].Data, nil)
 	s.assert.NoError(err)
+	s.assert.Equal(blockSize/2, n)
 	h.CacheObj.BlockList[1].Flags.Set(common.DirtyBlock)
 
 	// remove 2 blocks
@@ -2728,8 +2730,9 @@ func (s *datalakeTestSuite) TestDownloadWithCPKEnabled() {
 	s.assert.Equal(data, fileData)
 
 	buf := make([]byte, len(data))
-	err = s.az.storage.ReadInBuffer(name, 0, int64(len(data)), buf, nil)
+	n, err := s.az.storage.ReadInBuffer(name, 0, int64(len(data)), buf, nil)
 	s.assert.NoError(err)
+	s.assert.Equal(len(data), n)
 	s.assert.Equal(data, buf)
 
 	rbuf, err := s.az.storage.ReadBuffer(name, 0, int64(len(data)))
