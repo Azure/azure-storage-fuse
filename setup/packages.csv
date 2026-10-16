@@ -1,6 +1,5 @@
 # Do not remove these comments
 # Format of the file : <Distro Name>,<Fuse Version, Architecture, File Type>,<Repo Name>,<Release Name(for deb repos only)>
-Ubuntu-18.04,fuse2AmdDeb,microsoft-ubuntu-bionic-prod-apt,bionic
 Ubuntu-20.04,fuse3AmdDeb,microsoft-ubuntu-focal-prod-apt,focal
 Ubuntu-22.04,fuse3AmdDeb,microsoft-ubuntu-jammy-prod-apt,jammy
 Ubuntu-22.04,fuse3ArmDeb,microsoft-ubuntu-jammy-prod-apt,jammy
@@ -8,5 +7,3 @@ Ubuntu-24.04,fuse3AmdDeb,microsoft-ubuntu-noble-prod-apt,noble
 Ubuntu-24.04,fuse3ArmDeb,microsoft-ubuntu-noble-prod-apt,noble
 Ubuntu-26.04,fuse34AmdDeb,microsoft-ubuntu-resolute-prod-apt,resolute
 Ubuntu-26.04,fuse34ArmDeb,microsoft-ubuntu-resolute-prod-apt,resolute
-Mariner-3.0-x86_64,marinerFuse3AmdRpm,azurelinux-3.0-prod-ms-oss-x86_64-yum,
-Mariner-3.0-aarch64,marinerFuse3AarchRpm,azurelinux-3.0-prod-ms-oss-aarch64-yum,
