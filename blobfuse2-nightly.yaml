@@ -82,6 +82,14 @@ parameters:
     type: boolean
     default: true
 
+  # Distributed cache E2E: runs kind + DACS (pinned public MCR artifacts) on
+  # an amd64 nightly agent. Off by default; queue the pipeline with this
+  # parameter set to true to opt in.
+  - name: dist_cache_test
+    displayName: 'Run distributed cache E2E tests (requires kind + DACS image)'
+    type: boolean
+    default: false
+
 stages:
 
   - ${{ if eq(parameters.base_test, true) }}:
@@ -1439,6 +1447,61 @@ stages:
                 verbose_log: ${{ parameters.verbose_log }}
 
             - template: azure-pipeline-templates/cleanup.yml
+              parameters:
+                unmount: true
+                delete_containers: true
+
+  # -----------------------------------------------------------------------
+  # Distributed cache E2E.
+  # Gated on the `dist_cache_test` parameter. Queue a manual run with the
+  # parameter set to true.
+  - ${{ if eq(parameters.dist_cache_test, true) }}:
+    - stage: DistCacheValidation
+      dependsOn: BuildAndTest
+      jobs:
+        - job: Set_1
+          timeoutInMinutes: 360
+          strategy:
+            matrix:
+              Ubuntu-22-BlockBlob-DistCache:
+                AgentName: 'blobfuse-ubuntu22'
+                distro: 'ubuntu'
+                distro_version: 'ubuntu_22_x86'
+                fuselib: 'libfuse3-dev'
+                tags: 'fuse3'
+          pool:
+            name: 'blobfuse-ubuntu-pool'
+            demands:
+              - ImageOverride -equals $(AgentName)
+          variables:
+            - group: NightlyBlobFuse
+            - name: MOUNT_DIR
+              value: '$(Pipeline.Workspace)/blob_mnt'
+            - name: TEMP_DIR
+              value: '$(Pipeline.Workspace)/blobfuse2_tmp'
+            - name: GOPATH
+              value: '$(Pipeline.Workspace)/go'
+            - name: ROOT_DIR
+              value: '$(Agent.TempDirectory)'
+            - name: WORK_DIR
+              value: '$(Build.SourcesDirectory)'
+          steps:
+            - template: 'azure-pipeline-templates/build.yml'
+              parameters:
+                skip_ut: true
+
+            # Run the dedicated dist_cache pod tests against a single kind
+            # cluster (cluster setup + teardown happens once). The template
+            # pulls public DACS artifacts and builds the in-cluster blobfuse2
+            # image from the code under test.
+            - template: 'azure-pipeline-templates/dist-cache-e2e.yml'
+              parameters:
+                run_idstring: 'DistCache'
+                distro_name: $(AgentName)
+                account_name: $(BF2_BLK_ACC_NAME)
+                account_key: $(BF2_BLK_ACC_KEY)
+
+            - template: 'azure-pipeline-templates/cleanup.yml'
               parameters:
                 unmount: true
                 delete_containers: true

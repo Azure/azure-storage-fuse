@@ -299,6 +299,9 @@ func IsSet(key string) bool {
 			return false
 		}
 	}
+	if node.value == nil {
+		return false
+	}
 	return node.value.(*pflag.Flag).Changed
 }
 
