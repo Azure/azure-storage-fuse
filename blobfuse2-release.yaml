@@ -1841,28 +1841,6 @@ stages:
               artifactName: 'blobfuse2'
               downloadPath: $(Build.ArtifactStagingDirectory)
 
-          - task: DownloadBuildArtifacts@0
-            displayName: 'Download Signed Azure Linux Artifacts'
-            inputs:
-              artifactName: 'blobfuse2-signed'
-              downloadPath: $(Build.ArtifactStagingDirectory)
-              itemPattern: blobfuse2-signed/mariner/*.rpm
-
-          - script: |
-              set -euo pipefail
-              shopt -s failglob
-
-              mkdir release-assets
-              cp blobfuse2/*Ubuntu-*.deb release-assets/
-              for package in blobfuse2-signed/mariner/blobfuse2*-fuse3.x86_64.rpm \
-                             blobfuse2-signed/mariner/blobfuse2*-fuse3.aarch64.rpm; do
-                cp "$package" "release-assets/$(basename "${package/-fuse3./-AzureLinux-3.0.}")"
-              done
-              ls -l release-assets/
-              md5sum release-assets/*
-            displayName: 'Select Ubuntu and Azure Linux Release Assets'
-            workingDirectory: $(Build.ArtifactStagingDirectory)
-
           - script: |
               sudo ls -lRt $(Build.ArtifactStagingDirectory)
               md5sum $(Build.ArtifactStagingDirectory)/blobfuse2/*.deb
@@ -1893,7 +1871,7 @@ stages:
                   tag: ${{ parameters.tag }}
 
                   assets: |
-                    $(Build.ArtifactStagingDirectory)/release-assets/*
+                    $(Build.ArtifactStagingDirectory)/blobfuse2/*
                   changeLogCompareToRelease: 'lastFullRelease'
                   changeLogType: 'commitBased'
                   isDraft: ${{ parameters.draft }}
@@ -2076,3 +2054,4 @@ stages:
                     fi
                   done < <(tail -n +3 ../packages.csv)
                 workingDirectory: $(Build.ArtifactStagingDirectory)/blobfuse2-signed/
+
