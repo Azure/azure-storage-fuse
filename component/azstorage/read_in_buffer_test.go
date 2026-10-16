@@ -38,7 +38,9 @@ package azstorage
 
 import (
 	"bytes"
+	"encoding/base64"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -59,9 +61,19 @@ import (
 
 // fakeBlob serves ranged GETs for a single blob whose content can be swapped at runtime,
 // mimicking the service behaviour of returning a shorter 206 when the range exceeds the blob size.
+// It also serves a committed block list, set separately from the content so that it can describe
+// a blob that changed after its block list was fetched, and records the uploads it receives.
 type fakeBlob struct {
-	mu      sync.Mutex
-	content []byte
+	mu        sync.Mutex
+	content   []byte
+	blocks    []int64 // sizes of the committed blocks
+	cutBodies int     // number of next downloads whose body is cut off halfway
+	uploads   []fakeUpload
+}
+
+type fakeUpload struct {
+	comp string // "block" for Put Block, "blocklist" for Put Block List, empty for Put Blob
+	body []byte
 }
 
 func (f *fakeBlob) set(content []byte) {
@@ -70,15 +82,71 @@ func (f *fakeBlob) set(content []byte) {
 	f.content = content
 }
 
-func (f *fakeBlob) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (f *fakeBlob) setBlocks(sizes ...int64) {
 	f.mu.Lock()
-	content := f.content
+	defer f.mu.Unlock()
+	f.blocks = sizes
+}
+
+func (f *fakeBlob) cutNextBodies(count int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.cutBodies = count
+}
+
+// takeUploads returns the uploads received since the last call
+func (f *fakeBlob) takeUploads() []fakeUpload {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	uploads := f.uploads
+	f.uploads = nil
+	return uploads
+}
+
+func (f *fakeBlob) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	switch {
+	case r.Method == http.MethodPut:
+		body, _ := io.ReadAll(r.Body)
+		f.mu.Lock()
+		f.uploads = append(f.uploads, fakeUpload{comp: r.URL.Query().Get("comp"), body: body})
+		f.mu.Unlock()
+		w.Header().Set("ETag", `"0x8DEADBEEF"`)
+		w.WriteHeader(http.StatusCreated)
+	case r.Method == http.MethodGet && r.URL.Query().Get("comp") == "blocklist":
+		f.serveBlockList(w)
+	case r.Method == http.MethodGet:
+		f.serveRange(w, r)
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+func (f *fakeBlob) serveBlockList(w http.ResponseWriter) {
+	f.mu.Lock()
+	blocks := f.blocks
 	f.mu.Unlock()
 
-	if r.Method != http.MethodGet {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
+	var list strings.Builder
+	list.WriteString(`<?xml version="1.0" encoding="utf-8"?><BlockList><CommittedBlocks>`)
+	for i, size := range blocks {
+		name := base64.StdEncoding.EncodeToString(fmt.Appendf(nil, "block-%010d", i))
+		fmt.Fprintf(&list, "<Block><Name>%s</Name><Size>%d</Size></Block>", name, size)
 	}
+	list.WriteString("</CommittedBlocks><UncommittedBlocks /></BlockList>")
+
+	w.Header().Set("Content-Type", "application/xml")
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.WriteString(w, list.String())
+}
+
+func (f *fakeBlob) serveRange(w http.ResponseWriter, r *http.Request) {
+	f.mu.Lock()
+	content := f.content
+	cut := f.cutBodies > 0
+	if cut {
+		f.cutBodies--
+	}
+	f.mu.Unlock()
 
 	size := int64(len(content))
 	start, end := int64(0), size-1
@@ -102,11 +170,16 @@ func (f *fakeBlob) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	end = min(end, size-1)
 
+	body := content[start : end+1]
 	w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, size))
-	w.Header().Set("Content-Length", fmt.Sprintf("%d", end-start+1))
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(body)))
 	w.Header().Set("ETag", `"0x8DEADBEEF"`)
 	w.WriteHeader(http.StatusPartialContent)
-	_, _ = w.Write(content[start : end+1])
+	if cut {
+		// The headers promise the whole range, but the connection closes after half of it, as when it drops
+		body = body[:len(body)/2]
+	}
+	_, _ = w.Write(body)
 }
 
 func newFakeBlobStorage(t *testing.T, content []byte) (*AzStorage, *BlockBlob, *fakeBlob) {
@@ -253,4 +326,134 @@ func TestCreateNewBlocksTruncateBlobShrunk(t *testing.T) {
 	err := bb.createNewBlocksTruncate(blockList, &internal.TruncateFileOptions{Name: "f", OldSize: 10, NewSize: 20, BlockSize: 8})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "short read")
+}
+
+func TestReadInBufferCutOffBody(t *testing.T) {
+	content := make([]byte, 1000)
+	for i := range content {
+		content[i] = byte(i)
+	}
+	az, bb, blob := newFakeBlobStorage(t, content)
+
+	// The reader downloads the rest of a body that was cut off once
+	blob.cutNextBodies(1)
+	data := make([]byte, 500)
+	n, err := bb.ReadInBuffer("f", 100, 500, data, nil)
+	require.NoError(t, err)
+	assert.Equal(t, 500, n)
+	assert.Equal(t, content[100:600], data)
+
+	// A body that is cut off on every retry fails the read, also when the range goes past the end of the blob, instead
+	// of returning the part that was received as if the blob were shorter
+	for _, offset := range []int64{100, 900} {
+		blob.cutNextBodies(100)
+		n, err = bb.ReadInBuffer("f", offset, 500, make([]byte, 500), nil)
+		require.ErrorIs(t, err, io.ErrUnexpectedEOF)
+		assert.Equal(t, 0, n)
+	}
+
+	h := handlemap.NewHandle("f")
+	h.Size = int64(len(content))
+	n, err = az.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: data})
+	require.ErrorIs(t, err, io.ErrUnexpectedEOF)
+	assert.Equal(t, 0, n)
+	blob.cutNextBodies(0)
+}
+
+func TestReadInBufferZeroLengthRequestsBufferSize(t *testing.T) {
+	var ranges []string
+	_, bb, blob := newFakeBlobStorage(t, bytes.Repeat([]byte("B"), 1000))
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ranges = append(ranges, r.Header.Get("x-ms-range"))
+		blob.ServeHTTP(w, r)
+	}))
+	t.Cleanup(srv.Close)
+	cli, err := container.NewClientWithNoCredential(srv.URL+"/account/container", &container.ClientOptions{
+		ClientOptions: azcore.ClientOptions{Retry: policy.RetryOptions{MaxRetries: -1}},
+	})
+	require.NoError(t, err)
+	bb.Container = cli
+
+	n, err := bb.ReadInBuffer("f", 100, 0, make([]byte, 300), nil)
+	require.NoError(t, err)
+	assert.Equal(t, 300, n)
+
+	// An empty buffer reads nothing, without a request for the rest of the blob
+	n, err = bb.ReadInBuffer("f", 100, 0, nil, nil)
+	require.NoError(t, err)
+	assert.Equal(t, 0, n)
+
+	assert.Equal(t, []string{"bytes=100-399"}, ranges)
+}
+
+func TestWriteBlobShorterThanBlockList(t *testing.T) {
+	content := []byte("0123456789abcdef")
+	_, bb, blob := newFakeBlobStorage(t, content)
+	blob.setBlocks(8, 8)
+	options := &internal.WriteFileOptions{Handle: handlemap.NewHandle("f"), Offset: 12, Data: []byte("XY")}
+
+	// Overwriting the middle of the second block uploads it with the rest of its existing data
+	require.NoError(t, bb.Write(options))
+	uploads := blob.takeUploads()
+	require.Len(t, uploads, 2)
+	assert.Equal(t, fakeUpload{comp: "block", body: []byte("89abXYef")}, uploads[0])
+	assert.Equal(t, "blocklist", uploads[1].comp)
+
+	// The blob lost its last 6 bytes after its block list was fetched, so the second block can not be read in full
+	blob.set(content[:10])
+	err := bb.Write(options)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "short read")
+	assert.Empty(t, blob.takeUploads())
+}
+
+func TestTruncateBlobShorterThanCachedSize(t *testing.T) {
+	content := []byte("0123456789abcdef")
+	for _, tc := range []struct {
+		name    string
+		blocks  []int64
+		options internal.TruncateFileOptions
+		uploads []fakeUpload
+	}{
+		{
+			// removeBlocksTruncate keeps the start of the block that the new size falls in
+			name:    "shrink into a block",
+			blocks:  []int64{8, 8},
+			options: internal.TruncateFileOptions{Name: "f", OldSize: 16, NewSize: 12, BlockSize: 8},
+			uploads: []fakeUpload{{comp: "block", body: []byte("89ab")}, {comp: "blocklist"}},
+		},
+		{
+			// TruncateFileWithoutBlocks uploads the whole blob again
+			name:    "shrink without blocks",
+			options: internal.TruncateFileOptions{Name: "f", OldSize: 16, NewSize: 12},
+			uploads: []fakeUpload{{body: []byte("0123456789ab")}},
+		},
+		{
+			name:    "extend without blocks",
+			options: internal.TruncateFileOptions{Name: "f", OldSize: 16, NewSize: 20},
+			uploads: []fakeUpload{{body: append([]byte("0123456789abcdef"), 0, 0, 0, 0)}},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, bb, blob := newFakeBlobStorage(t, content)
+			blob.setBlocks(tc.blocks...)
+
+			require.NoError(t, bb.TruncateFile(tc.options))
+			uploads := blob.takeUploads()
+			require.Len(t, uploads, len(tc.uploads))
+			for i, upload := range tc.uploads {
+				assert.Equal(t, upload.comp, uploads[i].comp)
+				if upload.body != nil {
+					assert.Equal(t, upload.body, uploads[i].body)
+				}
+			}
+
+			// The blob lost its last 6 bytes after its size was cached, so the data to keep can not be read in full
+			blob.set(content[:10])
+			err := bb.TruncateFile(tc.options)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "short read")
+			assert.Empty(t, blob.takeUploads())
+		})
+	}
 }

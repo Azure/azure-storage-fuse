@@ -1048,7 +1048,8 @@ func (bb *BlockBlob) ReadBuffer(name string, offset int64, length int64) ([]byte
 // ReadInBuffer : Download specific range from a file to a user provided buffer
 // Specifying "0" len will download from offset till the end of blob (bounded by len(data)).
 // Returns the number of bytes actually copied into data, which can be less than the requested
-// length if the blob was truncated after its size was last fetched.
+// length if the blob was truncated after its size was last fetched. A download that is cut off
+// before the end of the response fails instead.
 func (bb *BlockBlob) ReadInBuffer(name string, offset int64, length int64, data []byte, etag *string) (int, error) {
 	// log.Trace("BlockBlob::ReadInBuffer : name %s", name)
 	if etag != nil {
@@ -1066,6 +1067,11 @@ func (bb *BlockBlob) ReadInBuffer(name string, offset int64, length int64, data 
 		data = data[:length]
 	}
 
+	// A count of 0 would request the rest of the blob, so always request the size of the buffer.
+	if len(data) == 0 {
+		return 0, nil
+	}
+
 	blobClient := bb.Container.NewBlobClient(filepath.Join(bb.Config.prefixPath, name))
 
 	ctx, cancel := context.WithTimeout(context.Background(), max_context_timeout*time.Minute)
@@ -1074,7 +1080,7 @@ func (bb *BlockBlob) ReadInBuffer(name string, offset int64, length int64, data 
 	opt := &blob.DownloadStreamOptions{
 		Range: blob.HTTPRange{
 			Offset: offset,
-			Count:  length,
+			Count:  int64(len(data)),
 		},
 		CPKInfo: bb.blobCPKOpt,
 	}
@@ -1111,6 +1117,20 @@ func (bb *BlockBlob) ReadInBuffer(name string, offset int64, length int64, data 
 	if dataRead < 0 || dataRead > len(data) {
 		log.Err("BlockBlob::ReadInBuffer : Failed to copy data from body to buffer for blob %s", name)
 		return 0, errors.New("failed to copy data from body to buffer")
+	}
+
+	// The service returns fewer bytes than requested only when the range goes past the end of the blob, and then its
+	// Content-Length is shorter as well. A body that ends before its Content-Length was cut off, even after the retries of
+	// the reader, so fail instead of returning it as a shorter blob. The transport removes the Content-Length when it
+	// decompresses a gzip encoded blob, and then there is nothing to check against.
+	if downloadResponse.ContentLength != nil {
+		expected := min(*downloadResponse.ContentLength, int64(len(data)))
+		if int64(dataRead) < expected {
+			log.Err("BlockBlob::ReadInBuffer : Incomplete download of blob %s at offset %d, expected %d bytes, received %d bytes",
+				name, offset, expected, dataRead)
+			return 0, fmt.Errorf("incomplete download of blob %s at offset %d: expected %d bytes, received %d bytes: %w",
+				name, offset, expected, dataRead, io.ErrUnexpectedEOF)
+		}
 	}
 
 	if length > 0 && int64(dataRead) < length {
@@ -1753,6 +1773,7 @@ func (bb *BlockBlob) Write(options *internal.WriteFileOptions) error {
 			err = bb.readRangeInBuffer(name, fileOffsets.BlockList[index].StartIndex, oldDataSize, oldDataBuffer)
 			if err != nil {
 				log.Err("BlockBlob::Write : Failed to read data in buffer %s [%s]", name, err.Error())
+				return err
 			}
 		}
 		// this gives us where the offset with respect to the buffer that holds our old data - so we can start writing the new data
