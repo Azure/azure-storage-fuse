@@ -725,19 +725,19 @@ func init() {
 
 	blockSizeFlag := config.AddUint32Flag("distributed-cache-block-size", 0,
 		"block size in MB for the distributed cache L1 (block_cache)")
-	config.BindPFlag("block_cache.block-size-mb", blockSizeFlag)
+	config.BindPFlag(compName+".block-size-mb", blockSizeFlag)
 
 	memFlag := config.AddUint32Flag("distributed-cache-node-memory", 0,
 		"memory size in MB for the distributed cache L1 (block_cache)")
-	config.BindPFlag("block_cache.mem-size-mb", memFlag)
+	config.BindPFlag(compName+".mem-size-mb", memFlag)
 
 	prefetchFlag := config.AddUint32Flag("distributed-cache-prefetch", 0,
 		"prefetch block count for the distributed cache L1 (block_cache)")
-	config.BindPFlag("block_cache.prefetch", prefetchFlag)
+	config.BindPFlag(compName+".prefetch", prefetchFlag)
 
 	parallelismFlag := config.AddUint32Flag("distributed-cache-parallelism", 0,
 		"download parallelism for the distributed cache L1 (block_cache)")
-	config.BindPFlag("block_cache.parallelism", parallelismFlag)
+	config.BindPFlag(compName+".parallelism", parallelismFlag)
 
 	RegisterEnvVariables()
 

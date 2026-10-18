@@ -1165,7 +1165,7 @@ func (suite *mountTestSuite) TestDistributedCacheBlockSizeCLI() {
 	confFile.Close()
 
 	_, err = executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileName),
-		"--distributed-cache-discovery-endpoint=example.com:9065", "--distributed-cache-block-size=32")
+		"--distributed-cache-discovery-endpoint=example.com:9065", "--read-only", "--distributed-cache-block-size=32")
 	suite.assert.Error(err)
 
 	var blockSize uint32
@@ -1191,7 +1191,7 @@ func (suite *mountTestSuite) TestDistributedCacheNodeMemoryCLI() {
 	confFile.Close()
 
 	_, err = executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileName),
-		"--distributed-cache-discovery-endpoint=example.com:9065", "--distributed-cache-node-memory=512")
+		"--distributed-cache-discovery-endpoint=example.com:9065", "--read-only", "--distributed-cache-node-memory=512")
 	suite.assert.Error(err)
 
 	var memSize uint32
@@ -1217,7 +1217,7 @@ func (suite *mountTestSuite) TestDistributedCachePrefetchCLI() {
 	confFile.Close()
 
 	_, err = executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileName),
-		"--distributed-cache-discovery-endpoint=example.com:9065", "--distributed-cache-prefetch=16")
+		"--distributed-cache-discovery-endpoint=example.com:9065", "--read-only", "--distributed-cache-prefetch=16")
 	suite.assert.Error(err)
 
 	var prefetch uint32
@@ -1243,13 +1243,48 @@ func (suite *mountTestSuite) TestDistributedCacheParallelismCLI() {
 	confFile.Close()
 
 	_, err = executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileName),
-		"--distributed-cache-discovery-endpoint=example.com:9065", "--distributed-cache-parallelism=24")
+		"--distributed-cache-discovery-endpoint=example.com:9065", "--read-only", "--distributed-cache-parallelism=24")
 	suite.assert.Error(err)
 
 	var parallelism uint32
 	err = config.UnmarshalKey("block_cache.parallelism", &parallelism)
 	suite.assert.NoError(err)
 	suite.assert.Equal(uint32(24), parallelism)
+}
+
+func TestBlockCacheCLIFlagsAreNotShadowedByDistCacheFlags(t *testing.T) {
+	resetMountCLIFlags()
+	defer resetMountCLIFlags()
+
+	setDistCacheYAML(t, `
+block_cache:
+  block-size-mb: 1
+  mem-size-mb: 64
+  prefetch: 0
+  parallelism: 1
+`)
+
+	flags := mountCmd.PersistentFlags()
+	assert.NoError(t, flags.Set("block-cache-block-size", "2"))
+	assert.NoError(t, flags.Set("block-cache-pool-size", "96"))
+	assert.NoError(t, flags.Set("block-cache-prefetch", "11"))
+	assert.NoError(t, flags.Set("block-cache-parallelism", "2"))
+
+	var blockSize float64
+	assert.NoError(t, config.UnmarshalKey("block_cache.block-size-mb", &blockSize))
+	assert.InDelta(t, float64(2), blockSize, 0)
+
+	var memSize uint64
+	assert.NoError(t, config.UnmarshalKey("block_cache.mem-size-mb", &memSize))
+	assert.Equal(t, uint64(96), memSize)
+
+	var prefetch uint32
+	assert.NoError(t, config.UnmarshalKey("block_cache.prefetch", &prefetch))
+	assert.Equal(t, uint32(11), prefetch)
+
+	var parallelism uint32
+	assert.NoError(t, config.UnmarshalKey("block_cache.parallelism", &parallelism))
+	assert.Equal(t, uint32(2), parallelism)
 }
 
 func TestMountCommand(t *testing.T) {

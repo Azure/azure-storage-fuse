@@ -38,6 +38,7 @@ import (
 	"testing"
 
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
+	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 )
@@ -663,6 +664,59 @@ distributed_cache:
 	assert.False(t, viper.IsSet("block_cache.mem-size-mb"))
 	assert.False(t, viper.IsSet("block_cache.prefetch"))
 	assert.False(t, viper.IsSet("block_cache.parallelism"))
+}
+
+// resetMountCLIFlags clears flag state on the real mount flag set, which is
+// what the config flag tree points at.
+func resetMountCLIFlags() {
+	mountCmd.PersistentFlags().VisitAll(func(f *pflag.Flag) {
+		f.Changed = false
+		_ = f.Value.Set(f.DefValue)
+	})
+	viper.Reset()
+}
+
+// The distributed-cache tuning flags must land under distributed_cache.* and
+// reach block_cache.* only through normalizeDistCacheConfig's fan-out.
+func TestDistCacheTuningCLIFlagsFanOutToBlockCache(t *testing.T) {
+	resetMountCLIFlags()
+	defer resetMountCLIFlags()
+
+	setDistCacheYAML(t, `
+read-only: true
+distributed_cache:
+  discovery-endpoint: d
+`)
+
+	flags := mountCmd.PersistentFlags()
+	assert.NoError(t, flags.Set("distributed-cache-block-size", "32"))
+	assert.NoError(t, flags.Set("distributed-cache-node-memory", "4096"))
+	assert.NoError(t, flags.Set("distributed-cache-prefetch", "24"))
+	assert.NoError(t, flags.Set("distributed-cache-parallelism", "128"))
+
+	// Flags are visible under distributed_cache.* and do not leak into block_cache.*.
+	for _, key := range []string{"block-size-mb", "mem-size-mb", "prefetch", "parallelism"} {
+		assert.True(t, config.IsSet("distributed_cache."+key), key)
+		assert.False(t, config.IsSet("block_cache."+key), key)
+	}
+
+	assert.NoError(t, normalizeDistCacheConfig([]string{"libfuse", "distributed_cache", "azstorage"}))
+
+	var blockSize float64
+	assert.NoError(t, config.UnmarshalKey("block_cache.block-size-mb", &blockSize))
+	assert.InDelta(t, float64(32), blockSize, 0)
+
+	var memSize uint64
+	assert.NoError(t, config.UnmarshalKey("block_cache.mem-size-mb", &memSize))
+	assert.Equal(t, uint64(4096), memSize)
+
+	var prefetch uint32
+	assert.NoError(t, config.UnmarshalKey("block_cache.prefetch", &prefetch))
+	assert.Equal(t, uint32(24), prefetch)
+
+	var parallelism uint32
+	assert.NoError(t, config.UnmarshalKey("block_cache.parallelism", &parallelism))
+	assert.Equal(t, uint32(128), parallelism)
 }
 
 // --- applyLibfuseReadOnlyOption ----------------------------------------------
