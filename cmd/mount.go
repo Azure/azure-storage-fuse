@@ -872,6 +872,12 @@ func normalizeDistCacheConfig(userComponents []string) error {
 		}
 	}
 
+	// An explicit components: list skips pipeline synthesis, so a discovery
+	// endpoint alone would otherwise be silently ignored.
+	if len(userComponents) > 0 && !common.ComponentInPipeline(userComponents, "distributed_cache") {
+		return fmt.Errorf("mount: distributed-cache discovery is configured but distributed_cache is missing from components:; add distributed_cache or omit components: to use automatic pipeline selection")
+	}
+
 	// Also reject sibling L1 enable *flags* — the hyphenated CLI keys (or
 	// their YAML equivalents). Value-based check so an explicit `false`
 	// does not reject.

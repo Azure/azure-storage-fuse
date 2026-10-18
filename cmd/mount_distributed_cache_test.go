@@ -611,6 +611,48 @@ distributed_cache:
 	}
 }
 
+func TestNormalizeDistCacheConfig_RejectsExplicitComponentsWithoutDistCache(t *testing.T) {
+	setDistCacheYAML(t, `
+read-only: true
+distributed_cache:
+  discovery-endpoint: d
+components:
+  - libfuse
+  - attr_cache
+  - azstorage
+`)
+	defer viper.Reset()
+
+	err := normalizeDistCacheConfig([]string{"libfuse", "attr_cache", "azstorage"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "distributed_cache is missing from components")
+}
+
+func TestNormalizeDistCacheConfig_ServerListWithExplicitComponentsWithoutDistCache(t *testing.T) {
+	setDistCacheYAML(t, `
+read-only: true
+distributed_cache:
+  server-list: cache-0:9065
+`)
+	defer viper.Reset()
+
+	err := normalizeDistCacheConfig([]string{"libfuse", "azstorage"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "distributed_cache is missing from components")
+}
+
+func TestNormalizeDistCacheConfig_AcceptsExplicitComponentsWithDistCache(t *testing.T) {
+	setDistCacheYAML(t, `
+read-only: true
+distributed_cache:
+  discovery-endpoint: d
+`)
+	defer viper.Reset()
+
+	err := normalizeDistCacheConfig([]string{"libfuse", "distributed_cache", "azstorage"})
+	assert.NoError(t, err)
+}
+
 func TestNormalizeDistCacheConfig_FansOutTuningKnobs(t *testing.T) {
 	// User writes tuning under distributed_cache:; normalize fans out to
 	// block_cache.* (the auto-injected L1).
