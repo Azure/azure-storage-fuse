@@ -52,8 +52,7 @@ distributed_cache:
   # ttl-seconds: 86400
 
   # Optional: per-chunk CRC32 verification on the cache client. Default true.
-  # On mismatch, bypass-on-error=true (default) falls through to azstorage;
-  # otherwise EIO is returned to the caller.
+  # On mismatch, the cache read falls back to azstorage.
   # verify-checksum: true
 
 attr_cache:
