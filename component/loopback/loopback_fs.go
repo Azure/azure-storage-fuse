@@ -358,15 +358,15 @@ func (lfs *LoopbackFS) ReadInBuffer(options *internal.ReadInBufferOptions) (int,
 		}
 
 		n, err := f1.ReadAt(options.Data, options.Offset)
-		f1.Close()
 		if err == io.EOF {
 			err = nil
 		}
 		if err == nil && options.Etag != nil {
-			if info, statErr := os.Lstat(fullPath); statErr == nil {
+			if info, statErr := f1.Stat(); statErr == nil {
 				*options.Etag = loopbackETag(info)
 			}
 		}
+		f1.Close()
 		return n, err
 	}
 
