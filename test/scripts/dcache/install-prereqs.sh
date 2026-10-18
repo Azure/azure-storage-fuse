@@ -75,16 +75,22 @@ fi
 #   permission denied while trying to connect to the docker API at
 #   unix:///var/run/docker.sock
 # `usermod -aG docker` alone does not take effect in the current shell
-# (would need a re-login), so we also chmod the socket. This is safe on
-# 1ES hosted pools where each build gets a fresh, ephemeral VM.
+# (would need a re-login), so grant only the invoking user an immediate ACL.
+# Docker access is root-equivalent; never grant it to every local user.
+DOCKER_USER="${SUDO_USER:-$(id -un)}"
+DOCKER_UID="$(id -u "$DOCKER_USER")"
 if ! getent group docker >/dev/null; then
   sudo groupadd docker
 fi
-if ! id -nG "$USER" | tr ' ' '\n' | grep -qx docker; then
-  sudo usermod -aG docker "$USER"
+if ! id -nG "$DOCKER_USER" | tr ' ' '\n' | grep -qx docker; then
+  sudo usermod -aG docker "$DOCKER_USER"
 fi
 if [[ -S /var/run/docker.sock ]]; then
-  sudo chmod a+rw /var/run/docker.sock
+  if ! check_command setfacl; then
+    sudo apt-get update
+    sudo apt-get install -y acl
+  fi
+  sudo setfacl -m "u:${DOCKER_UID}:rw" /var/run/docker.sock
 fi
 
 # Install the configured kind version.
