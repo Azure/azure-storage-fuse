@@ -287,6 +287,8 @@ func SetBool(key string, val bool) {
 	viper.Set(key, val)
 }
 
+// IsSet reports whether a key or any descendant is explicitly configured.
+// CLI bindings live outside Viper, so parent keys must also inspect flagTree.
 func IsSet(key string) bool {
 	if viper.IsSet(key) {
 		return true
@@ -299,10 +301,19 @@ func IsSet(key string) bool {
 			return false
 		}
 	}
-	if node.value == nil {
-		return false
+	return hasChangedFlag(node)
+}
+
+func hasChangedFlag(node *TreeNode) bool {
+	if node.value != nil && node.value.(*pflag.Flag).Changed {
+		return true
 	}
-	return node.value.(*pflag.Flag).Changed
+	for _, child := range node.children {
+		if hasChangedFlag(child) {
+			return true
+		}
+	}
+	return false
 }
 
 // AttachToFlagSet is used to attach the flags in config to the cmd flags

@@ -41,6 +41,7 @@ import (
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // --- injectBlockCacheForDistCache ---------------------------------------------
@@ -521,54 +522,84 @@ stream:
 // A sibling L1 tuning knob passed on the CLI (e.g.
 // `--block-cache-block-size=80`, which binds to `block_cache.block-size-mb`)
 // alongside a distributed-cache discovery-endpoint must be rejected — the
-// user likely meant `--distributed-cache-block-size`. The gate fires because
-// viper's IsSet on the parent key ("block_cache") returns true once any
-// nested key is set.
+// user likely meant `--distributed-cache-block-size`. Parse real flags so the
+// parent-key check must inspect changed descendants in the config flag tree.
 func TestNormalizeDistCacheConfig_RejectsSiblingL1TuningKnobsViaCLI(t *testing.T) {
 	cases := []struct {
 		name    string
 		key     string
-		value   string
+		arg     string
 		wantSub string
 	}{
 		{
 			name:    "block_cache block-size-mb",
 			key:     "block_cache.block-size-mb",
-			value:   "80",
+			arg:     "--block-cache-block-size=80",
 			wantSub: "block_cache",
 		},
 		{
 			name:    "block_cache mem-size-mb",
 			key:     "block_cache.mem-size-mb",
-			value:   "4096",
+			arg:     "--block-cache-pool-size=4096",
+			wantSub: "block_cache",
+		},
+		{
+			name:    "block_cache disk path",
+			key:     "block_cache.path",
+			arg:     "--block-cache-path=/tmp/cache",
+			wantSub: "block_cache",
+		},
+		{
+			name:    "block_cache zero prefetch",
+			key:     "block_cache.prefetch",
+			arg:     "--block-cache-prefetch=0",
 			wantSub: "block_cache",
 		},
 		{
 			name:    "file_cache path",
 			key:     "file_cache.path",
-			value:   "/tmp/fc",
+			arg:     "--tmp-path=/tmp/fc",
 			wantSub: "file_cache",
 		},
 		{
 			name:    "file_cache timeout-sec",
 			key:     "file_cache.timeout-sec",
-			value:   "120",
+			arg:     "--file-cache-timeout=120",
 			wantSub: "file_cache",
+		},
+		{
+			name:    "xload workers",
+			key:     "xload.workers",
+			arg:     "--workers=100",
+			wantSub: "xload",
+		},
+		{
+			name:    "stream block size",
+			key:     "stream.block-size-mb",
+			arg:     "--block-size-mb=16",
+			wantSub: "stream",
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			resetMountCLIFlags()
+			t.Cleanup(resetMountCLIFlags)
 			setDistCacheYAML(t, `
 read-only: true
 distributed_cache:
   discovery-endpoint: d
+  block-size-mb: 32
 `)
-			defer viper.Reset()
-			config.Set(tc.key, tc.value)
+			require.NoError(t, mountCmd.PersistentFlags().Parse([]string{tc.arg}))
+			assert.False(t, viper.IsSet(tc.wantSub), "CLI settings must not be simulated through Viper")
+			assert.True(t, config.IsSet(tc.key), "the bound child flag must be set")
 
-			err := normalizeDistCacheConfig([]string{"libfuse", "azstorage"})
-			assert.Error(t, err)
-			assert.Contains(t, err.Error(), tc.wantSub)
+			for _, components := range [][]string{nil, {"libfuse", "distributed_cache", "azstorage"}} {
+				err := normalizeDistCacheConfig(components)
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tc.wantSub)
+				assert.False(t, viper.IsSet("block_cache.block-size-mb"), "reject before fan-out")
+			}
 		})
 	}
 }
@@ -578,16 +609,17 @@ distributed_cache:
 func TestNormalizeDistCacheConfig_RejectsSiblingL1CLIFlags(t *testing.T) {
 	for _, key := range []string{"streaming", "block-cache", "preload"} {
 		t.Run(key, func(t *testing.T) {
+			resetMountCLIFlags()
+			t.Cleanup(resetMountCLIFlags)
 			setDistCacheYAML(t, `
 read-only: true
 distributed_cache:
   discovery-endpoint: d
 `)
-			defer viper.Reset()
-			config.Set(key, "true")
+			require.NoError(t, mountCmd.Flags().Parse([]string{"--" + key + "=true"}))
 
 			err := normalizeDistCacheConfig(nil)
-			assert.Error(t, err)
+			require.Error(t, err)
 			assert.Contains(t, err.Error(), key)
 		})
 	}
@@ -597,13 +629,14 @@ distributed_cache:
 func TestNormalizeDistCacheConfig_DisabledSiblingL1CLIFlagsAreOK(t *testing.T) {
 	for _, key := range []string{"streaming", "block-cache", "preload"} {
 		t.Run(key, func(t *testing.T) {
+			resetMountCLIFlags()
+			t.Cleanup(resetMountCLIFlags)
 			setDistCacheYAML(t, `
 read-only: true
 distributed_cache:
   discovery-endpoint: d
 `)
-			defer viper.Reset()
-			config.Set(key, "false")
+			require.NoError(t, mountCmd.Flags().Parse([]string{"--" + key + "=false"}))
 
 			err := normalizeDistCacheConfig(nil)
 			assert.NoError(t, err)
@@ -711,10 +744,12 @@ distributed_cache:
 // resetMountCLIFlags clears flag state on the real mount flag set, which is
 // what the config flag tree points at.
 func resetMountCLIFlags() {
-	mountCmd.PersistentFlags().VisitAll(func(f *pflag.Flag) {
+	resetFlag := func(f *pflag.Flag) {
 		f.Changed = false
 		_ = f.Value.Set(f.DefValue)
-	})
+	}
+	mountCmd.Flags().VisitAll(resetFlag)
+	mountCmd.PersistentFlags().VisitAll(resetFlag)
 	viper.Reset()
 }
 
@@ -730,11 +765,12 @@ distributed_cache:
   discovery-endpoint: d
 `)
 
-	flags := mountCmd.PersistentFlags()
-	assert.NoError(t, flags.Set("distributed-cache-block-size", "32"))
-	assert.NoError(t, flags.Set("distributed-cache-node-memory", "4096"))
-	assert.NoError(t, flags.Set("distributed-cache-prefetch", "24"))
-	assert.NoError(t, flags.Set("distributed-cache-parallelism", "128"))
+	require.NoError(t, mountCmd.PersistentFlags().Parse([]string{
+		"--distributed-cache-block-size=32",
+		"--distributed-cache-node-memory=4096",
+		"--distributed-cache-prefetch=24",
+		"--distributed-cache-parallelism=128",
+	}))
 
 	// Flags are visible under distributed_cache.* and do not leak into block_cache.*.
 	for _, key := range []string{"block-size-mb", "mem-size-mb", "prefetch", "parallelism"} {

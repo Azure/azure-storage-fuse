@@ -864,7 +864,8 @@ func normalizeDistCacheConfig(userComponents []string) error {
 		return fmt.Errorf("mount: distributed cache is allowed only for read-only mounts; pass --read-only, -o ro, or set read-only: true in the config file")
 	}
 	// Reject any sibling L1 cache signal, whether in components: or as a
-	// top-level section.
+	// top-level section or changed descendant CLI flag. This must run before
+	// fan-out writes legitimate internal block_cache settings below.
 	incompatible := []string{"block_cache", "file_cache", "xload", "stream"}
 	for _, name := range incompatible {
 		if common.ComponentInPipeline(userComponents, name) || config.IsSet(name) {
