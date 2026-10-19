@@ -158,6 +158,9 @@ func resolveCfg() error {
 	testCfg.storageAccount = envDefault(testCfg.storageAccount, "STO_ACC_NAME")
 	testCfg.storageKey = envDefault(testCfg.storageKey, "STO_ACC_KEY")
 	testCfg.storageEndpoint = envDefault(testCfg.storageEndpoint, "STO_ACC_ENDPOINT")
+	if testCfg.storageEndpoint == "" && testCfg.storageAccount != "" {
+		testCfg.storageEndpoint = fmt.Sprintf("https://%s.blob.core.windows.net", testCfg.storageAccount)
+	}
 	testCfg.storageContainer = envDefault(testCfg.storageContainer, "containerName")
 	if testCfg.storageContainer == "" {
 		testCfg.storageContainer = os.Getenv("DCACHE_E2E_CONTAINER")
