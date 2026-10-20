@@ -489,6 +489,7 @@ func (m *podMounter) readFileFromPodE(pod, blobPath string) ([]byte, error) {
 		}
 	case <-time.After(podReadTimeout):
 		_ = cmd.Process.Kill()
+		<-done
 		return nil, fmt.Errorf("kubectl exec cat %s on %s: timed out after %s (stderr so far: %s)",
 			full, pod, podReadTimeout, strings.TrimSpace(stderr.String()))
 	}
