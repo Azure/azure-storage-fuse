@@ -568,7 +568,18 @@ func (lfs *LoopbackFS) CommitData(options internal.CommitDataOptions) error {
 	}
 
 	err = blob.Close()
-	return err
+	if err != nil {
+		return err
+	}
+
+	if options.NewETag != nil {
+		info, err := os.Stat(mainFilepath)
+		if err != nil {
+			return err
+		}
+		*options.NewETag = loopbackETag(info)
+	}
+	return nil
 }
 
 func (lfs *LoopbackFS) GetCommittedBlockList(name string) (*internal.CommittedBlockList, error) {
