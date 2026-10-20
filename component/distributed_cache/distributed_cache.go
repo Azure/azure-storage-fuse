@@ -719,7 +719,7 @@ func init() {
 		"custom DNS server (IP or host:port) for resolving distributed cache endpoints; empty uses the system resolver")
 	config.BindPFlag(compName+".dns-server", dnsServerFlag)
 
-	ttlFlag := config.AddUint32Flag("distributed-cache-node-ttl", 0,
+	ttlFlag := config.AddUint32Flag("distributed-cache-ttl", 0,
 		"distributed cache entry TTL in seconds (0 = no TTL)")
 	config.BindPFlag(compName+".ttl-seconds", ttlFlag)
 

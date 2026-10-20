@@ -1113,7 +1113,7 @@ func (suite *mountTestSuite) TestDistributedCacheNodeTTLCLI() {
 	confFile.Close()
 
 	_, err = executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileName),
-		"--distributed-cache-discovery-endpoint=example.com:9065", "--distributed-cache-node-ttl=120")
+		"--distributed-cache-discovery-endpoint=example.com:9065", "--distributed-cache-ttl=120")
 	suite.assert.Error(err)
 
 	var ttl uint32
