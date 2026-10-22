@@ -5,7 +5,6 @@
 **Features**
 
 **Bug Fixes**
-- Fix ADLS file and directory renames with azdatalake v1.7.0 by letting the SDK escape source paths once, preserving nested paths, spaces, Unicode, and literal percent characters.
 - On HNS accounts, attempt an ETag-conditional rollback if setting permissions after file creation fails, without deleting a pre-existing or concurrently replaced blob. Return `EINVAL` for DFS `InvalidUri` or `OutOfRangeInput` during file creation instead of `EIO`; no client-side name limit is imposed. ([PR #2369](https://github.com/Azure/azure-storage-fuse/pull/2369))
 - Return `EINVAL` instead of `EIO` when Azure Storage rejects an attribute lookup with `InvalidUri` or `InvalidQueryParameterValue`, such as for an unsupported blob or path name. ([PR #2342](https://github.com/Azure/azure-storage-fuse/pull/2342))
 - Fix an out-of-bounds write in `readlink` when a symlink blob's content is longer than the buffer supplied by libfuse. Symlink targets longer than 4095 bytes now fail with `ENAMETOOLONG`, and no more than 4095 bytes of a symlink blob are downloaded. Custom components that call `ReadLink` must set `ReadLinkOptions.Size` to the target length from `GetAttr`, because a size of 0 now means an empty target instead of reading the whole blob. ([PR #2367](https://github.com/Azure/azure-storage-fuse/pull/2367))
@@ -16,6 +15,7 @@
 - Fix `fsync()` with `sync-to-flush` returning success without uploading the file's latest writes when file-cache serves its reads and writes natively (`offload-io: false`, the default). ([PR #2387](https://github.com/Azure/azure-storage-fuse/pull/2387))
 - Fix file-cache committing a stale copy of a file, while `close()` reports success, when the file is flushed while the application is still writing to it. This can happen when a process with the file open starts a child process, such as an encoder, or duplicates the file descriptor. The blob could be truncated or, for a file sized up front, keep its full size but contain zeros from the middle to the end. Changes made while the file is being uploaded, such as writes or `ftruncate()`, now trigger another upload. ([Issue #2348](https://github.com/Azure/azure-storage-fuse/issues/2348))
 - Reject file and directory names that contain a backslash (`\`) before they reach any component. Azure Storage treats `\` as `/`, so such a name could resolve to a path outside the mounted container or subdirectory. Names that would resolve outside the local file-cache directory are also rejected. ([PR #2354](https://github.com/Azure/azure-storage-fuse/pull/2354), [PR #2395](https://github.com/Azure/azure-storage-fuse/pull/2395))
+- Fix ADLS file and directory renames with azdatalake v1.7.0 by letting the SDK escape source paths once, preserving nested paths, spaces, Unicode, and literal percent characters. ([PR #2413](https://github.com/Azure/azure-storage-fuse/pull/2413))
 
 **Other Changes**
 - Run the ADLS DFS and Blob pre-mount validation concurrently to reduce mount latency ([PR #2341](https://github.com/Azure/azure-storage-fuse/pull/2341))
