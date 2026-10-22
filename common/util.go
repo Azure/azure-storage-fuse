@@ -36,11 +36,13 @@ package common
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/md5"
 	"crypto/rand"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"hash/crc64"
 	"io"
@@ -429,25 +431,30 @@ func NotifyMountToParent() error {
 }
 
 var duPath []string = []string{"/usr/bin/du", "/usr/local/bin/du", "/usr/sbin/du", "/usr/local/sbin/du", "/sbin/du", "/bin/du"}
-var selectedDuPath string = ""
+
+// selectedDuPath returns the first du binary found in duPath, or "" if there is none.
+var selectedDuPath = sync.OnceValue(func() string {
+	for _, dup := range duPath {
+		if _, err := os.Stat(dup); err == nil {
+			return dup
+		}
+	}
+	return ""
+})
 
 // GetUsage: The current disk usage in MB
 func GetUsage(path string) (float64, error) {
+	return GetUsageWithContext(context.Background(), path)
+}
+
+// GetUsageWithContext returns the disk usage of path in MB. du walks the whole tree under path, so this can take
+// minutes for a large tree. If ctx is done first, du is killed and the error is returned.
+func GetUsageWithContext(ctx context.Context, path string) (float64, error) {
 	var currSize float64
 	var out bytes.Buffer
 
-	if selectedDuPath == "" {
-		selectedDuPath = "-"
-		for _, dup := range duPath {
-			_, err := os.Stat(dup)
-			if err == nil {
-				selectedDuPath = dup
-				break
-			}
-		}
-	}
-
-	if selectedDuPath == "-" {
+	duBinary := selectedDuPath()
+	if duBinary == "" {
 		return 0, fmt.Errorf("failed to find du")
 	}
 
@@ -455,12 +462,20 @@ func GetUsage(path string) (float64, error) {
 	// https://man7.org/linux/man-pages/man1/du.1.html
 	// Note: We cannot just pass -BM as a parameter here since it will result in less accurate estimates of the size of the path
 	// (i.e. du will round up to 1M if the path is smaller than 1M).
-	cmd := exec.Command(selectedDuPath, "-sh", path)
+	cmd := exec.CommandContext(ctx, duBinary, "-sh", path)
 	cmd.Stdout = &out
 
 	err := cmd.Run()
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return 0, ctxErr
+	}
 	if err != nil {
-		return 0, err
+		// du exits with 1 when it cannot read some entries, for example files deleted while it runs, and still prints
+		// the total of the entries it read. Use that total.
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 || out.Len() == 0 {
+			return 0, err
+		}
 	}
 
 	size := strings.Split(out.String(), "\t")[0]
@@ -470,6 +485,9 @@ func GetUsage(path string) (float64, error) {
 
 	// some OS's use "," instead of "." that will not work for float parsing - replace it
 	size = strings.Replace(size, ",", ".", 1)
+	if len(size) < 2 {
+		return 0, fmt.Errorf("failed to parse du output")
+	}
 	parsed, err := strconv.ParseFloat(size[:len(size)-1], 64)
 	if err != nil {
 		return 0, fmt.Errorf("failed to parse du output")

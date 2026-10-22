@@ -55,6 +55,9 @@ type cachePolicyConfig struct {
 
 	fileLocks *common.LockMap
 
+	// Measures the cache usage in the background. Nil disables evicting files when the cache is above highThreshold.
+	usage *cacheUsageMonitor
+
 	policyTrace bool
 }
 
@@ -73,23 +76,15 @@ type cachePolicy interface {
 	Name() string // The name of the policy
 }
 
-// getUsagePercentage:  The current cache usage as a percentage of the maxSize
-func getUsagePercentage(path string, maxSizeMB float64) float64 {
-	var curSize float64
+// getUsagePercentage: The cache usage as a percentage of the maxSize
+func getUsagePercentage(curSize float64, maxSizeMB float64) float64 {
 	var usagePercent float64
-	var err error
 
 	if maxSizeMB <= 0 {
 		// This should not happen as we validate config during startup. But log and return 0 to avoid division by zero
 		// Even if the user doesn't set max size, it will be set to the default value
 		log.Crit("cachePolicy::getUsagePercentage : invalid max size configured %f MB", maxSizeMB)
 		return 0
-	}
-
-	// We need to compute % usage of temp directory against configured limit
-	curSize, err = common.GetUsage(path)
-	if err != nil {
-		log.Err("cachePolicy::getUsagePercentage : failed to get directory usage for %s [%v]", path, err)
 	}
 
 	usagePercent = (curSize / maxSizeMB) * 100

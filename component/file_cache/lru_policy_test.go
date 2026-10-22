@@ -34,10 +34,12 @@
 package file_cache
 
 import (
+	"context"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -369,6 +371,185 @@ func (suite *lruPolicyTestSuite) TestPartialEvictionKeepsListLinked() {
 
 	p.removeNode(path("a"))
 	suite.Equal([]string{path("b"), "__", "##"}, suite.listNodes())
+}
+
+// startWithUsage restarts the policy with a 100 MB cache, thresholds of 80% and 60%, and a usage monitor that
+// measures with measure. The monitor does not measure on a timer, so tests request each measurement.
+func (suite *lruPolicyTestSuite) startWithUsage(measure usageFunc) *cacheUsageMonitor {
+	suite.cleanupTest()
+	suite.Require().NoError(os.MkdirAll(cache_path, 0777))
+
+	usage := newTestUsageMonitor(measure)
+	suite.Require().NoError(usage.start())
+	suite.setupTestHelper(cachePolicyConfig{
+		tmpPath:       cache_path,
+		maxEviction:   defaultMaxEviction,
+		maxSizeMB:     100,
+		highThreshold: 80,
+		lowThreshold:  60,
+		fileLocks:     &common.LockMap{},
+		usage:         usage,
+	})
+	return usage
+}
+
+// cacheFile creates a file in the cache and adds it to the LRU list.
+func (suite *lruPolicyTestSuite) cacheFile(name string) string {
+	path := filepath.Join(cache_path, name)
+	suite.Require().NoError(os.WriteFile(path, []byte("content"), 0600))
+	suite.policy.CacheValid(path)
+	return path
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+// Above the high threshold, files are evicted with each new measurement until usage drops below the low threshold.
+func (suite *lruPolicyTestSuite) TestEvictsWhenUsageAboveHighThreshold() {
+	defer suite.cleanupTest()
+
+	file := filepath.Join(cache_path, "file")
+	var calls atomic.Int32
+	usage := suite.startWithUsage(func(context.Context, string) (float64, error) {
+		calls.Add(1)
+		if fileExists(file) {
+			return 90, nil
+		}
+		return 50, nil
+	})
+	defer usage.stop()
+
+	suite.cacheFile("file")
+	usage.requestRefresh()
+
+	// The first pass only marks the file as unused, the second evicts it.
+	suite.Eventually(func() bool { return !fileExists(file) }, 5*time.Second, 10*time.Millisecond)
+	// Measurements: at start, the requested one, and one after each of the two passes. 50% ends the eviction.
+	suite.Eventually(func() bool { return calls.Load() == 4 }, 5*time.Second, 10*time.Millisecond)
+	suite.Never(func() bool { return calls.Load() > 4 }, 300*time.Millisecond, 10*time.Millisecond)
+}
+
+// Usage between the thresholds does not start an eviction.
+func (suite *lruPolicyTestSuite) TestNoEvictionBelowHighThreshold() {
+	defer suite.cleanupTest()
+
+	var calls atomic.Int32
+	usage := suite.startWithUsage(func(context.Context, string) (float64, error) {
+		calls.Add(1)
+		return 70, nil
+	})
+	defer usage.stop()
+
+	file := suite.cacheFile("file")
+	usage.requestRefresh()
+
+	suite.Eventually(func() bool { return calls.Load() == 2 }, 5*time.Second, 10*time.Millisecond)
+	suite.Never(func() bool { return calls.Load() > 2 || !fileExists(file) }, 300*time.Millisecond, 10*time.Millisecond)
+}
+
+// If usage stays high, eviction stops after maxUsageEvictionPasses passes until the next regular measurement.
+func (suite *lruPolicyTestSuite) TestUsageEvictionStopsAfterMaxPasses() {
+	defer suite.cleanupTest()
+
+	var calls atomic.Int32
+	usage := suite.startWithUsage(func(context.Context, string) (float64, error) {
+		calls.Add(1)
+		return 90, nil
+	})
+	defer usage.stop()
+
+	file := suite.cacheFile("file")
+	usage.requestRefresh()
+
+	suite.Eventually(func() bool { return !fileExists(file) }, 5*time.Second, 10*time.Millisecond)
+	want := int32(2 + maxUsageEvictionPasses)
+	suite.Eventually(func() bool { return calls.Load() == want }, 5*time.Second, 10*time.Millisecond)
+	suite.Never(func() bool { return calls.Load() > want }, 300*time.Millisecond, 10*time.Millisecond)
+
+	// The next measurement starts a new round of eviction passes.
+	usage.requestRefresh()
+	want += 1 + maxUsageEvictionPasses
+	suite.Eventually(func() bool { return calls.Load() == want }, 5*time.Second, 10*time.Millisecond)
+	suite.Never(func() bool { return calls.Load() > want }, 300*time.Millisecond, 10*time.Millisecond)
+}
+
+// While du runs, the cleanup worker must keep deleting files. Before, the worker ran du itself after each eviction
+// pass, so deletes queued behind a slow du.
+func (suite *lruPolicyTestSuite) TestPurgeNotBlockedByUsageMeasurement() {
+	defer suite.cleanupTest()
+
+	// The first two measurements are above the high threshold, so an eviction pass runs and requests a third
+	// measurement, which blocks like a slow du.
+	var calls atomic.Int32
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	usage := suite.startWithUsage(func(ctx context.Context, _ string) (float64, error) {
+		if calls.Add(1) <= 2 {
+			return 90, nil
+		}
+		if calls.Load() == 3 {
+			close(entered)
+		}
+		select {
+		case <-release:
+		case <-ctx.Done():
+		}
+		return 10, nil
+	})
+	defer usage.stop()
+	defer close(release)
+
+	usage.requestRefresh()
+	<-entered
+
+	file := suite.cacheFile("file")
+	suite.policy.CachePurge(file)
+	suite.Eventually(func() bool { return !fileExists(file) }, 5*time.Second, 10*time.Millisecond)
+}
+
+// A measurement that started before an eviction pass ended must not decide the next pass. With a du slower than
+// the measurement interval, one is often already running when a pass starts.
+func (suite *lruPolicyTestSuite) TestEvictionIgnoresMeasurementStartedBeforePass() {
+	defer suite.cleanupTest()
+	suite.cleanupTest()
+	suite.Require().NoError(os.MkdirAll(cache_path, 0777))
+
+	// The monitor is not started. The test plays the measurements and calls checkCacheUsage as clearCache would.
+	usage := newTestUsageMonitor(nil)
+	suite.setupTestHelper(cachePolicyConfig{
+		tmpPath:       cache_path,
+		maxEviction:   defaultMaxEviction,
+		maxSizeMB:     100,
+		highThreshold: 80,
+		lowThreshold:  60,
+		fileLocks:     &common.LockMap{},
+		usage:         usage,
+	})
+	p := suite.policy
+	begin := func() uint64 { return usage.started.Add(1) }
+	finish := func(seq uint64, mb float64) {
+		usage.last.Store(&usageSample{mb: mb, seq: seq})
+		p.checkCacheUsage()
+	}
+
+	file := suite.cacheFile("file")
+
+	first := begin()
+	stale := begin()
+	// Above the high threshold: the first pass marks the file as unused.
+	finish(first, 90)
+	// This measurement started during the first pass. If it were used, a second pass would evict the file.
+	finish(stale, 90)
+	suite.True(fileExists(file))
+	// The first measurement after the pass is below the low threshold, so eviction ends.
+	finish(begin(), 50)
+	suite.True(fileExists(file))
+
+	// A later measurement above the high threshold evicts the file.
+	finish(begin(), 90)
+	suite.False(fileExists(file))
 }
 
 // listNodes returns the names in the LRU list, failing on a loop or a broken back link.

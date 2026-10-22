@@ -36,6 +36,7 @@ package file_cache
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -2870,6 +2871,168 @@ func (suite *fileCacheTestSuite) TestHardLimitOnSize() {
 	// try opening small file
 	err = suite.fileCache.TruncateFile(internal.TruncateFileOptions{Name: pathsmall, NewSize: 3 * MB})
 	suite.assert.Error(err)
+}
+
+// useUsageMeasure restarts the cache usage monitor so it measures with measure instead of du.
+func (suite *fileCacheTestSuite) useUsageMeasure(measure usageFunc) {
+	suite.fileCache.usage.stop()
+	suite.fileCache.usage.measure = measure
+	suite.Require().NoError(suite.fileCache.usage.start())
+}
+
+// blockingUsage returns a measure function that reports first on its first call. Later calls signal entered and
+// block until release is closed or the measurement is cancelled, like du reading a large cache.
+func blockingUsage(first float64, entered chan<- struct{}, release <-chan struct{}) usageFunc {
+	var once sync.Once
+	return firstThen(first, func(ctx context.Context, _ string) (float64, error) {
+		once.Do(func() { close(entered) })
+		select {
+		case <-release:
+			return first, nil
+		case <-ctx.Done():
+			return 0, ctx.Err()
+		}
+	})
+}
+
+// runWithin fails the test if op does not return within timeout.
+func (suite *fileCacheTestSuite) runWithin(timeout time.Duration, name string, op func()) {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		op()
+	}()
+	select {
+	case <-done:
+	case <-time.After(timeout):
+		suite.FailNow(name + " waited for the cache usage measurement")
+	}
+}
+
+func (suite *fileCacheTestSuite) TestStatFsReportsMeasuredUsage() {
+	defer suite.cleanupTest()
+	suite.cleanupTest()
+	config := fmt.Sprintf("file_cache:\n  path: %s\n  offload-io: true\n  max-size-mb: 10\n\nloopbackfs:\n  path: %s",
+		suite.cache_path, suite.fake_storage_path)
+	suite.setupTestHelper(config)
+
+	var usageMB atomic.Int32
+	usageMB.Store(1)
+	suite.useUsageMeasure(func(context.Context, string) (float64, error) {
+		return float64(usageMB.Load()), nil
+	})
+
+	stat, ret, err := suite.fileCache.StatFs()
+	suite.Require().NoError(err)
+	suite.True(ret)
+	frsize := uint64(stat.Frsize)
+	suite.Equal(10*MB/frsize, stat.Blocks)
+	suite.Equal(9*MB/frsize, stat.Bavail)
+	suite.Equal(stat.Bavail, stat.Bfree)
+
+	// statfs reports the new usage once it is measured.
+	usageMB.Store(4)
+	suite.fileCache.usage.requestRefresh()
+	suite.Eventually(func() bool {
+		stat, _, _ := suite.fileCache.StatFs()
+		return stat.Bavail == 6*MB/frsize
+	}, 5*time.Second, 10*time.Millisecond)
+
+	// Usage above the maximum reports no free space.
+	usageMB.Store(12)
+	suite.fileCache.usage.requestRefresh()
+	suite.Eventually(func() bool {
+		stat, _, _ := suite.fileCache.StatFs()
+		return stat.Bavail == 0 && stat.Bfree == 0
+	}, 5*time.Second, 10*time.Millisecond)
+}
+
+// statfs and the hard-limit checks in open, write and truncate use the last measured usage, so they must not wait
+// while du runs. Before, each of them ran du and could block for minutes on a large cache.
+func (suite *fileCacheTestSuite) TestFileOperationsDoNotWaitForUsageMeasurement() {
+	defer suite.cleanupTest()
+	suite.cleanupTest()
+	config := fmt.Sprintf("file_cache:\n  path: %s\n  offload-io: true\n  hard-limit: true\n  max-size-mb: 10\n\nloopbackfs:\n  path: %s",
+		suite.cache_path, suite.fake_storage_path)
+	suite.setupTestHelper(config)
+	fc := suite.fileCache
+
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	defer close(release)
+	suite.useUsageMeasure(blockingUsage(1, entered, release))
+	fc.usage.requestRefresh()
+	<-entered
+
+	const timeout = 5 * time.Second
+	suite.runWithin(timeout, "StatFs", func() {
+		stat, ret, err := fc.StatFs()
+		suite.NoError(err)
+		suite.True(ret)
+		suite.Equal(9*MB/uint64(stat.Frsize), stat.Bavail)
+	})
+
+	remote := "remote"
+	suite.Require().NoError(os.WriteFile(filepath.Join(suite.fake_storage_path, remote), make([]byte, MB), 0777))
+	suite.runWithin(timeout, "OpenFile", func() {
+		h, err := fc.OpenFile(internal.OpenFileOptions{Name: remote, Flags: os.O_RDWR, Mode: 0777})
+		suite.Require().NoError(err)
+		suite.NoError(fc.ReleaseFile(internal.ReleaseFileOptions{Handle: h}))
+	})
+
+	suite.runWithin(timeout, "WriteFile", func() {
+		h, err := fc.CreateFile(internal.CreateFileOptions{Name: "local", Mode: 0777})
+		suite.Require().NoError(err)
+		n, err := fc.WriteFile(&internal.WriteFileOptions{Handle: h, Data: make([]byte, MB)})
+		suite.NoError(err)
+		suite.Equal(MB, n)
+		// The hard limit is still enforced while du runs.
+		_, err = fc.WriteFile(&internal.WriteFileOptions{Handle: h, Data: make([]byte, 9*MB)})
+		suite.Equal(syscall.ENOSPC, err)
+		suite.NoError(fc.ReleaseFile(internal.ReleaseFileOptions{Handle: h}))
+	})
+
+	suite.runWithin(timeout, "TruncateFile", func() {
+		suite.NoError(fc.TruncateFile(internal.TruncateFileOptions{Name: remote, NewSize: 2 * MB}))
+		suite.Equal(syscall.ENOSPC, fc.TruncateFile(internal.TruncateFileOptions{Name: remote, NewSize: 9 * MB}))
+	})
+}
+
+// Without du, the file cache still starts. statfs reports the cache as empty, as it did when du failed.
+func (suite *fileCacheTestSuite) TestStartWithoutUsageMeasurement() {
+	defer suite.cleanupTest()
+	suite.cleanupTest()
+	cfg := fmt.Sprintf("file_cache:\n  path: %s\n  offload-io: true\n  max-size-mb: 10\n\nloopbackfs:\n  path: %s",
+		suite.cache_path, suite.fake_storage_path)
+	suite.Require().NoError(config.ReadConfigFromReader(strings.NewReader(cfg)))
+	suite.loopback = newLoopbackFS()
+	suite.fileCache = newTestFileCache(suite.loopback)
+	suite.fileCache.usage.measure = func(context.Context, string) (float64, error) {
+		return 0, errors.New("failed to find du")
+	}
+	suite.Require().NoError(suite.loopback.Start(context.Background()))
+	suite.Require().NoError(suite.fileCache.Start(context.Background()))
+
+	stat, ret, err := suite.fileCache.StatFs()
+	suite.Require().NoError(err)
+	suite.True(ret)
+	suite.Equal(stat.Blocks, stat.Bavail)
+
+	h, err := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: "file", Mode: 0777})
+	suite.Require().NoError(err)
+	_, err = suite.fileCache.WriteFile(&internal.WriteFileOptions{Handle: h, Data: []byte("data")})
+	suite.NoError(err)
+	suite.NoError(suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h}))
+}
+
+// Unmount kills a running du instead of waiting for it to finish.
+func (suite *fileCacheTestSuite) TestStopDoesNotWaitForUsageMeasurement() {
+	entered := make(chan struct{})
+	suite.useUsageMeasure(blockingUsage(1, entered, nil))
+	suite.fileCache.usage.requestRefresh()
+	<-entered
+
+	suite.runWithin(5*time.Second, "Stop", suite.cleanupTest)
 }
 
 // create a list of empty directories in local and storage and then try to delete those to validate empty directories
