@@ -1107,11 +1107,23 @@ func (bb *BlockBlob) ReadInBuffer(name string, offset int64, length int64, data 
 		}
 	}()
 
-	dataRead, err := io.ReadFull(streamBody, data)
+	// Read until the buffer is full or the body ends. io.ReadFull would report a body that ends cleanly before the
+	// buffer is full the same way as one that is cut off, as io.ErrUnexpectedEOF. Only a clean end means the range goes
+	// past the end of the blob. A body that is cut off, even after the retries of the reader, fails the read, whether or
+	// not the response has a Content-Length, which the transport removes when it decompresses a gzip encoded blob.
+	// A clean end is io.EOF itself: an error that wraps it, such as from a request for the rest of a cut off body that
+	// fails because the connection closes, is not.
+	dataRead := 0
+	var readErr error
+	for dataRead < len(data) && readErr == nil {
+		var n int
+		n, readErr = streamBody.Read(data[dataRead:])
+		dataRead += n
+	}
 
-	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
-		log.Err("BlockBlob::ReadInBuffer : Failed to copy data from body to buffer for blob %s [%s]", name, err.Error())
-		return 0, err
+	if readErr != nil && readErr != io.EOF {
+		log.Err("BlockBlob::ReadInBuffer : Failed to copy data from body to buffer for blob %s [%s]", name, readErr.Error())
+		return 0, readErr
 	}
 
 	if dataRead < 0 || dataRead > len(data) {
@@ -1120,9 +1132,7 @@ func (bb *BlockBlob) ReadInBuffer(name string, offset int64, length int64, data 
 	}
 
 	// The service returns fewer bytes than requested only when the range goes past the end of the blob, and then its
-	// Content-Length is shorter as well. A body that ends before its Content-Length was cut off, even after the retries of
-	// the reader, so fail instead of returning it as a shorter blob. The transport removes the Content-Length when it
-	// decompresses a gzip encoded blob, and then there is nothing to check against.
+	// Content-Length is shorter as well. Also fail a body that ends cleanly but before its Content-Length.
 	if downloadResponse.ContentLength != nil {
 		expected := min(*downloadResponse.ContentLength, int64(len(data)))
 		if int64(dataRead) < expected {

@@ -68,6 +68,8 @@ type fakeBlob struct {
 	content   []byte
 	blocks    []int64 // sizes of the committed blocks
 	cutBodies int     // number of next downloads whose body is cut off halfway
+	hangUps   int     // number of downloads after those that the server hangs up on before it responds
+	chunked   bool    // send downloads without a Content-Length, as after the transport decompresses them
 	uploads   []fakeUpload
 }
 
@@ -92,6 +94,18 @@ func (f *fakeBlob) cutNextBodies(count int) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.cutBodies = count
+}
+
+func (f *fakeBlob) setChunked(chunked bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.chunked = chunked
+}
+
+func (f *fakeBlob) hangUpNext(count int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.hangUps = count
 }
 
 // takeUploads returns the uploads received since the last call
@@ -143,10 +157,23 @@ func (f *fakeBlob) serveRange(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	content := f.content
 	cut := f.cutBodies > 0
+	hangUp := false
 	if cut {
 		f.cutBodies--
+	} else if f.hangUps > 0 {
+		f.hangUps--
+		hangUp = true
 	}
+	chunked := f.chunked
 	f.mu.Unlock()
+
+	if hangUp {
+		// The connection closes before the server sends a response
+		if conn, _, err := w.(http.Hijacker).Hijack(); err == nil {
+			_ = conn.Close()
+		}
+		return
+	}
 
 	size := int64(len(content))
 	start, end := int64(0), size-1
@@ -172,14 +199,26 @@ func (f *fakeBlob) serveRange(w http.ResponseWriter, r *http.Request) {
 
 	body := content[start : end+1]
 	w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, size))
-	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(body)))
+	if !chunked {
+		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(body)))
+	}
 	w.Header().Set("ETag", `"0x8DEADBEEF"`)
 	w.WriteHeader(http.StatusPartialContent)
-	if cut {
-		// The headers promise the whole range, but the connection closes after half of it, as when it drops
-		body = body[:len(body)/2]
+	if chunked {
+		// Send the headers before the body, so that the server sends it in chunks instead of adding a Content-Length
+		w.(http.Flusher).Flush()
 	}
-	_, _ = w.Write(body)
+	if !cut {
+		_, _ = w.Write(body)
+		return
+	}
+
+	// The connection drops after half of the body, before the end of the range that the headers promise
+	_, _ = w.Write(body[:len(body)/2])
+	w.(http.Flusher).Flush()
+	if conn, _, err := w.(http.Hijacker).Hijack(); err == nil {
+		_ = conn.Close()
+	}
 }
 
 func newFakeBlobStorage(t *testing.T, content []byte) (*AzStorage, *BlockBlob, *fakeBlob) {
@@ -333,31 +372,94 @@ func TestReadInBufferCutOffBody(t *testing.T) {
 	for i := range content {
 		content[i] = byte(i)
 	}
-	az, bb, blob := newFakeBlobStorage(t, content)
+	for _, chunked := range []bool{false, true} {
+		t.Run(fmt.Sprintf("chunked=%t", chunked), func(t *testing.T) {
+			az, bb, blob := newFakeBlobStorage(t, content)
+			blob.setChunked(chunked)
+			if chunked {
+				// The body comes without a Content-Length, as when the transport decompresses a gzip encoded blob
+				req, err := http.NewRequest(http.MethodGet, bb.Container.URL()+"/f", nil)
+				require.NoError(t, err)
+				req.Header.Set("x-ms-range", "bytes=0-99")
+				resp, err := http.DefaultClient.Do(req)
+				require.NoError(t, err)
+				_, _ = io.Copy(io.Discard, resp.Body)
+				_ = resp.Body.Close()
+				require.EqualValues(t, -1, resp.ContentLength)
+			}
 
-	// The reader downloads the rest of a body that was cut off once
-	blob.cutNextBodies(1)
-	data := make([]byte, 500)
-	n, err := bb.ReadInBuffer("f", 100, 500, data, nil)
-	require.NoError(t, err)
-	assert.Equal(t, 500, n)
-	assert.Equal(t, content[100:600], data)
+			// A body that ends cleanly before the end of the range is a shorter blob
+			data := make([]byte, 500)
+			n, err := bb.ReadInBuffer("f", 900, 500, data, nil)
+			require.NoError(t, err)
+			assert.Equal(t, 100, n)
+			assert.Equal(t, content[900:], data[:n])
 
-	// A body that is cut off on every retry fails the read, also when the range goes past the end of the blob, instead
-	// of returning the part that was received as if the blob were shorter
-	for _, offset := range []int64{100, 900} {
-		blob.cutNextBodies(100)
-		n, err = bb.ReadInBuffer("f", offset, 500, make([]byte, 500), nil)
-		require.ErrorIs(t, err, io.ErrUnexpectedEOF)
-		assert.Equal(t, 0, n)
+			// The reader downloads the rest of a body that was cut off once
+			blob.cutNextBodies(1)
+			n, err = bb.ReadInBuffer("f", 100, 500, data, nil)
+			require.NoError(t, err)
+			assert.Equal(t, 500, n)
+			assert.Equal(t, content[100:600], data)
+
+			// A body that is cut off fails the read when the request for the rest fails, here because the server hangs
+			// up, with an error that wraps io.EOF
+			blob.cutNextBodies(1)
+			blob.hangUpNext(100)
+			n, err = bb.ReadInBuffer("f", 100, 500, data, nil)
+			require.Error(t, err)
+			assert.Equal(t, 0, n)
+			blob.hangUpNext(0)
+
+			// A body that is cut off on every retry fails the read, also when the range goes past the end of the blob,
+			// instead of returning the part that was received as if the blob were shorter
+			for _, offset := range []int64{100, 900} {
+				blob.cutNextBodies(100)
+				n, err = bb.ReadInBuffer("f", offset, 500, make([]byte, 500), nil)
+				require.ErrorIs(t, err, io.ErrUnexpectedEOF)
+				assert.Equal(t, 0, n)
+			}
+
+			blob.cutNextBodies(100)
+			h := handlemap.NewHandle("f")
+			h.Size = int64(len(content))
+			n, err = az.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: data})
+			require.ErrorIs(t, err, io.ErrUnexpectedEOF)
+			assert.Equal(t, 0, n)
+			blob.cutNextBodies(0)
+		})
 	}
+}
 
-	h := handlemap.NewHandle("f")
-	h.Size = int64(len(content))
-	n, err = az.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: data})
+// shortBodyTransport answers with a body that ends cleanly before the length that its Content-Length promises.
+// The HTTP transport reports such a body as io.ErrUnexpectedEOF, so this checks the Content-Length check on its own.
+type shortBodyTransport struct{}
+
+func (shortBodyTransport) Do(req *http.Request) (*http.Response, error) {
+	header := http.Header{}
+	header.Set("Content-Length", "500")
+	header.Set("Content-Range", "bytes 0-499/1000")
+	header.Set("ETag", `"0x8DEADBEEF"`)
+	return &http.Response{
+		StatusCode:    http.StatusPartialContent,
+		Header:        header,
+		ContentLength: 500,
+		Body:          io.NopCloser(bytes.NewReader(make([]byte, 250))),
+		Request:       req,
+	}, nil
+}
+
+func TestReadInBufferBodyShorterThanContentLength(t *testing.T) {
+	require.NoError(t, log.SetDefaultLogger("silent", common.LogConfig{Level: common.ELogLevel.LOG_DEBUG()}))
+	cli, err := container.NewClientWithNoCredential("https://account.blob.core.windows.net/container", &container.ClientOptions{
+		ClientOptions: azcore.ClientOptions{Transport: shortBodyTransport{}, Retry: policy.RetryOptions{MaxRetries: -1}},
+	})
+	require.NoError(t, err)
+	bb := &BlockBlob{Container: cli}
+
+	n, err := bb.ReadInBuffer("f", 0, 500, make([]byte, 500), nil)
 	require.ErrorIs(t, err, io.ErrUnexpectedEOF)
 	assert.Equal(t, 0, n)
-	blob.cutNextBodies(0)
 }
 
 func TestReadInBufferZeroLengthRequestsBufferSize(t *testing.T) {
