@@ -36,6 +36,9 @@ package file_cache
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
+	"syscall"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -129,4 +132,27 @@ func deleteFile(name string) error {
 	}
 
 	return nil
+}
+
+// removeEmptyParents removes the directories above name, a path in the cache directory tmpPath, that are empty. It
+// stops at the first directory that is not empty and never removes tmpPath. Code that creates a file in the cache
+// retries if its directory is removed before the file is created in it, see FileCache.createLocalFile.
+func removeEmptyParents(tmpPath string, name string) {
+	prefix := tmpPath
+	if !strings.HasSuffix(prefix, string(os.PathSeparator)) {
+		prefix += string(os.PathSeparator)
+	}
+
+	for dir := filepath.Dir(name); dir != tmpPath && strings.HasPrefix(dir, prefix); dir = filepath.Dir(dir) {
+		// rmdir fails on a directory that is not empty, so a directory is never removed with anything in it.
+		err := syscall.Rmdir(dir)
+		if err == nil || err == syscall.ENOENT {
+			continue
+		}
+
+		if err != syscall.ENOTEMPTY && err != syscall.EEXIST {
+			log.Debug("cachePolicy::removeEmptyParents : failed to remove %s [%s]", dir, err.Error())
+		}
+		return
+	}
 }

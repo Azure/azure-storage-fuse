@@ -35,6 +35,7 @@ package file_cache
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -703,7 +704,8 @@ func (fc *FileCache) deleteEmptyDirs(options internal.DeleteDirOptions) (bool, e
 
 	if !strings.EqualFold(fc.tmpPath, localPath) {
 		err = os.Remove(localPath)
-		if err != nil {
+		// The cache policy may have removed the empty directory already.
+		if err != nil && !os.IsNotExist(err) {
 			return false, err
 		}
 	}
@@ -736,6 +738,41 @@ func (fc *FileCache) RenameDir(options internal.RenameDirOptions) error {
 	return nil
 }
 
+// Times to try creating a local file whose directory is removed while the file is being created.
+const createLocalFileAttempts = 10
+
+// Called after the directories of a local file are created and before the file is. Tests use it to remove the
+// directory at that point.
+var beforeLocalFileCreate = func(dir string) {}
+
+// createLocalFile opens localPath with flag, creating the file and its missing parent directories. The cache policy
+// removes cache directories that become empty, so a directory can be removed after it is created here and before the
+// file is created in it. Creating the file then fails with ENOENT, so try again.
+func (fc *FileCache) createLocalFile(localPath string, flag int, mode os.FileMode) (*os.File, error) {
+	dir := filepath.Dir(localPath)
+
+	var err error
+	for range createLocalFileAttempts {
+		err = os.MkdirAll(dir, fc.defaultPermission)
+		if err == nil {
+			beforeLocalFileCreate(dir)
+
+			var f *os.File
+			f, err = os.OpenFile(localPath, flag, mode)
+			if err == nil {
+				return f, nil
+			}
+		}
+
+		if !errors.Is(err, fs.ErrNotExist) {
+			return nil, err
+		}
+		log.Debug("FileCache::createLocalFile : directory of %s was removed, retrying [%s]", localPath, err.Error())
+	}
+
+	return nil, err
+}
+
 // CreateFile: Create the file in local cache.
 func (fc *FileCache) CreateFile(options internal.CreateFileOptions) (*handlemap.Handle, error) {
 	//defer exectime.StatTimeCurrentBlock("FileCache::CreateFile")()
@@ -766,14 +803,8 @@ func (fc *FileCache) CreateFile(options internal.CreateFileOptions) (*handlemap.
 	localPath := filepath.Join(fc.tmpPath, options.Name)
 	fc.policy.CacheValid(localPath)
 
-	err := os.MkdirAll(filepath.Dir(localPath), fc.defaultPermission)
-	if err != nil {
-		log.Err("FileCache::CreateFile : unable to create local directory %s [%s]", options.Name, err.Error())
-		return nil, err
-	}
-
 	// Open the file and grab a shared lock to prevent deletion by the cache policy.
-	f, err := os.OpenFile(localPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, options.Mode)
+	f, err := fc.createLocalFile(localPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, options.Mode)
 	if err != nil {
 		log.Err("FileCache::CreateFile : error opening local file %s [%s]", options.Name, err.Error())
 		return nil, err
@@ -993,17 +1024,10 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 			if err != nil && !os.IsNotExist(err) {
 				log.Err("FileCache::OpenFile : Failed to delete old file %s", options.Name)
 			}
-		} else {
-			// Create the file if if doesn't already exist.
-			err := os.MkdirAll(filepath.Dir(localPath), fc.defaultPermission)
-			if err != nil {
-				log.Err("FileCache::OpenFile : error creating directory structure for file %s [%s]", options.Name, err.Error())
-				return nil, err
-			}
 		}
 
-		// Open the file in write mode.
-		f, err = os.OpenFile(localPath, os.O_CREATE|os.O_RDWR, options.Mode)
+		// Create the file, and its directory if it doesn't exist, and open it in write mode.
+		f, err = fc.createLocalFile(localPath, os.O_CREATE|os.O_RDWR, options.Mode)
 		if err != nil {
 			log.Err("FileCache::OpenFile : error creating new file %s [%s]", options.Name, err.Error())
 			return nil, err

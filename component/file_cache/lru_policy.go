@@ -520,11 +520,12 @@ func (p *lruPolicy) deleteItem(name string) bool {
 	err := deleteFile(name)
 	if err != nil && !os.IsNotExist(err) {
 		log.Err("lruPolicy::DeleteItem : failed to delete local file %s [%s]", name, err.Error())
+		return true
 	}
 
-	// File was deleted so try clearing its parent directory
-	// TODO: Delete directories up the path recursively that are "safe to delete". Ensure there is no race between this code and code that creates directories (like OpenFile)
-	// This might require something like hierarchical locking.
+	// Remove the directories that only held this file. Otherwise every directory that ever held a cached file stays
+	// in the cache, and du, which measures the cache usage, slows down as it reads all of them.
+	removeEmptyParents(p.tmpPath, name)
 	return true
 }
 

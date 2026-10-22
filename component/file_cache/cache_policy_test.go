@@ -37,6 +37,7 @@ import (
 	"io/fs"
 	"math"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -101,6 +102,89 @@ func (suite *cachePolicyTestSuite) TestDeleteFile() {
 	result := deleteFile(f.Name() + "not_exist")
 	suite.assert.NoError(result)
 	f.Close()
+}
+
+// mkdirs creates the given directories under cache_path.
+func (suite *cachePolicyTestSuite) mkdirs(dirs ...string) {
+	for _, dir := range dirs {
+		suite.Require().NoError(os.MkdirAll(filepath.Join(cache_path, dir), 0777))
+	}
+}
+
+func (suite *cachePolicyTestSuite) requireExists(rel string) {
+	_, err := os.Stat(filepath.Join(cache_path, rel))
+	suite.Require().NoError(err, "%s should exist", rel)
+}
+
+func (suite *cachePolicyTestSuite) requireRemoved(rel string) {
+	_, err := os.Stat(filepath.Join(cache_path, rel))
+	suite.Require().True(os.IsNotExist(err), "%s should be removed", rel)
+}
+
+// All the empty directories above a deleted file are removed, but never the cache directory itself.
+func (suite *cachePolicyTestSuite) TestRemoveEmptyParents() {
+	defer suite.cleanupTest()
+	suite.mkdirs("a/b/c")
+
+	removeEmptyParents(cache_path, filepath.Join(cache_path, "a/b/c/file"))
+
+	suite.requireRemoved("a")
+	suite.requireExists("")
+}
+
+// Removal stops at the first directory that still holds a file.
+func (suite *cachePolicyTestSuite) TestRemoveEmptyParentsStopsAtFile() {
+	defer suite.cleanupTest()
+	suite.mkdirs("a/b/c")
+	suite.Require().NoError(os.WriteFile(filepath.Join(cache_path, "a/keep"), []byte("data"), 0666))
+
+	removeEmptyParents(cache_path, filepath.Join(cache_path, "a/b/c/file"))
+
+	suite.requireRemoved("a/b")
+	suite.requireExists("a/keep")
+}
+
+// Removal stops at the first directory that still holds another directory, which is left alone.
+func (suite *cachePolicyTestSuite) TestRemoveEmptyParentsStopsAtDirectory() {
+	defer suite.cleanupTest()
+	suite.mkdirs("a/b/c", "a/b/other")
+
+	removeEmptyParents(cache_path, filepath.Join(cache_path, "a/b/c/file"))
+
+	suite.requireRemoved("a/b/c")
+	suite.requireExists("a/b/other")
+}
+
+func (suite *cachePolicyTestSuite) TestRemoveEmptyParentsKeepsCacheDirectory() {
+	defer suite.cleanupTest()
+
+	removeEmptyParents(cache_path, filepath.Join(cache_path, "file"))
+
+	suite.requireExists("")
+}
+
+// A directory that is already gone does not stop the removal of its empty parents.
+func (suite *cachePolicyTestSuite) TestRemoveEmptyParentsSkipsMissingDirectory() {
+	defer suite.cleanupTest()
+	suite.mkdirs("a")
+
+	removeEmptyParents(cache_path, filepath.Join(cache_path, "a/missing/file"))
+
+	suite.requireRemoved("a")
+	suite.requireExists("")
+}
+
+// Nothing outside the cache directory is removed, including a sibling whose name starts with the cache path.
+func (suite *cachePolicyTestSuite) TestRemoveEmptyParentsOutsideCacheDirectory() {
+	defer suite.cleanupTest()
+	sibling := cache_path + "_sibling"
+	suite.Require().NoError(os.MkdirAll(filepath.Join(sibling, "a"), 0777))
+	defer os.RemoveAll(sibling)
+
+	removeEmptyParents(cache_path, filepath.Join(sibling, "a", "file"))
+
+	_, err := os.Stat(filepath.Join(sibling, "a"))
+	suite.NoError(err)
 }
 
 func TestCachePolicyTestSuite(t *testing.T) {

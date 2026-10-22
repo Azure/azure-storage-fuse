@@ -371,6 +371,94 @@ func (suite *lruPolicyTestSuite) TestPartialEvictionKeepsListLinked() {
 	suite.Equal([]string{path("b"), "__", "##"}, suite.listNodes())
 }
 
+// cacheFileIn creates a file at rel under the cache directory, creating its directories, and adds it to the LRU list.
+func (suite *lruPolicyTestSuite) cacheFileIn(rel string) string {
+	path := filepath.Join(cache_path, rel)
+	suite.Require().NoError(os.MkdirAll(filepath.Dir(path), 0777))
+	suite.Require().NoError(os.WriteFile(path, []byte("content"), 0600))
+	suite.policy.CacheValid(path)
+	return path
+}
+
+func cacheEntryExists(rel string) bool {
+	_, err := os.Stat(filepath.Join(cache_path, rel))
+	return err == nil
+}
+
+// Evicting files removes the directories they leave empty, and keeps directories that still hold a file.
+func (suite *lruPolicyTestSuite) TestEvictionRemovesEmptyDirectories() {
+	defer suite.cleanupTest()
+	p := suite.policy
+
+	suite.cacheFileIn("a/b/c/f1")
+	suite.cacheFileIn("a/d/f2")
+	inUse := suite.cacheFileIn("a/e/f3")
+	flock := p.fileLocks.Get("a/e/f3")
+	flock.Inc()
+	defer flock.Dec()
+
+	p.updateMarker()
+	p.updateMarker()
+	p.deleteExpiredNodes()
+
+	suite.False(cacheEntryExists("a/b"))
+	suite.False(cacheEntryExists("a/d"))
+	_, err := os.Stat(inUse)
+	suite.NoError(err, "a file in use must not be evicted")
+	suite.True(cacheEntryExists("a/e"))
+	suite.True(cacheEntryExists(""))
+}
+
+// Purging the last file of a directory tree removes the tree but not the cache directory.
+func (suite *lruPolicyTestSuite) TestPurgeRemovesEmptyDirectories() {
+	defer suite.cleanupTest()
+
+	file := suite.cacheFileIn("x/y/z/file")
+	suite.policy.CachePurge(file)
+
+	suite.Eventually(func() bool { return !cacheEntryExists("x") }, 5*time.Second, 10*time.Millisecond)
+	suite.True(cacheEntryExists(""))
+}
+
+// A file deleted before it is purged, as DeleteFile and RenameFile do, still gets its empty directories removed.
+func (suite *lruPolicyTestSuite) TestPurgeOfDeletedFileRemovesEmptyDirectories() {
+	defer suite.cleanupTest()
+
+	file := suite.cacheFileIn("x/y/file")
+	suite.Require().NoError(os.Remove(file))
+	suite.policy.CachePurge(file)
+
+	suite.Eventually(func() bool { return !cacheEntryExists("x") }, 5*time.Second, 10*time.Millisecond)
+}
+
+// A busy file keeps its directory until the retry deletes it.
+func (suite *lruPolicyTestSuite) TestBusyFileKeepsDirectoryUntilDeleted() {
+	defer suite.cleanupTest()
+
+	file := suite.cacheFileIn("busy/dir/file")
+	flock := suite.policy.fileLocks.Get("busy/dir/file")
+	flock.Lock()
+	suite.False(suite.policy.deleteItem(file))
+	suite.True(cacheEntryExists("busy/dir/file"))
+
+	flock.Unlock()
+	suite.True(suite.policy.deleteItem(file))
+	suite.False(cacheEntryExists("busy"))
+}
+
+// A file that is open is not deleted, so its directory stays.
+func (suite *lruPolicyTestSuite) TestFileInUseKeepsDirectory() {
+	defer suite.cleanupTest()
+
+	file := suite.cacheFileIn("open/file")
+	flock := suite.policy.fileLocks.Get("open/file")
+	flock.Inc()
+	defer flock.Dec()
+
+	suite.True(suite.policy.deleteItem(file))
+	suite.True(cacheEntryExists("open/file"))
+}
+
 // listNodes returns the names in the LRU list, failing on a loop or a broken back link.
 func (suite *lruPolicyTestSuite) listNodes() []string {
 	var names []string
