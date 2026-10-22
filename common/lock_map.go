@@ -97,6 +97,18 @@ func (l *LockMapItem) TryLock() bool {
 	return true
 }
 
+// TryLockQuiet locks the file like TryLock, but LockMap.Locked still reports it as unlocked, so code that checks
+// Locked does not treat the local file as being downloaded or deleted. Use it only to read the local file, and
+// release it with UnlockQuiet.
+func (l *LockMapItem) TryLockQuiet() bool {
+	return l.mtx.TryLock()
+}
+
+// UnlockQuiet releases a lock taken with TryLockQuiet.
+func (l *LockMapItem) UnlockQuiet() {
+	l.mtx.Unlock()
+}
+
 // UnLock this file exclusively
 func (l *LockMapItem) Unlock() {
 	l.exLocked.Store(false)

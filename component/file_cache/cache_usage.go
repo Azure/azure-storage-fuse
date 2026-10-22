@@ -36,80 +36,91 @@ package file_cache
 import (
 	"context"
 	"errors"
+	"io"
+	"os"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
-	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 )
 
 const (
-	// Measure the cache usage at this interval.
-	cacheUsageInterval = DiskUsageCheckInterval * time.Minute
+	// Walk the cache directory at this interval, counted from the end of the previous walk.
+	cacheUsageCorrectionInterval = 10 * time.Minute
 
-	// Kill a measurement that runs longer than this and keep the last measured usage.
+	// Stop a walk that runs longer than this and keep the current usage.
 	cacheUsageTimeout = 15 * time.Minute
 
-	// Warn when a measurement runs longer than this.
+	// Warn when a walk runs longer than this.
 	cacheUsageSlowThreshold = 30 * time.Second
 )
 
-// cacheUsageMonitor measures the disk usage of the cache directory with du in a background goroutine. Callers read
-// the last measured usage instead of running du themselves, so file operations never wait for it. du reads every
-// file and directory in the cache, which can take minutes when the cache holds many entries that are not in the
-// kernel's memory. Only one measurement runs at a time.
+// cacheUsageMonitor keeps the disk usage of the cache directory in memory, so reading it is instant and current.
+//
+// It keeps the space allocated to each file in the cache. The file cache calls track for a file, while holding the
+// file's lock, after each operation that can change the file's size or remove it, so the usage follows those
+// operations right away.
+//
+// A walk of the cache directory, at start and then every correction interval in a background goroutine, measures
+// the directories and measures every file again under the file's lock. That corrects what the operations do not
+// show: files cached before mount, files written while open (including after being renamed while open), and changes
+// made by anything other than the file cache. A walk reads every directory and file in the cache, as du does, which
+// can take minutes on a large cache, so only one runs at a time and nothing waits for it.
 type cacheUsageMonitor struct {
 	path     string
 	interval time.Duration
 	timeout  time.Duration
-	measure  func(ctx context.Context, path string) (float64, error)
+	measure  func(ctx context.Context) (cacheWalk, error)
 
-	started atomic.Uint64               // Number of measurements started
-	last    atomic.Pointer[usageSample] // Last successful measurement, nil before the first
+	// lockFile takes the lock of the file at path without waiting. It returns false if the lock is busy. Nil means
+	// files are measured without their lock.
+	lockFile func(path string) (unlock func(), ok bool)
 
-	refreshSignal chan struct{}
-	updateSignal  chan struct{}
+	mu        sync.Mutex
+	files     map[string]int64 // Allocated bytes of each file with any allocated
+	tracked   int64            // Sum of files
+	untracked int64            // Bytes allocated to directories and other entries at the last walk
 
-	cancel context.CancelFunc
-	wg     sync.WaitGroup
+	started atomic.Bool
+	cancel  context.CancelFunc
+	wg      sync.WaitGroup
 }
 
-// usageSample is the result of a successful measurement.
-type usageSample struct {
-	mb  float64
-	seq uint64 // The measurement's number. Measurements are numbered from 1 in the order they start.
+// cacheWalk is the result of walking the cache directory.
+type cacheWalk struct {
+	untracked int64               // Bytes allocated to directories and to entries that are not regular files
+	seen      map[string]struct{} // Regular files found. Nil if not known.
 }
 
 func newCacheUsageMonitor(path string) *cacheUsageMonitor {
-	return &cacheUsageMonitor{
-		path:          path,
-		interval:      cacheUsageInterval,
-		timeout:       cacheUsageTimeout,
-		measure:       common.GetUsageWithContext,
-		refreshSignal: make(chan struct{}, 1),
-		updateSignal:  make(chan struct{}, 1),
+	m := &cacheUsageMonitor{
+		path:     path,
+		interval: cacheUsageCorrectionInterval,
+		timeout:  cacheUsageTimeout,
+		files:    make(map[string]int64),
 	}
+	m.measure = m.walk
+	return m
 }
 
-// start measures the usage once and then keeps measuring it in the background. If the first measurement fails,
-// for example because du is not installed, start returns the error and does not start measuring.
-func (m *cacheUsageMonitor) start() error {
+// start measures the cache directory once and then keeps measuring it in the background.
+func (m *cacheUsageMonitor) start() {
 	ctx, cancel := context.WithCancel(context.Background())
-	if err := m.refresh(ctx); err != nil {
-		cancel()
-		return err
-	}
-
 	m.cancel = cancel
+	m.started.Store(true)
+
+	_ = m.correct(ctx)
+
 	m.wg.Add(1)
 	go m.run(ctx)
-	return nil
 }
 
-// stop stops measuring and kills a measurement in progress.
+// stop stops measuring and stops a walk in progress. Tracking still keeps the usage up to date.
 func (m *cacheUsageMonitor) stop() {
-	if m.cancel == nil {
+	if m == nil || m.cancel == nil {
 		return
 	}
 
@@ -121,7 +132,6 @@ func (m *cacheUsageMonitor) stop() {
 func (m *cacheUsageMonitor) run(ctx context.Context) {
 	defer m.wg.Done()
 
-	// The interval counts from the end of the previous measurement, so a slow du is not started again right away.
 	timer := time.NewTimer(m.interval)
 	defer timer.Stop()
 
@@ -130,79 +140,185 @@ func (m *cacheUsageMonitor) run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-timer.C:
-		case <-m.refreshSignal:
 		}
 
-		err := m.refresh(ctx)
+		_ = m.correct(ctx)
 		timer.Reset(m.interval)
-		if err == nil {
-			select {
-			case m.updateSignal <- struct{}{}:
-			default:
-			}
-		}
 	}
 }
 
-func (m *cacheUsageMonitor) refresh(ctx context.Context) error {
+// correct walks the cache directory, and stops tracking files that are gone.
+func (m *cacheUsageMonitor) correct(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, m.timeout)
 	defer cancel()
 
-	seq := m.started.Add(1)
 	begin := time.Now()
-	usage, err := m.measure(ctx, m.path)
+	result, err := m.measure(ctx)
 	elapsed := time.Since(begin)
 
 	if err != nil {
 		switch {
 		case errors.Is(err, context.DeadlineExceeded):
-			log.Err("cacheUsageMonitor::refresh : measuring usage of %s did not finish in %v, keeping the last measured usage",
-				m.path, m.timeout)
+			log.Err("cacheUsageMonitor::correct : measuring usage of %s did not finish in %v", m.path, m.timeout)
 		case errors.Is(err, context.Canceled):
 		default:
-			log.Err("cacheUsageMonitor::refresh : failed to measure usage of %s [%s]", m.path, err.Error())
+			log.Err("cacheUsageMonitor::correct : failed to measure usage of %s [%s]", m.path, err.Error())
 		}
 		return err
 	}
 
 	if elapsed > cacheUsageSlowThreshold {
-		log.Warn("cacheUsageMonitor::refresh : measuring usage of %s took %v, the cache holds many files or directories",
+		log.Warn("cacheUsageMonitor::correct : measuring usage of %s took %v, the cache holds many files or directories",
 			m.path, elapsed.Round(time.Second))
 	}
 
-	m.last.Store(&usageSample{mb: usage, seq: seq})
+	m.mu.Lock()
+	m.untracked = result.untracked
+	var unseen map[string]int64
+	for path, allocated := range m.files {
+		if _, ok := result.seen[path]; !ok {
+			if unseen == nil {
+				unseen = make(map[string]int64)
+			}
+			unseen[path] = allocated
+		}
+	}
+	m.mu.Unlock()
+
+	// A tracked file that the walk did not find was removed by something other than the file cache, or was created
+	// after the walk read its directory.
+	for path, allocated := range unseen {
+		if _, err := os.Lstat(path); !os.IsNotExist(err) {
+			continue
+		}
+		m.mu.Lock()
+		if m.files[path] == allocated {
+			delete(m.files, path)
+			m.tracked -= allocated
+		}
+		m.mu.Unlock()
+	}
+
 	return nil
 }
 
-// usageMB returns the last measured usage in MB. It returns false if no measurement has succeeded.
+// walk measures the directories and the entries that are not regular files under the cache directory, and tracks
+// every regular file, so the usage counts what du counts.
+func (m *cacheUsageMonitor) walk(ctx context.Context) (cacheWalk, error) {
+	result := cacheWalk{seen: make(map[string]struct{})}
+	err := m.walkDir(ctx, m.path, &result)
+	return result, err
+}
+
+func (m *cacheUsageMonitor) walkDir(ctx context.Context, dir string, result *cacheWalk) error {
+	f, err := os.Open(dir)
+	if err != nil {
+		if dir == m.path {
+			return err
+		}
+		// The directory was removed or cannot be read, so skip it as du does.
+		log.Debug("cacheUsageMonitor::walkDir : failed to open %s [%s]", dir, err.Error())
+		return nil
+	}
+	defer f.Close()
+
+	if info, err := f.Stat(); err == nil {
+		result.untracked += info.Sys().(*syscall.Stat_t).Blocks * 512
+	}
+
+	for {
+		entries, err := f.ReadDir(1024)
+		for _, entry := range entries {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+
+			path := filepath.Join(dir, entry.Name())
+			switch {
+			case entry.IsDir():
+				if err := m.walkDir(ctx, path, result); err != nil {
+					return err
+				}
+
+			case entry.Type().IsRegular():
+				result.seen[path] = struct{}{}
+				m.trackUnlocked(path)
+
+			default:
+				// du also counts the space used by other entries, such as a symlink with a long target.
+				var stat syscall.Stat_t
+				if syscall.Lstat(path, &stat) == nil {
+					result.untracked += stat.Blocks * 512
+				}
+			}
+		}
+
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			log.Debug("cacheUsageMonitor::walkDir : failed to read %s [%s]", dir, err.Error())
+			return nil
+		}
+	}
+}
+
+// trackUnlocked tracks the file at path for the walk, taking the file's lock. If the lock is busy, the operation
+// holding it tracks the file when it is done.
+func (m *cacheUsageMonitor) trackUnlocked(path string) {
+	if m.lockFile != nil {
+		unlock, ok := m.lockFile(path)
+		if !ok {
+			return
+		}
+		defer unlock()
+	}
+	m.track(path)
+}
+
+// allocatedSize returns the space allocated to the regular file at path, or 0 for anything else. st_blocks counts
+// 512-byte units, as du does, so a sparse file counts only the space it uses.
+func allocatedSize(path string) int64 {
+	var stat syscall.Stat_t
+	err := syscall.Lstat(path, &stat)
+	if err == nil && stat.Mode&syscall.S_IFMT == syscall.S_IFREG {
+		return stat.Blocks * 512
+	}
+	if err != nil && !os.IsNotExist(err) {
+		log.Debug("cacheUsageMonitor::allocatedSize : failed to stat %s [%s]", path, err.Error())
+	}
+	return 0
+}
+
+// track updates the usage for the file at path after an operation that can change its size or remove it. Call it
+// while holding the file's lock, so the size read here is not replaced by an older one.
+func (m *cacheUsageMonitor) track(path string) {
+	if m == nil {
+		return
+	}
+
+	allocated := allocatedSize(path)
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.tracked += allocated - m.files[path]
+	if allocated > 0 {
+		m.files[path] = allocated
+	} else {
+		delete(m.files, path)
+	}
+}
+
+// usageMB returns the usage in MB. It returns false if the monitor was not started.
 func (m *cacheUsageMonitor) usageMB() (float64, bool) {
-	sample := m.lastSample()
-	if sample == nil {
+	if m == nil || !m.started.Load() {
 		return 0, false
 	}
-	return sample.mb, true
-}
 
-// lastSample returns the last successful measurement, or nil if no measurement has succeeded.
-func (m *cacheUsageMonitor) lastSample() *usageSample {
-	return m.last.Load()
-}
+	m.mu.Lock()
+	usage := m.tracked + m.untracked
+	m.mu.Unlock()
 
-// nextSeq returns the number of the next measurement to start. A sample with at least this number was measured
-// entirely after this call.
-func (m *cacheUsageMonitor) nextSeq() uint64 {
-	return m.started.Load() + 1
-}
-
-// requestRefresh asks for a new measurement without waiting for it. updates is signalled when it completes.
-func (m *cacheUsageMonitor) requestRefresh() {
-	select {
-	case m.refreshSignal <- struct{}{}:
-	default:
-	}
-}
-
-// updates is signalled after each successful background measurement.
-func (m *cacheUsageMonitor) updates() <-chan struct{} {
-	return m.updateSignal
+	return float64(max(usage, 0)) / MB, true
 }

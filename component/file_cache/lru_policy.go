@@ -79,10 +79,8 @@ type lruPolicy struct {
 	// Channel to check for file eviction based on file-cache timeout
 	cacheTimeoutMonitor <-chan time.Time
 
-	// Eviction passes run since cache usage went above the high threshold, and the number of the first measurement
-	// that started after the last pass. Used only by clearCache.
-	usageEvictionPasses int
-	usageAfterPassSeq   uint64
+	// Channel to check whether the cache usage is above the high threshold
+	usageCheck <-chan time.Time
 }
 
 const (
@@ -92,12 +90,15 @@ const (
 	// Check for disk usage in below number of minutes
 	DiskUsageCheckInterval = 1
 
-	// Most eviction passes to run, one per usage measurement, before waiting for the next regular measurement.
+	// Most eviction passes to run when the cache usage is above the high threshold.
 	maxUsageEvictionPasses = 3
 )
 
 // Retry deleting files whose lock was busy. This is a variable so tests can change it.
 var purgeRetryInterval = 250 * time.Millisecond
+
+// Check the cache usage at this interval. This is a variable so tests can change it.
+var usageCheckInterval = DiskUsageCheckInterval * time.Minute
 
 var _ cachePolicy = &lruPolicy{}
 
@@ -139,6 +140,10 @@ func (p *lruPolicy) StartPolicy() error {
 
 	if p.cacheTimeout != 0 {
 		p.cacheTimeoutMonitor = time.Tick(time.Duration(time.Duration(p.cacheTimeout) * time.Second))
+	}
+
+	if p.usage != nil {
+		p.usageCheck = time.Tick(usageCheckInterval)
 	}
 
 	p.wg.Add(2)
@@ -309,11 +314,6 @@ func (p *lruPolicy) clearCache() {
 	busy := make(map[string]struct{})
 	var retry <-chan time.Time
 
-	var usageUpdates <-chan struct{}
-	if p.usage != nil {
-		usageUpdates = p.usage.updates()
-	}
-
 	for {
 		select {
 		case <-p.purgeSignal:
@@ -338,7 +338,7 @@ func (p *lruPolicy) clearCache() {
 			p.printNodes()
 			p.deleteExpiredNodes()
 
-		case <-usageUpdates:
+		case <-p.usageCheck:
 			p.checkCacheUsage()
 
 		case <-p.closeSignal:
@@ -351,38 +351,37 @@ func (p *lruPolicy) clearCache() {
 	}
 }
 
-// checkCacheUsage runs after each cache usage measurement. When usage is above the high threshold, it evicts the
-// files not used since the previous eviction pass and requests a new measurement. It continues with the first
-// measurement that started after the pass, until usage is below the low threshold or maxUsageEvictionPasses passes
-// have run. du is never run here, so this goroutine keeps deleting queued files while usage is measured.
-func (p *lruPolicy) checkCacheUsage() {
-	sample := p.usage.lastSample()
-	if sample == nil {
-		return
+// checkCacheUsage evicts files when the cache usage is above the high threshold. Each pass evicts the files not
+// used since the previous pass. Passes continue until usage is below the low threshold or maxUsageEvictionPasses
+// passes have run. The usage is kept in memory, so it is current after each pass. It returns the number of passes
+// run.
+func (p *lruPolicy) checkCacheUsage() int {
+	usageMB, ok := p.usage.usageMB()
+	if !ok {
+		return 0
 	}
-	// A measurement that started before the last pass ended does not show what the pass freed.
-	if p.usageEvictionPasses > 0 && sample.seq < p.usageAfterPassSeq {
-		return
-	}
-	pUsage := getUsagePercentage(sample.mb, p.maxSizeMB)
 
-	if p.usageEvictionPasses == 0 {
-		if pUsage <= p.highThreshold {
-			return
-		}
+	pUsage := getUsagePercentage(usageMB, p.maxSizeMB)
+	if pUsage <= p.highThreshold {
+		return 0
+	}
+
+	passes := 0
+	for {
 		log.Info("lruPolicy::ClearCache : High threshold reached %f > %f", pUsage, p.highThreshold)
-	} else if pUsage < p.lowThreshold || p.usageEvictionPasses >= maxUsageEvictionPasses {
-		log.Info("lruPolicy::ClearCache : Threshold stabilized %f > %f", pUsage, p.lowThreshold)
-		p.usageEvictionPasses = 0
-		return
-	}
 
-	p.usageEvictionPasses++
-	p.updateMarker()
-	p.printNodes()
-	p.deleteExpiredNodes()
-	p.usageAfterPassSeq = p.usage.nextSeq()
-	p.usage.requestRefresh()
+		passes++
+		p.updateMarker()
+		p.printNodes()
+		p.deleteExpiredNodes()
+
+		usageMB, _ = p.usage.usageMB()
+		pUsage = getUsagePercentage(usageMB, p.maxSizeMB)
+		if pUsage < p.lowThreshold || passes >= maxUsageEvictionPasses {
+			log.Info("lruPolicy::ClearCache : Threshold stabilized %f > %f", pUsage, p.lowThreshold)
+			return passes
+		}
+	}
 }
 
 func (p *lruPolicy) removeNode(name string) {
@@ -522,6 +521,8 @@ func (p *lruPolicy) deleteItem(name string) bool {
 	if flock.Count() > 0 {
 		log.Warn("lruPolicy::DeleteItem : File in use %s", name)
 		p.CacheValid(name)
+		// The usage walk skips a file whose lock is busy, so count what was written to the open file.
+		p.usage.track(name)
 		return true
 	}
 
@@ -530,6 +531,7 @@ func (p *lruPolicy) deleteItem(name string) bool {
 	if err != nil && !os.IsNotExist(err) {
 		log.Err("lruPolicy::DeleteItem : failed to delete local file %s [%s]", name, err.Error())
 	}
+	p.usage.track(name)
 
 	// File was deleted so try clearing its parent directory
 	// TODO: Delete directories up the path recursively that are "safe to delete". Ensure there is no race between this code and code that creates directories (like OpenFile)

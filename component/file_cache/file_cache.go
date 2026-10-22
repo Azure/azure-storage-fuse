@@ -158,12 +158,9 @@ func (fc *FileCache) Start(ctx context.Context) error {
 		return fmt.Errorf("config error in %s error [cache policy missing]", fc.Name())
 	}
 
-	err := fc.usage.start()
-	if err != nil {
-		log.Err("FileCache::Start : failed to measure usage of %s, disabling disk usage checks [%s]", fc.tmpPath, err.Error())
-	}
+	fc.usage.start()
 
-	err = fc.policy.StartPolicy()
+	err := fc.policy.StartPolicy()
 	if err != nil {
 		fc.usage.stop()
 		return fmt.Errorf("config error in %s error [fail to start policy]", fc.Name())
@@ -329,6 +326,7 @@ func (fc *FileCache) Configure(_ bool) error {
 	}
 
 	fc.usage = newCacheUsageMonitor(fc.tmpPath)
+	fc.usage.lockFile = fc.tryLockLocalFile
 	cacheConfig := fc.GetPolicyConfig(conf)
 	fc.policy = NewLRUPolicy(cacheConfig)
 
@@ -399,7 +397,7 @@ func (fc *FileCache) StatFs() (*syscall.Statfs_t, bool, error) {
 		return nil, false, nil
 	}
 
-	// The usage is measured in the background, so statfs never waits for du.
+	// The usage is kept in memory, so statfs never waits for the cache to be measured.
 	usage, _ := fc.usage.usageMB()
 	usage = usage * MB
 
@@ -442,6 +440,18 @@ func (fc *FileCache) GetPolicyConfig(conf FileCacheOptions) cachePolicyConfig {
 	}
 
 	return cacheConfig
+}
+
+// tryLockLocalFile takes the lock of the file at localPath, a path in the cache directory, without waiting, so the
+// file can be measured. GetAttr, ReadDir and StreamDir still see the file as unlocked, so they keep using the local
+// file's size.
+func (fc *FileCache) tryLockLocalFile(localPath string) (func(), bool) {
+	name := strings.TrimPrefix(strings.TrimPrefix(localPath, fc.tmpPath), "/")
+	flock := fc.fileLocks.Get(name)
+	if !flock.TryLockQuiet() {
+		return nil, false
+	}
+	return flock.UnlockQuiet, true
 }
 
 // isLocalDirEmpty: Whether or not the local directory is empty.
@@ -760,6 +770,7 @@ func (fc *FileCache) CreateFile(options internal.CreateFileOptions) (*handlemap.
 	flock := fc.fileLocks.Get(options.Name)
 	flock.Lock()
 	defer flock.Unlock()
+	defer fc.usage.track(filepath.Join(fc.tmpPath, options.Name))
 
 	// createEmptyFile was added to optionally support immutable containers. If customers do not care about immutability they can set this to true.
 	if fc.createEmptyFile {
@@ -863,6 +874,7 @@ func (fc *FileCache) DeleteFile(options internal.DeleteFileOptions) error {
 	flock := fc.fileLocks.Get(options.Name)
 	flock.Lock()
 	defer flock.Unlock()
+	defer fc.usage.track(filepath.Join(fc.tmpPath, options.Name))
 
 	err := fc.NextComponent().DeleteFile(options)
 	err = fc.validateStorageError(options.Name, err, "DeleteFile", false)
@@ -980,6 +992,7 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 	flock := fc.fileLocks.Get(options.Name)
 	flock.Lock()
 	defer flock.Unlock()
+	defer fc.usage.track(localPath)
 
 	fc.policy.CacheValid(localPath)
 	downloadRequired, fileExists, attr, err := fc.isDownloadRequired(localPath, options.Name, flock)
@@ -1143,6 +1156,7 @@ func (fc *FileCache) ReleaseFile(options internal.ReleaseFileOptions) error {
 	flock := fc.fileLocks.Get(options.Handle.Path)
 	flock.Lock()
 	defer flock.Unlock()
+	defer fc.usage.track(localPath)
 
 	f := options.Handle.GetFileObject()
 	if f == nil {
@@ -1350,6 +1364,8 @@ func (fc *FileCache) FlushFile(options internal.FlushFileOptions) error {
 	flock := fc.fileLocks.Get(options.Handle.Path)
 	flock.Lock()
 	defer flock.Unlock()
+	// Count what was written to the file since it was last tracked, including writes served natively in C.
+	defer fc.usage.track(localPath)
 
 	// Re-check Dirty() after acquiring the lock.
 	// Another goroutine that held the lock before us may have already uploaded the file
@@ -1554,6 +1570,8 @@ func (fc *FileCache) RenameFile(options internal.RenameFileOptions) error {
 	dflock := fc.fileLocks.Get(options.Dst)
 	dflock.Lock()
 	defer dflock.Unlock()
+	defer fc.usage.track(filepath.Join(fc.tmpPath, options.Dst))
+	defer fc.usage.track(filepath.Join(fc.tmpPath, options.Src))
 
 	err := fc.NextComponent().RenameFile(options)
 	err = fc.validateStorageError(options.Src, err, "RenameFile", false)
@@ -1644,6 +1662,7 @@ func (fc *FileCache) TruncateFile(options internal.TruncateFileOptions) error {
 	flock := fc.fileLocks.Get(options.Name)
 	flock.Lock()
 	defer flock.Unlock()
+	defer fc.usage.track(filepath.Join(fc.tmpPath, options.Name))
 
 	err := fc.NextComponent().TruncateFile(options)
 	err = fc.validateStorageError(options.Name, err, "TruncateFile", true)
