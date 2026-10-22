@@ -37,7 +37,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -382,7 +381,7 @@ func (dl *Datalake) DeleteDirectory(name string) (err error) {
 func (dl *Datalake) RenameFile(source string, target string, srcAttr *internal.ObjAttr) error {
 	log.Trace("Datalake::RenameFile : %s -> %s", source, target)
 
-	fileClient := dl.Filesystem.NewFileClient(url.PathEscape(filepath.Join(dl.Config.prefixPath, source)))
+	fileClient := dl.Filesystem.NewFileClient(filepath.Join(dl.Config.prefixPath, source))
 
 	renameResponse, err := fileClient.Rename(context.Background(), filepath.Join(dl.Config.prefixPath, target), &file.RenameOptions{
 		CPKInfo: dl.datalakeCPKOpt,
@@ -405,7 +404,7 @@ func (dl *Datalake) RenameFile(source string, target string, srcAttr *internal.O
 func (dl *Datalake) RenameDirectory(source string, target string) error {
 	log.Trace("Datalake::RenameDirectory : %s -> %s", source, target)
 
-	directoryClient := dl.Filesystem.NewDirectoryClient(url.PathEscape(filepath.Join(dl.Config.prefixPath, source)))
+	directoryClient := dl.Filesystem.NewDirectoryClient(filepath.Join(dl.Config.prefixPath, source))
 	_, err := directoryClient.Rename(context.Background(), filepath.Join(dl.Config.prefixPath, target), &directory.RenameOptions{
 		CPKInfo: dl.datalakeCPKOpt,
 	})
