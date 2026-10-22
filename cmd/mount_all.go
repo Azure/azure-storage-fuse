@@ -106,6 +106,11 @@ func processCommand() error {
 		return fmt.Errorf("failed to unmarshal config [%s]", err.Error())
 	}
 
+	if common.ComponentInPipeline(options.Components, "distributed_cache") ||
+		options.DistributedCache.isConfigured() {
+		return fmt.Errorf("mount all isn't supported with distributed cache; mount each container separately")
+	}
+
 	if !config.IsSet("logging.file-path") {
 		options.Logging.LogFilePath = common.DefaultLogFilePath
 	}
