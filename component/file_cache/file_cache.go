@@ -63,6 +63,7 @@ type FileCache struct {
 	tmpPath   string
 	fileLocks *common.LockMap
 	policy    cachePolicy
+	usage     *cacheUsageMonitor
 
 	createEmptyFile bool
 	allowNonEmpty   bool
@@ -157,8 +158,11 @@ func (fc *FileCache) Start(ctx context.Context) error {
 		return fmt.Errorf("config error in %s error [cache policy missing]", fc.Name())
 	}
 
+	fc.usage.start()
+
 	err := fc.policy.StartPolicy()
 	if err != nil {
+		fc.usage.stop()
 		return fmt.Errorf("config error in %s error [fail to start policy]", fc.Name())
 	}
 
@@ -179,6 +183,7 @@ func (fc *FileCache) Stop() error {
 	}
 
 	_ = fc.policy.ShutdownPolicy()
+	fc.usage.stop()
 	_ = common.TempCacheCleanup(fc.tmpPath)
 
 	fileCacheStatsCollector.Destroy()
@@ -320,6 +325,8 @@ func (fc *FileCache) Configure(_ bool) error {
 		fc.defaultPermission = common.DefaultFilePermissionBits
 	}
 
+	fc.usage = newCacheUsageMonitor(fc.tmpPath)
+	fc.usage.lockFile = fc.tryLockLocalFile
 	cacheConfig := fc.GetPolicyConfig(conf)
 	fc.policy = NewLRUPolicy(cacheConfig)
 
@@ -390,7 +397,8 @@ func (fc *FileCache) StatFs() (*syscall.Statfs_t, bool, error) {
 		return nil, false, nil
 	}
 
-	usage, _ := common.GetUsage(fc.tmpPath)
+	// The usage is kept in memory, so statfs never waits for the cache to be measured.
+	usage, _ := fc.usage.usageMB()
 	usage = usage * MB
 
 	available := maxCacheSize - usage
@@ -427,10 +435,23 @@ func (fc *FileCache) GetPolicyConfig(conf FileCacheOptions) cachePolicyConfig {
 		cacheTimeout:  uint32(fc.cacheTimeout),
 		maxSizeMB:     fc.maxCacheSizeMB,
 		fileLocks:     fc.fileLocks,
+		usage:         fc.usage,
 		policyTrace:   conf.EnablePolicyTrace,
 	}
 
 	return cacheConfig
+}
+
+// tryLockLocalFile takes the lock of the file at localPath, a path in the cache directory, without waiting, so the
+// file can be measured. GetAttr, ReadDir and StreamDir still see the file as unlocked, so they keep using the local
+// file's size.
+func (fc *FileCache) tryLockLocalFile(localPath string) (func(), bool) {
+	name := strings.TrimPrefix(strings.TrimPrefix(localPath, fc.tmpPath), "/")
+	flock := fc.fileLocks.Get(name)
+	if !flock.TryLockQuiet() {
+		return nil, false
+	}
+	return flock.UnlockQuiet, true
 }
 
 // isLocalDirEmpty: Whether or not the local directory is empty.
@@ -749,6 +770,7 @@ func (fc *FileCache) CreateFile(options internal.CreateFileOptions) (*handlemap.
 	flock := fc.fileLocks.Get(options.Name)
 	flock.Lock()
 	defer flock.Unlock()
+	defer fc.usage.track(filepath.Join(fc.tmpPath, options.Name))
 
 	// createEmptyFile was added to optionally support immutable containers. If customers do not care about immutability they can set this to true.
 	if fc.createEmptyFile {
@@ -852,6 +874,7 @@ func (fc *FileCache) DeleteFile(options internal.DeleteFileOptions) error {
 	flock := fc.fileLocks.Get(options.Name)
 	flock.Lock()
 	defer flock.Unlock()
+	defer fc.usage.track(filepath.Join(fc.tmpPath, options.Name))
 
 	err := fc.NextComponent().DeleteFile(options)
 	err = fc.validateStorageError(options.Name, err, "DeleteFile", false)
@@ -969,6 +992,7 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 	flock := fc.fileLocks.Get(options.Name)
 	flock.Lock()
 	defer flock.Unlock()
+	defer fc.usage.track(localPath)
 
 	fc.policy.CacheValid(localPath)
 	downloadRequired, fileExists, attr, err := fc.isDownloadRequired(localPath, options.Name, flock)
@@ -1015,21 +1039,16 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 
 		if fileSize > 0 {
 			if fc.diskHighWaterMark != 0 {
-				currSize, err := common.GetUsage(fc.tmpPath)
-				if err != nil {
-					log.Err("FileCache::OpenFile : error getting current usage of cache [%s]", err.Error())
-				} else {
-					if (currSize + float64(fileSize)) > fc.diskHighWaterMark {
-						log.Err("FileCache::OpenFile : cache size limit reached [%f] failed to open %s", currSize, options.Name)
-						_ = f.Close()
-						err = os.Remove(localPath)
-						if err != nil {
-							log.Err("FileCache::OpenFile : Failed to remove file %s [%s]", localPath, err.Error())
-						}
-						return nil, syscall.ENOSPC
+				currSize, ok := fc.usage.usageMB()
+				if ok && (currSize+float64(fileSize)) > fc.diskHighWaterMark {
+					log.Err("FileCache::OpenFile : cache size limit reached [%f] failed to open %s", currSize, options.Name)
+					_ = f.Close()
+					err = os.Remove(localPath)
+					if err != nil {
+						log.Err("FileCache::OpenFile : Failed to remove file %s [%s]", localPath, err.Error())
 					}
+					return nil, syscall.ENOSPC
 				}
-
 			}
 			// Download/Copy the file from storage to the local file.
 			err = fc.NextComponent().CopyToFile(
@@ -1137,6 +1156,7 @@ func (fc *FileCache) ReleaseFile(options internal.ReleaseFileOptions) error {
 	flock := fc.fileLocks.Get(options.Handle.Path)
 	flock.Lock()
 	defer flock.Unlock()
+	defer fc.usage.track(localPath)
 
 	f := options.Handle.GetFileObject()
 	if f == nil {
@@ -1241,14 +1261,10 @@ func (fc *FileCache) WriteFile(options *internal.WriteFileOptions) (int, error) 
 	}
 
 	if fc.diskHighWaterMark != 0 {
-		currSize, err := common.GetUsage(fc.tmpPath)
-		if err != nil {
-			log.Err("FileCache::WriteFile : error getting current usage of cache [%s]", err.Error())
-		} else {
-			if (currSize + float64(len(options.Data))) > fc.diskHighWaterMark {
-				log.Err("FileCache::WriteFile : cache size limit reached [%f] failed to open %s", fc.maxCacheSizeMB, options.Handle.Path)
-				return 0, syscall.ENOSPC
-			}
+		currSize, ok := fc.usage.usageMB()
+		if ok && (currSize+float64(len(options.Data))) > fc.diskHighWaterMark {
+			log.Err("FileCache::WriteFile : cache size limit reached [%f] failed to open %s", fc.maxCacheSizeMB, options.Handle.Path)
+			return 0, syscall.ENOSPC
 		}
 	}
 
@@ -1348,6 +1364,8 @@ func (fc *FileCache) FlushFile(options internal.FlushFileOptions) error {
 	flock := fc.fileLocks.Get(options.Handle.Path)
 	flock.Lock()
 	defer flock.Unlock()
+	// Count what was written to the file since it was last tracked, including writes served natively in C.
+	defer fc.usage.track(localPath)
 
 	// Re-check Dirty() after acquiring the lock.
 	// Another goroutine that held the lock before us may have already uploaded the file
@@ -1552,6 +1570,8 @@ func (fc *FileCache) RenameFile(options internal.RenameFileOptions) error {
 	dflock := fc.fileLocks.Get(options.Dst)
 	dflock.Lock()
 	defer dflock.Unlock()
+	defer fc.usage.track(filepath.Join(fc.tmpPath, options.Dst))
+	defer fc.usage.track(filepath.Join(fc.tmpPath, options.Src))
 
 	err := fc.NextComponent().RenameFile(options)
 	err = fc.validateStorageError(options.Src, err, "RenameFile", false)
@@ -1612,14 +1632,10 @@ func (fc *FileCache) TruncateFile(options internal.TruncateFileOptions) error {
 	}
 
 	if fc.diskHighWaterMark != 0 {
-		currSize, err := common.GetUsage(fc.tmpPath)
-		if err != nil {
-			log.Err("FileCache::TruncateFile : error getting current usage of cache [%s]", err.Error())
-		} else {
-			if (currSize + float64(options.NewSize)) > fc.diskHighWaterMark {
-				log.Err("FileCache::TruncateFile : cache size limit reached [%f] failed to open %s", fc.maxCacheSizeMB, options.Name)
-				return syscall.ENOSPC
-			}
+		currSize, ok := fc.usage.usageMB()
+		if ok && (currSize+float64(options.NewSize)) > fc.diskHighWaterMark {
+			log.Err("FileCache::TruncateFile : cache size limit reached [%f] failed to open %s", fc.maxCacheSizeMB, options.Name)
+			return syscall.ENOSPC
 		}
 	}
 
@@ -1646,6 +1662,7 @@ func (fc *FileCache) TruncateFile(options internal.TruncateFileOptions) error {
 	flock := fc.fileLocks.Get(options.Name)
 	flock.Lock()
 	defer flock.Unlock()
+	defer fc.usage.track(filepath.Join(fc.tmpPath, options.Name))
 
 	err := fc.NextComponent().TruncateFile(options)
 	err = fc.validateStorageError(options.Name, err, "TruncateFile", true)

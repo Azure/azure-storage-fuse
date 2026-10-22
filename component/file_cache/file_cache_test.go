@@ -2872,6 +2872,464 @@ func (suite *fileCacheTestSuite) TestHardLimitOnSize() {
 	suite.assert.Error(err)
 }
 
+// restartUsage restarts the cache usage monitor so that, instead of walking the cache directory at interval, it
+// takes what tracking does not count from measure.
+func (suite *fileCacheTestSuite) restartUsage(measure usageFunc, interval time.Duration) {
+	usage := suite.fileCache.usage
+	usage.stop()
+	usage.measure = func(ctx context.Context) (cacheWalk, error) {
+		mb, err := measure(ctx, usage.path)
+		return cacheWalk{untracked: int64(mb * MB)}, err
+	}
+	usage.interval = interval
+	usage.start()
+}
+
+// blockingUsage returns a measure function that reports first on its first call. Later calls signal entered and
+// block until release is closed or the measurement is cancelled, like a walk of a large cache.
+func blockingUsage(first float64, entered chan<- struct{}, release <-chan struct{}) usageFunc {
+	var once sync.Once
+	return firstThen(first, func(ctx context.Context, _ string) (float64, error) {
+		once.Do(func() { close(entered) })
+		select {
+		case <-release:
+			return first, nil
+		case <-ctx.Done():
+			return 0, ctx.Err()
+		}
+	})
+}
+
+// runWithin fails the test if op does not return within timeout.
+func (suite *fileCacheTestSuite) runWithin(timeout time.Duration, name string, op func()) {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		op()
+	}()
+	select {
+	case <-done:
+	case <-time.After(timeout):
+		suite.FailNow(name + " waited for the cache usage measurement")
+	}
+}
+
+func (suite *fileCacheTestSuite) usageMB() float64 {
+	usage, ok := suite.fileCache.usage.usageMB()
+	suite.Require().True(ok)
+	return usage
+}
+
+// requireUsageMatchesCache checks that the usage equals the space allocated to the files in the cache. It holds
+// when the walk counts nothing untracked, as with restartUsage(constUsage(0), ...).
+func (suite *fileCacheTestSuite) requireUsageMatchesCache(step string) {
+	suite.Require().Eventually(func() bool {
+		return math.Abs(suite.usageMB()-allocatedMB(suite.cache_path)) < 1e-9
+	}, 5*time.Second, 10*time.Millisecond, "%s: usage %f MB, cache %f MB", step, suite.usageMB(), allocatedMB(suite.cache_path))
+}
+
+// Every file operation that changes the space a cached file takes is counted in the usage when it returns.
+func (suite *fileCacheTestSuite) TestUsageTracksFileOperations() {
+	defer suite.cleanupTest()
+	suite.cleanupTest()
+	config := fmt.Sprintf("file_cache:\n  path: %s\n  offload-io: true\n  timeout-sec: 1000\n\nloopbackfs:\n  path: %s",
+		suite.cache_path, suite.fake_storage_path)
+	suite.setupTestHelper(config)
+	suite.restartUsage(constUsage(0), time.Hour)
+	fc := suite.fileCache
+	exact := func(step string) {
+		suite.Require().InDelta(allocatedMB(suite.cache_path), suite.usageMB(), 1e-9, step)
+	}
+
+	// Create, write and close.
+	h, err := fc.CreateFile(internal.CreateFileOptions{Name: "created", Mode: 0777})
+	suite.Require().NoError(err)
+	_, err = fc.WriteFile(&internal.WriteFileOptions{Handle: h, Data: randomData(MB)})
+	suite.Require().NoError(err)
+	suite.Require().NoError(fc.ReleaseFile(internal.ReleaseFileOptions{Handle: h}))
+	exact("create")
+	suite.GreaterOrEqual(suite.usageMB(), float64(1))
+
+	// Download on open.
+	suite.Require().NoError(os.WriteFile(filepath.Join(suite.fake_storage_path, "remote"), randomData(2*MB), 0777))
+	h, err = fc.OpenFile(internal.OpenFileOptions{Name: "remote", Flags: os.O_RDWR, Mode: 0777})
+	suite.Require().NoError(err)
+	exact("download")
+
+	// Writes served natively in C bypass WriteFile. They are counted when the file is flushed.
+	f := h.GetFileObject()
+	_, err = f.WriteAt(randomData(MB), 2*MB)
+	suite.Require().NoError(err)
+	h.Flags.Set(handlemap.HandleFlagDirty)
+	suite.Less(suite.usageMB(), allocatedMB(suite.cache_path))
+	suite.Require().NoError(fc.FlushFile(internal.FlushFileOptions{Handle: h}))
+	exact("flush")
+
+	// Truncating through the handle is counted on close.
+	suite.Require().NoError(fc.TruncateFile(internal.TruncateFileOptions{Name: "remote", Handle: h, NewSize: MB}))
+	suite.Require().NoError(fc.ReleaseFile(internal.ReleaseFileOptions{Handle: h}))
+	exact("truncate handle and close")
+
+	// Truncating by name.
+	suite.Require().NoError(fc.TruncateFile(internal.TruncateFileOptions{Name: "remote", NewSize: 256 * 1024}))
+	exact("truncate by name")
+
+	// Renaming over a cached file.
+	suite.Require().NoError(fc.RenameFile(internal.RenameFileOptions{Src: "created", Dst: "remote"}))
+	exact("rename")
+
+	// Opening with O_TRUNC.
+	h, err = fc.OpenFile(internal.OpenFileOptions{Name: "remote", Flags: os.O_RDWR | os.O_TRUNC, Mode: 0777})
+	suite.Require().NoError(err)
+	exact("open with O_TRUNC")
+	suite.Require().NoError(fc.ReleaseFile(internal.ReleaseFileOptions{Handle: h}))
+	exact("close")
+
+	// Creating a file that is cached truncates it.
+	h, err = fc.CreateFile(internal.CreateFileOptions{Name: "remote", Mode: 0777})
+	suite.Require().NoError(err)
+	_, err = fc.WriteFile(&internal.WriteFileOptions{Handle: h, Data: randomData(MB)})
+	suite.Require().NoError(err)
+	suite.Require().NoError(fc.ReleaseFile(internal.ReleaseFileOptions{Handle: h}))
+	exact("rewrite")
+	h, err = fc.CreateFile(internal.CreateFileOptions{Name: "remote", Mode: 0777})
+	suite.Require().NoError(err)
+	exact("create over a cached file")
+	suite.Require().NoError(fc.ReleaseFile(internal.ReleaseFileOptions{Handle: h}))
+
+	// Closing an fsynced file deletes its cached copy.
+	h, err = fc.CreateFile(internal.CreateFileOptions{Name: "synced", Mode: 0777})
+	suite.Require().NoError(err)
+	_, err = fc.WriteFile(&internal.WriteFileOptions{Handle: h, Data: randomData(MB)})
+	suite.Require().NoError(err)
+	suite.Require().NoError(fc.SyncFile(internal.SyncFileOptions{Handle: h}))
+	suite.Require().NoError(fc.ReleaseFile(internal.ReleaseFileOptions{Handle: h}))
+	exact("close fsynced file")
+	suite.False(suite.inCache("synced"))
+
+	// Deleting.
+	suite.Require().NoError(fc.DeleteFile(internal.DeleteFileOptions{Name: "remote"}))
+	exact("delete")
+
+	// Deleting or renaming a directory evicts its files in the background.
+	suite.Require().NoError(os.Mkdir(filepath.Join(suite.fake_storage_path, "dir"), 0777))
+	for i := range 3 {
+		h, err = fc.CreateFile(internal.CreateFileOptions{Name: fmt.Sprintf("dir/file%d", i), Mode: 0777})
+		suite.Require().NoError(err)
+		_, err = fc.WriteFile(&internal.WriteFileOptions{Handle: h, Data: randomData(512 * 1024)})
+		suite.Require().NoError(err)
+		suite.Require().NoError(fc.ReleaseFile(internal.ReleaseFileOptions{Handle: h}))
+	}
+	exact("create in directory")
+	// DeleteDir runs invalidateDirectory in a goroutine that the test could not wait for, so call it directly.
+	fc.invalidateDirectory("dir")
+	suite.Require().Eventually(func() bool {
+		return !suite.inCache("dir/file0") && !suite.inCache("dir/file1") && !suite.inCache("dir/file2")
+	}, 5*time.Second, 10*time.Millisecond)
+	suite.requireUsageMatchesCache("delete directory")
+
+	suite.Zero(suite.usageMB())
+}
+
+func (suite *fileCacheTestSuite) inCache(rel string) bool {
+	_, err := os.Stat(filepath.Join(suite.cache_path, rel))
+	return err == nil
+}
+
+// noPurgePolicy is a cache policy that never deletes files queued for deletion.
+type noPurgePolicy struct {
+	cachePolicy
+}
+
+func (noPurgePolicy) CachePurge(string) {}
+
+// DeleteFile counts the deletion itself, so the usage is current when it returns, before the cache policy runs.
+func (suite *fileCacheTestSuite) TestDeleteFileTracksUsage() {
+	defer suite.cleanupTest()
+	suite.cleanupTest()
+	config := fmt.Sprintf("file_cache:\n  path: %s\n  offload-io: true\n  timeout-sec: 1000\n\nloopbackfs:\n  path: %s",
+		suite.cache_path, suite.fake_storage_path)
+	suite.setupTestHelper(config)
+	suite.restartUsage(constUsage(0), time.Hour)
+	fc := suite.fileCache
+
+	h, err := fc.CreateFile(internal.CreateFileOptions{Name: "file", Mode: 0777})
+	suite.Require().NoError(err)
+	_, err = fc.WriteFile(&internal.WriteFileOptions{Handle: h, Data: randomData(MB)})
+	suite.Require().NoError(err)
+	suite.Require().NoError(fc.ReleaseFile(internal.ReleaseFileOptions{Handle: h}))
+	suite.Positive(suite.usageMB())
+
+	policy := fc.policy
+	fc.policy = noPurgePolicy{policy}
+	defer func() { fc.policy = policy }()
+
+	suite.Require().NoError(fc.DeleteFile(internal.DeleteFileOptions{Name: "file"}))
+	suite.Zero(suite.usageMB())
+}
+
+// A file renamed while open is written through a handle with the old name, so closing it tracks the old name. The
+// walk counts what was written after the rename.
+func (suite *fileCacheTestSuite) TestWalkCountsFileRenamedWhileOpen() {
+	defer suite.cleanupTest()
+	suite.cleanupTest()
+	config := fmt.Sprintf("file_cache:\n  path: %s\n  offload-io: true\n  timeout-sec: 1000\n\nloopbackfs:\n  path: %s",
+		suite.cache_path, suite.fake_storage_path)
+	suite.setupTestHelper(config)
+	fc := suite.fileCache
+
+	h, err := fc.CreateFile(internal.CreateFileOptions{Name: "old", Mode: 0777})
+	suite.Require().NoError(err)
+	_, err = fc.WriteFile(&internal.WriteFileOptions{Handle: h, Data: randomData(MB)})
+	suite.Require().NoError(err)
+	suite.Require().NoError(fc.FlushFile(internal.FlushFileOptions{Handle: h}))
+	suite.Require().NoError(fc.RenameFile(internal.RenameFileOptions{Src: "old", Dst: "new"}))
+	// Write through the descriptor, as writes served natively in C do.
+	_, err = h.GetFileObject().WriteAt(randomData(4*MB), MB)
+	suite.Require().NoError(err)
+	suite.Require().NoError(fc.ReleaseFile(internal.ReleaseFileOptions{Handle: h}))
+	suite.Less(suite.usageMB(), diskUsageMB(suite.cache_path))
+
+	suite.Require().NoError(fc.usage.correct(context.Background()))
+	suite.InDelta(diskUsageMB(suite.cache_path), suite.usageMB(), 1e-9)
+}
+
+// The walk measures a file under its lock, so it does not replace the size an operation is about to record.
+func (suite *fileCacheTestSuite) TestWalkWaitsForFileLock() {
+	defer suite.cleanupTest()
+	suite.cleanupTest()
+	config := fmt.Sprintf("file_cache:\n  path: %s\n  offload-io: true\n  timeout-sec: 1000\n\nloopbackfs:\n  path: %s",
+		suite.cache_path, suite.fake_storage_path)
+	suite.setupTestHelper(config)
+	fc := suite.fileCache
+	h, err := fc.CreateFile(internal.CreateFileOptions{Name: "file", Mode: 0777})
+	suite.Require().NoError(err)
+	_, err = fc.WriteFile(&internal.WriteFileOptions{Handle: h, Data: randomData(MB)})
+	suite.Require().NoError(err)
+	suite.Require().NoError(fc.ReleaseFile(internal.ReleaseFileOptions{Handle: h}))
+	suite.Require().NoError(fc.usage.correct(context.Background()))
+	before := suite.usageMB()
+
+	flock := fc.fileLocks.Get("file")
+	flock.Lock()
+	suite.Require().NoError(os.WriteFile(filepath.Join(suite.cache_path, "file"), randomData(3*MB), 0777))
+	suite.Require().NoError(fc.usage.correct(context.Background()))
+	suite.InDelta(before, suite.usageMB(), 1e-9, "a locked file must not be measured")
+	flock.Unlock()
+
+	suite.Require().NoError(fc.usage.correct(context.Background()))
+	suite.InDelta(diskUsageMB(suite.cache_path), suite.usageMB(), 1e-9)
+}
+
+// While the walk holds a file's lock to measure it, GetAttr and StreamDir must still use the local file, which can
+// have writes that are not uploaded yet, or exist only locally.
+func (suite *fileCacheTestSuite) TestWalkLockKeepsLocalAttributes() {
+	defer suite.cleanupTest()
+	suite.cleanupTest()
+	config := fmt.Sprintf("file_cache:\n  path: %s\n  offload-io: true\n  timeout-sec: 1000\n\nloopbackfs:\n  path: %s",
+		suite.cache_path, suite.fake_storage_path)
+	suite.setupTestHelper(config)
+	fc := suite.fileCache
+
+	h, err := fc.CreateFile(internal.CreateFileOptions{Name: "uploaded", Mode: 0777})
+	suite.Require().NoError(err)
+	_, err = fc.WriteFile(&internal.WriteFileOptions{Handle: h, Data: randomData(MB)})
+	suite.Require().NoError(err)
+	suite.Require().NoError(fc.FlushFile(internal.FlushFileOptions{Handle: h}))
+	_, err = fc.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: MB, Data: randomData(MB)})
+	suite.Require().NoError(err)
+	defer func() { suite.NoError(fc.ReleaseFile(internal.ReleaseFileOptions{Handle: h})) }()
+
+	local, err := fc.CreateFile(internal.CreateFileOptions{Name: "local", Mode: 0777})
+	suite.Require().NoError(err)
+	defer func() { suite.NoError(fc.ReleaseFile(internal.ReleaseFileOptions{Handle: local})) }()
+
+	for _, name := range []string{"uploaded", "local"} {
+		unlock, ok := fc.tryLockLocalFile(filepath.Join(suite.cache_path, name))
+		suite.Require().True(ok)
+		defer unlock()
+	}
+
+	attr, err := fc.GetAttr(internal.GetAttrOptions{Name: "uploaded"})
+	suite.Require().NoError(err)
+	suite.EqualValues(2*MB, attr.Size)
+
+	attrs, _, err := fc.StreamDir(internal.StreamDirOptions{Name: ""})
+	suite.Require().NoError(err)
+	var names []string
+	for _, attr := range attrs {
+		names = append(names, attr.Name)
+	}
+	suite.Contains(names, "local")
+}
+
+// Files evicted by the cache policy, on close with a zero timeout or when their timeout expires, are removed from
+// the usage.
+func (suite *fileCacheTestSuite) TestUsageTracksEviction() {
+	defer suite.cleanupTest()
+	for _, timeout := range []int{0, 1} {
+		suite.cleanupTest()
+		config := fmt.Sprintf("file_cache:\n  path: %s\n  offload-io: true\n  timeout-sec: %d\n\nloopbackfs:\n  path: %s",
+			suite.cache_path, timeout, suite.fake_storage_path)
+		suite.setupTestHelper(config)
+		suite.restartUsage(constUsage(0), time.Hour)
+
+		h, err := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: "file", Mode: 0777})
+		suite.Require().NoError(err)
+		_, err = suite.fileCache.WriteFile(&internal.WriteFileOptions{Handle: h, Data: randomData(MB)})
+		suite.Require().NoError(err)
+		suite.Require().NoError(suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h}))
+
+		suite.Require().Eventually(func() bool { return !suite.inCache("file") }, 10*time.Second, 10*time.Millisecond)
+		suite.requireUsageMatchesCache(fmt.Sprintf("timeout %d", timeout))
+		suite.Zero(suite.usageMB())
+	}
+}
+
+// statfs reports the current usage, without waiting for the next walk.
+func (suite *fileCacheTestSuite) TestStatFsReportsCurrentUsage() {
+	defer suite.cleanupTest()
+	suite.cleanupTest()
+	config := fmt.Sprintf("file_cache:\n  path: %s\n  offload-io: true\n  max-size-mb: 10\n  timeout-sec: 1000\n\nloopbackfs:\n  path: %s",
+		suite.cache_path, suite.fake_storage_path)
+	suite.setupTestHelper(config)
+	suite.restartUsage(constUsage(0), time.Hour)
+	fc := suite.fileCache
+
+	free := func() uint64 {
+		stat, ret, err := fc.StatFs()
+		suite.Require().NoError(err)
+		suite.Require().True(ret)
+		suite.Require().Equal(10*MB/uint64(stat.Frsize), stat.Blocks)
+		suite.Require().Equal(stat.Bavail, stat.Bfree)
+		return stat.Bavail * uint64(stat.Frsize)
+	}
+	suite.EqualValues(10*MB, free())
+
+	h, err := fc.CreateFile(internal.CreateFileOptions{Name: "file", Mode: 0777})
+	suite.Require().NoError(err)
+	_, err = fc.WriteFile(&internal.WriteFileOptions{Handle: h, Data: randomData(3 * MB)})
+	suite.Require().NoError(err)
+	suite.Require().NoError(fc.ReleaseFile(internal.ReleaseFileOptions{Handle: h}))
+	suite.InDelta(10*MB-allocatedMB(suite.cache_path)*MB, float64(free()), 4096)
+
+	suite.Require().NoError(fc.DeleteFile(internal.DeleteFileOptions{Name: "file"}))
+	suite.EqualValues(10*MB, free())
+
+	// What the walk measures that is not tracked, such as directories, is added. Usage above the maximum reports no
+	// free space.
+	suite.restartUsage(constUsage(4), time.Hour)
+	suite.InDelta(6*MB, float64(free()), 4096)
+	suite.restartUsage(constUsage(12), time.Hour)
+	suite.Zero(free())
+}
+
+// statfs and the file operations must not wait while the cache is measured. Before, statfs and the hard-limit checks
+// ran du, which could take minutes on a large cache.
+func (suite *fileCacheTestSuite) TestFileOperationsDoNotWaitForUsageMeasurement() {
+	defer suite.cleanupTest()
+	suite.cleanupTest()
+	config := fmt.Sprintf("file_cache:\n  path: %s\n  offload-io: true\n  hard-limit: true\n  max-size-mb: 10\n  timeout-sec: 1000\n\nloopbackfs:\n  path: %s",
+		suite.cache_path, suite.fake_storage_path)
+	suite.setupTestHelper(config)
+	fc := suite.fileCache
+
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	defer close(release)
+	suite.restartUsage(blockingUsage(0, entered, release), time.Millisecond)
+	<-entered
+
+	const timeout = 5 * time.Second
+	suite.runWithin(timeout, "StatFs", func() {
+		_, ret, err := fc.StatFs()
+		suite.NoError(err)
+		suite.True(ret)
+	})
+
+	remote := "remote"
+	suite.Require().NoError(os.WriteFile(filepath.Join(suite.fake_storage_path, remote), randomData(MB), 0777))
+	suite.runWithin(timeout, "OpenFile", func() {
+		h, err := fc.OpenFile(internal.OpenFileOptions{Name: remote, Flags: os.O_RDWR, Mode: 0777})
+		suite.Require().NoError(err)
+		suite.NoError(fc.ReleaseFile(internal.ReleaseFileOptions{Handle: h}))
+	})
+
+	suite.runWithin(timeout, "WriteFile", func() {
+		h, err := fc.CreateFile(internal.CreateFileOptions{Name: "local", Mode: 0777})
+		suite.Require().NoError(err)
+		n, err := fc.WriteFile(&internal.WriteFileOptions{Handle: h, Data: randomData(MB)})
+		suite.NoError(err)
+		suite.Equal(MB, n)
+		// The hard limit is still enforced while the cache is measured.
+		_, err = fc.WriteFile(&internal.WriteFileOptions{Handle: h, Data: make([]byte, 9*MB)})
+		suite.Equal(syscall.ENOSPC, err)
+		suite.NoError(fc.ReleaseFile(internal.ReleaseFileOptions{Handle: h}))
+	})
+
+	suite.runWithin(timeout, "TruncateFile", func() {
+		suite.NoError(fc.TruncateFile(internal.TruncateFileOptions{Name: remote, NewSize: 2 * MB}))
+		suite.Equal(syscall.ENOSPC, fc.TruncateFile(internal.TruncateFileOptions{Name: remote, NewSize: 9 * MB}))
+	})
+
+	suite.runWithin(timeout, "RenameFile and DeleteFile", func() {
+		suite.NoError(fc.RenameFile(internal.RenameFileOptions{Src: "local", Dst: "renamed"}))
+		suite.NoError(fc.DeleteFile(internal.DeleteFileOptions{Name: "renamed"}))
+	})
+	suite.InDelta(allocatedMB(suite.cache_path), suite.usageMB(), 1e-9)
+}
+
+// Files left in the cache by a previous mount are counted once: by the walk at start, then by tracking when the
+// file cache downloads them again or deletes them.
+func (suite *fileCacheTestSuite) TestUsageCountsFilesCachedBeforeMount() {
+	defer suite.cleanupTest()
+	suite.cleanupTest()
+	for _, name := range []string{"dir/a", "dir/b", "old/c"} {
+		for _, root := range []string{suite.cache_path, suite.fake_storage_path} {
+			path := filepath.Join(root, name)
+			suite.Require().NoError(os.MkdirAll(filepath.Dir(path), 0777))
+			suite.Require().NoError(os.WriteFile(path, randomData(2*MB), 0777))
+		}
+	}
+	config := fmt.Sprintf("file_cache:\n  path: %s\n  offload-io: true\n  timeout-sec: 1000\n  allow-non-empty-temp: true\n\nloopbackfs:\n  path: %s",
+		suite.cache_path, suite.fake_storage_path)
+	suite.setupTestHelper(config)
+	fc := suite.fileCache
+	matches := func(step string) {
+		suite.Require().InDelta(diskUsageMB(suite.cache_path), suite.usageMB(), 1e-9, step)
+	}
+	matches("start")
+
+	// The cache policy does not know the file, so opening it downloads it again.
+	h, err := fc.OpenFile(internal.OpenFileOptions{Name: "dir/a", Flags: os.O_RDONLY, Mode: 0777})
+	suite.Require().NoError(err)
+	matches("download again")
+	suite.Require().NoError(fc.ReleaseFile(internal.ReleaseFileOptions{Handle: h}))
+	matches("close")
+
+	suite.Require().NoError(fc.DeleteFile(internal.DeleteFileOptions{Name: "dir/b"}))
+	matches("delete")
+	suite.Require().NoError(fc.DeleteFile(internal.DeleteFileOptions{Name: "dir/a"}))
+	matches("delete downloaded")
+
+	// Deleting a directory evicts its files that were cached before mount, without opening them. The walk counted the
+	// directory itself, so its space stays in the usage until the next walk. DeleteDir runs invalidateDirectory in a
+	// goroutine that the test could not wait for, so call it directly.
+	fc.invalidateDirectory("old")
+	suite.Require().Eventually(func() bool {
+		return !suite.inCache("old/c") && math.Abs(diskUsageMB(suite.cache_path)-suite.usageMB()) <= 4096.0/MB
+	}, 5*time.Second, 10*time.Millisecond, "delete directory: usage %f MB, cache %f MB", suite.usageMB(), diskUsageMB(suite.cache_path))
+}
+
+// Unmount stops a running measurement instead of waiting for it to finish.
+func (suite *fileCacheTestSuite) TestStopDoesNotWaitForUsageMeasurement() {
+	entered := make(chan struct{})
+	suite.restartUsage(blockingUsage(0, entered, nil), time.Millisecond)
+	<-entered
+
+	suite.runWithin(5*time.Second, "Stop", suite.cleanupTest)
+}
+
 // create a list of empty directories in local and storage and then try to delete those to validate empty directories
 // are allowed be to deleted but non empty are not
 func (suite *fileCacheTestSuite) TestDeleteDirectory() {

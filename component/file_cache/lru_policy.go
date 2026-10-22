@@ -39,7 +39,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 )
 
@@ -77,14 +76,11 @@ type lruPolicy struct {
 	// Channel to contain files that are in use so push them up in lru list
 	validateChan chan string
 
-	// Channel to check disk usage is within the limits configured or not
-	diskUsageMonitor <-chan time.Time
-
 	// Channel to check for file eviction based on file-cache timeout
 	cacheTimeoutMonitor <-chan time.Time
 
-	// DU utility was found on the path or not
-	duPresent bool
+	// Channel to check whether the cache usage is above the high threshold
+	usageCheck <-chan time.Time
 }
 
 const (
@@ -93,10 +89,16 @@ const (
 
 	// Check for disk usage in below number of minutes
 	DiskUsageCheckInterval = 1
+
+	// Most eviction passes to run when the cache usage is above the high threshold.
+	maxUsageEvictionPasses = 3
 )
 
 // Retry deleting files whose lock was busy. This is a variable so tests can change it.
 var purgeRetryInterval = 250 * time.Millisecond
+
+// Check the cache usage at this interval. This is a variable so tests can change it.
+var usageCheckInterval = DiskUsageCheckInterval * time.Minute
 
 var _ cachePolicy = &lruPolicy{}
 
@@ -112,7 +114,6 @@ func NewLRUPolicy(cfg cachePolicyConfig) cachePolicy {
 			name:  "##",
 			usage: -1,
 		},
-		duPresent: false,
 	}
 
 	return obj
@@ -133,23 +134,16 @@ func (p *lruPolicy) StartPolicy() error {
 	p.purgeSignal = make(chan struct{}, 1)
 	p.validateChan = make(chan string, 10000)
 
-	_, err := common.GetUsage(p.tmpPath)
-	if err == nil {
-		p.duPresent = true
-	} else {
-		log.Err("lruPolicy::StartPolicy : 'du' command not found, disabling disk usage checks")
-	}
-
-	if p.duPresent {
-		p.diskUsageMonitor = time.Tick(time.Duration(DiskUsageCheckInterval * time.Minute))
-	}
-
 	// Only start the timeoutMonitor if evictTime is non-zero.
 	// If evictTime=0, we delete on invalidate so there is no need for a timeout monitor signal to be sent.
 	log.Info("lruPolicy::StartPolicy : Policy set with %v timeout", p.cacheTimeout)
 
 	if p.cacheTimeout != 0 {
 		p.cacheTimeoutMonitor = time.Tick(time.Duration(time.Duration(p.cacheTimeout) * time.Second))
+	}
+
+	if p.usage != nil {
+		p.usageCheck = time.Tick(usageCheckInterval)
 	}
 
 	p.wg.Add(2)
@@ -344,27 +338,8 @@ func (p *lruPolicy) clearCache() {
 			p.printNodes()
 			p.deleteExpiredNodes()
 
-		case <-p.diskUsageMonitor:
-			// File cache timeout has not occurred so just monitor the cache usage
-			cleanupCount := 0
-			pUsage := getUsagePercentage(p.tmpPath, p.maxSizeMB)
-			if pUsage > p.highThreshold {
-				continueDeletion := true
-				for continueDeletion {
-					log.Info("lruPolicy::ClearCache : High threshold reached %f > %f", pUsage, p.highThreshold)
-
-					cleanupCount++
-					p.updateMarker()
-					p.printNodes()
-					p.deleteExpiredNodes()
-
-					pUsage := getUsagePercentage(p.tmpPath, p.maxSizeMB)
-					if pUsage < p.lowThreshold || cleanupCount >= 3 {
-						log.Info("lruPolicy::ClearCache : Threshold stabilized %f > %f", pUsage, p.lowThreshold)
-						continueDeletion = false
-					}
-				}
-			}
+		case <-p.usageCheck:
+			p.checkCacheUsage()
 
 		case <-p.closeSignal:
 			return
@@ -372,6 +347,39 @@ func (p *lruPolicy) clearCache() {
 
 		if len(busy) > 0 && retry == nil {
 			retry = time.After(purgeRetryInterval)
+		}
+	}
+}
+
+// checkCacheUsage evicts files when the cache usage is above the high threshold. Each pass evicts the files not
+// used since the previous pass. Passes continue until usage is below the low threshold or maxUsageEvictionPasses
+// passes have run. The usage is kept in memory, so it is current after each pass. It returns the number of passes
+// run.
+func (p *lruPolicy) checkCacheUsage() int {
+	usageMB, ok := p.usage.usageMB()
+	if !ok {
+		return 0
+	}
+
+	pUsage := getUsagePercentage(usageMB, p.maxSizeMB)
+	if pUsage <= p.highThreshold {
+		return 0
+	}
+
+	passes := 0
+	for {
+		log.Info("lruPolicy::ClearCache : High threshold reached %f > %f", pUsage, p.highThreshold)
+
+		passes++
+		p.updateMarker()
+		p.printNodes()
+		p.deleteExpiredNodes()
+
+		usageMB, _ = p.usage.usageMB()
+		pUsage = getUsagePercentage(usageMB, p.maxSizeMB)
+		if pUsage < p.lowThreshold || passes >= maxUsageEvictionPasses {
+			log.Info("lruPolicy::ClearCache : Threshold stabilized %f > %f", pUsage, p.lowThreshold)
+			return passes
 		}
 	}
 }
@@ -513,6 +521,8 @@ func (p *lruPolicy) deleteItem(name string) bool {
 	if flock.Count() > 0 {
 		log.Warn("lruPolicy::DeleteItem : File in use %s", name)
 		p.CacheValid(name)
+		// The usage walk skips a file whose lock is busy, so count what was written to the open file.
+		p.usage.track(name)
 		return true
 	}
 
@@ -521,6 +531,7 @@ func (p *lruPolicy) deleteItem(name string) bool {
 	if err != nil && !os.IsNotExist(err) {
 		log.Err("lruPolicy::DeleteItem : failed to delete local file %s [%s]", name, err.Error())
 	}
+	p.usage.track(name)
 
 	// File was deleted so try clearing its parent directory
 	// TODO: Delete directories up the path recursively that are "safe to delete". Ensure there is no race between this code and code that creates directories (like OpenFile)

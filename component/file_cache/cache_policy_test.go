@@ -78,21 +78,13 @@ func (suite *cachePolicyTestSuite) TestGetUsage() {
 
 func (suite *cachePolicyTestSuite) TestGetUsagePercentage() {
 	defer suite.cleanupTest()
-	data := make([]byte, 1024*1024)
 
-	f, _ := os.Create(cache_path + "/test")
-	_, err := f.Write(data)
-	suite.assert.NoError(err)
-	result := getUsagePercentage(cache_path, 4)
-	// since the value might defer a little distro to distro
-	suite.assert.GreaterOrEqual(result, float64(25))
-	suite.assert.LessOrEqual(result, float64(30))
-	f.Close()
+	suite.assert.InDelta(float64(25), getUsagePercentage(1, 4), 0.001)
+	suite.assert.InDelta(float64(150), getUsagePercentage(6, 4), 0.001)
+	suite.assert.Zero(getUsagePercentage(0, 4))
 
-	result = getUsagePercentage("/", 0)
-	// since the value might defer a little distro to distro
-	suite.assert.GreaterOrEqual(result, float64(0))
-	suite.assert.LessOrEqual(result, float64(90))
+	// An invalid max size must not divide by zero
+	suite.assert.Zero(getUsagePercentage(1, 0))
 }
 
 func (suite *cachePolicyTestSuite) TestDeleteFile() {
