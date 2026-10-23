@@ -552,6 +552,50 @@ func (suite *lruPolicyTestSuite) TestEvictionIgnoresMeasurementStartedBeforePass
 	suite.False(fileExists(file))
 }
 
+// A measurement is stored before its notification is sent, so clearCache can read it while handling the previous
+// notification and then read it again for its own. A measurement must start at most one eviction round: after the
+// round stops at the pass limit, the same measurement must not start another one.
+func (suite *lruPolicyTestSuite) TestEvictionHandlesMeasurementOnce() {
+	defer suite.cleanupTest()
+	suite.cleanupTest()
+	suite.Require().NoError(os.MkdirAll(cache_path, 0777))
+
+	// The monitor is not started. The test plays the measurements and calls checkCacheUsage as clearCache would.
+	usage := newTestUsageMonitor(nil)
+	suite.setupTestHelper(cachePolicyConfig{
+		tmpPath:       cache_path,
+		maxEviction:   defaultMaxEviction,
+		maxSizeMB:     100,
+		highThreshold: 80,
+		lowThreshold:  60,
+		fileLocks:     &common.LockMap{},
+		usage:         usage,
+	})
+	p := suite.policy
+	measure := func(mb float64) {
+		usage.last.Store(&usageSample{mb: mb, seq: usage.started.Add(1)})
+	}
+
+	// Usage stays high, so the round runs maxUsageEvictionPasses passes and stops on the next measurement.
+	for pass := 1; pass <= maxUsageEvictionPasses; pass++ {
+		measure(90)
+		p.checkCacheUsage()
+		suite.Equal(pass, p.usageEvictionPasses)
+	}
+	measure(90)
+	p.checkCacheUsage()
+	suite.Zero(p.usageEvictionPasses)
+
+	// The same measurement again, as from its own notification.
+	p.checkCacheUsage()
+	suite.Zero(p.usageEvictionPasses, "the measurement that stopped the round started another one")
+
+	// A later measurement starts a new round.
+	measure(90)
+	p.checkCacheUsage()
+	suite.Equal(1, p.usageEvictionPasses)
+}
+
 // listNodes returns the names in the LRU list, failing on a loop or a broken back link.
 func (suite *lruPolicyTestSuite) listNodes() []string {
 	var names []string

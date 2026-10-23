@@ -106,11 +106,11 @@ func (suite *cacheUsageMonitorTestSuite) TestStartMeasuresUsage() {
 }
 
 // Without du, start fails, the usage stays unknown and stop must not hang.
-func (suite *cacheUsageMonitorTestSuite) TestStartFailsWhenUsageCannotBeMeasured() {
+func (suite *cacheUsageMonitorTestSuite) TestStartFailsWithoutDu() {
 	m := newTestUsageMonitor(func(context.Context, string) (float64, error) {
-		return 0, errors.New("failed to find du")
+		return 0, common.ErrDuNotFound
 	})
-	suite.Error(m.start())
+	suite.ErrorIs(m.start(), common.ErrDuNotFound)
 
 	usage, ok := m.usageMB()
 	suite.False(ok)
@@ -119,6 +119,30 @@ func (suite *cacheUsageMonitorTestSuite) TestStartFailsWhenUsageCannotBeMeasured
 	m.requestRefresh()
 	suite.requireNoUpdate(m)
 	m.stop()
+}
+
+// If the measurement at start fails for another reason, such as a timeout, start succeeds and the measurement is
+// retried on the interval, so the usage becomes known once du works.
+func (suite *cacheUsageMonitorTestSuite) TestStartRetriesFailedMeasurement() {
+	for _, failure := range []error{errors.New("du failed"), context.DeadlineExceeded} {
+		var calls atomic.Int32
+		m := newTestUsageMonitor(func(context.Context, string) (float64, error) {
+			if calls.Add(1) == 1 {
+				return 0, failure
+			}
+			return 7, nil
+		})
+		m.interval = 10 * time.Millisecond
+		suite.Require().NoError(m.start(), failure.Error())
+
+		_, ok := m.usageMB()
+		suite.False(ok, failure.Error())
+		suite.requireUpdate(m)
+		usage, ok := m.usageMB()
+		suite.True(ok, failure.Error())
+		suite.InDelta(7, usage, 0, failure.Error())
+		m.stop()
+	}
 }
 
 func (suite *cacheUsageMonitorTestSuite) TestStopWithoutStart() {

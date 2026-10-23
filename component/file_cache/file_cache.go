@@ -160,7 +160,7 @@ func (fc *FileCache) Start(ctx context.Context) error {
 
 	err := fc.usage.start()
 	if err != nil {
-		log.Err("FileCache::Start : failed to measure usage of %s, disabling disk usage checks [%s]", fc.tmpPath, err.Error())
+		log.Err("FileCache::Start : cannot measure usage of %s, disabling disk usage checks [%s]", fc.tmpPath, err.Error())
 	}
 
 	err = fc.policy.StartPolicy()

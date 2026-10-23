@@ -92,11 +92,12 @@ func newCacheUsageMonitor(path string) *cacheUsageMonitor {
 	}
 }
 
-// start measures the usage once and then keeps measuring it in the background. If the first measurement fails,
-// for example because du is not installed, start returns the error and does not start measuring.
+// start measures the usage once and then keeps measuring it in the background. If du is not installed, start
+// returns the error and does not start measuring. If the first measurement fails for another reason, such as a
+// timeout, the usage stays unknown until a later measurement succeeds.
 func (m *cacheUsageMonitor) start() error {
 	ctx, cancel := context.WithCancel(context.Background())
-	if err := m.refresh(ctx); err != nil {
+	if err := m.refresh(ctx); errors.Is(err, common.ErrDuNotFound) {
 		cancel()
 		return err
 	}

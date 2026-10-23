@@ -80,9 +80,9 @@ type lruPolicy struct {
 	cacheTimeoutMonitor <-chan time.Time
 
 	// Eviction passes run since cache usage went above the high threshold, and the number of the first measurement
-	// that started after the last pass. Used only by clearCache.
+	// the next check can use. Used only by clearCache.
 	usageEvictionPasses int
-	usageAfterPassSeq   uint64
+	usageNextSeq        uint64
 }
 
 const (
@@ -354,14 +354,13 @@ func (p *lruPolicy) clearCache() {
 // checkCacheUsage runs after each cache usage measurement. When usage is above the high threshold, it evicts the
 // files not used since the previous eviction pass and requests a new measurement. It continues with the first
 // measurement that started after the pass, until usage is below the low threshold or maxUsageEvictionPasses passes
-// have run. du is never run here, so this goroutine keeps deleting queued files while usage is measured.
+// have run. The next round starts only with a later measurement. du is never run here, so this goroutine keeps
+// deleting queued files while usage is measured.
 func (p *lruPolicy) checkCacheUsage() {
 	sample := p.usage.lastSample()
-	if sample == nil {
-		return
-	}
-	// A measurement that started before the last pass ended does not show what the pass freed.
-	if p.usageEvictionPasses > 0 && sample.seq < p.usageAfterPassSeq {
+	// A measurement is stored before its notification is sent, so it can be seen twice. During a round, a measurement
+	// that started before the last pass ended does not show what the pass freed.
+	if sample == nil || sample.seq < p.usageNextSeq {
 		return
 	}
 	pUsage := getUsagePercentage(sample.mb, p.maxSizeMB)
@@ -374,6 +373,7 @@ func (p *lruPolicy) checkCacheUsage() {
 	} else if pUsage < p.lowThreshold || p.usageEvictionPasses >= maxUsageEvictionPasses {
 		log.Info("lruPolicy::ClearCache : Threshold stabilized %f > %f", pUsage, p.lowThreshold)
 		p.usageEvictionPasses = 0
+		p.usageNextSeq = sample.seq + 1
 		return
 	}
 
@@ -381,7 +381,7 @@ func (p *lruPolicy) checkCacheUsage() {
 	p.updateMarker()
 	p.printNodes()
 	p.deleteExpiredNodes()
-	p.usageAfterPassSeq = p.usage.nextSeq()
+	p.usageNextSeq = p.usage.nextSeq()
 	p.usage.requestRefresh()
 }
 

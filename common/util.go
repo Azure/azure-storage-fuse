@@ -442,6 +442,9 @@ var selectedDuPath = sync.OnceValue(func() string {
 	return ""
 })
 
+// ErrDuNotFound is returned by GetUsage when no du binary is installed.
+var ErrDuNotFound = errors.New("failed to find du")
+
 // GetUsage: The current disk usage in MB
 func GetUsage(path string) (float64, error) {
 	return GetUsageWithContext(context.Background(), path)
@@ -455,7 +458,7 @@ func GetUsageWithContext(ctx context.Context, path string) (float64, error) {
 
 	duBinary := selectedDuPath()
 	if duBinary == "" {
-		return 0, fmt.Errorf("failed to find du")
+		return 0, ErrDuNotFound
 	}
 
 	// du - estimates file space usage

@@ -36,7 +36,6 @@ package file_cache
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -3008,7 +3007,7 @@ func (suite *fileCacheTestSuite) TestStartWithoutUsageMeasurement() {
 	suite.loopback = newLoopbackFS()
 	suite.fileCache = newTestFileCache(suite.loopback)
 	suite.fileCache.usage.measure = func(context.Context, string) (float64, error) {
-		return 0, errors.New("failed to find du")
+		return 0, common.ErrDuNotFound
 	}
 	suite.Require().NoError(suite.loopback.Start(context.Background()))
 	suite.Require().NoError(suite.fileCache.Start(context.Background()))
@@ -3023,6 +3022,53 @@ func (suite *fileCacheTestSuite) TestStartWithoutUsageMeasurement() {
 	_, err = suite.fileCache.WriteFile(&internal.WriteFileOptions{Handle: h, Data: []byte("data")})
 	suite.NoError(err)
 	suite.NoError(suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h}))
+}
+
+// If the measurement at start fails, for example because du times out, it is retried. Until it succeeds, statfs
+// reports an empty cache and the hard limit is not checked, as before when du failed. Afterwards both use the usage.
+func (suite *fileCacheTestSuite) TestUsageRecoversAfterFailedMeasurement() {
+	defer suite.cleanupTest()
+	suite.cleanupTest()
+	cfg := fmt.Sprintf("file_cache:\n  path: %s\n  offload-io: true\n  hard-limit: true\n  max-size-mb: 10\n\nloopbackfs:\n  path: %s",
+		suite.cache_path, suite.fake_storage_path)
+	suite.Require().NoError(config.ReadConfigFromReader(strings.NewReader(cfg)))
+	suite.loopback = newLoopbackFS()
+	suite.fileCache = newTestFileCache(suite.loopback)
+	fc := suite.fileCache
+	release := make(chan struct{})
+	var calls atomic.Int32
+	fc.usage.measure = func(ctx context.Context, _ string) (float64, error) {
+		if calls.Add(1) == 1 {
+			return 0, context.DeadlineExceeded
+		}
+		select {
+		case <-release:
+			return 4, nil
+		case <-ctx.Done():
+			return 0, ctx.Err()
+		}
+	}
+	fc.usage.interval = 10 * time.Millisecond
+	suite.Require().NoError(suite.loopback.Start(context.Background()))
+	suite.Require().NoError(fc.Start(context.Background()))
+
+	h, err := fc.CreateFile(internal.CreateFileOptions{Name: "file", Mode: 0777})
+	suite.Require().NoError(err)
+	defer func() { suite.NoError(fc.ReleaseFile(internal.ReleaseFileOptions{Handle: h})) }()
+
+	stat, _, err := fc.StatFs()
+	suite.Require().NoError(err)
+	suite.Equal(stat.Blocks, stat.Bavail)
+	_, err = fc.WriteFile(&internal.WriteFileOptions{Handle: h, Data: make([]byte, 9*MB)})
+	suite.NoError(err, "the hard limit is not checked while the usage is unknown")
+
+	close(release)
+	suite.Require().Eventually(func() bool {
+		stat, _, err := fc.StatFs()
+		return err == nil && stat.Bavail == 6*MB/uint64(stat.Frsize)
+	}, 5*time.Second, 10*time.Millisecond)
+	_, err = fc.WriteFile(&internal.WriteFileOptions{Handle: h, Data: make([]byte, 9*MB)})
+	suite.Equal(syscall.ENOSPC, err)
 }
 
 // Unmount kills a running du instead of waiting for it to finish.
