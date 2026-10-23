@@ -414,8 +414,8 @@ func testReleaseError(suite *libfuseTestSuite) {
 	fi := &C.fuse_file_info_t{}
 	fi.flags = C.O_RDWR
 	suite.Require().Equal(C.int(0), libfuse_open(path, fi))
-
 	suite.mock.EXPECT().ReleaseFile(internal.ReleaseFileOptions{Handle: handle}).Return(errors.New("upload failed"))
+
 	libfuse_release(path, fi)
 
 	_, found := handlemap.Load(handle.ID)
