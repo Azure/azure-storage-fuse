@@ -1046,11 +1046,30 @@ func (bb *BlockBlob) ReadBuffer(name string, offset int64, length int64) ([]byte
 }
 
 // ReadInBuffer : Download specific range from a file to a user provided buffer
-// Specifying "0" len will download the entire blob.
-func (bb *BlockBlob) ReadInBuffer(name string, offset int64, length int64, data []byte, etag *string) error {
+// Specifying "0" len will download from offset till the end of blob (bounded by len(data)).
+// Returns the number of bytes actually copied into data, which can be less than the requested
+// length if the blob was truncated after its size was last fetched. A download that is cut off
+// before the end of the response fails instead.
+func (bb *BlockBlob) ReadInBuffer(name string, offset int64, length int64, data []byte, etag *string) (int, error) {
 	// log.Trace("BlockBlob::ReadInBuffer : name %s", name)
 	if etag != nil {
 		*etag = ""
+	}
+
+	if length < 0 || length > int64(len(data)) {
+		log.Err("BlockBlob::ReadInBuffer : Invalid length %d for buffer of size %d for blob %s", length, len(data), name)
+		return 0, syscall.EINVAL
+	}
+
+	// Restrict the destination to the requested range so the reported byte count
+	// always reflects only the bytes that were received from the service.
+	if length > 0 {
+		data = data[:length]
+	}
+
+	// A count of 0 would request the rest of the blob, so always request the size of the buffer.
+	if len(data) == 0 {
+		return 0, nil
 	}
 
 	blobClient := bb.Container.NewBlobClient(filepath.Join(bb.Config.prefixPath, name))
@@ -1061,7 +1080,7 @@ func (bb *BlockBlob) ReadInBuffer(name string, offset int64, length int64, data 
 	opt := &blob.DownloadStreamOptions{
 		Range: blob.HTTPRange{
 			Offset: offset,
-			Count:  length,
+			Count:  int64(len(data)),
 		},
 		CPKInfo: bb.blobCPKOpt,
 	}
@@ -1072,35 +1091,87 @@ func (bb *BlockBlob) ReadInBuffer(name string, offset int64, length int64, data 
 		e := storeBlobErrToErr(err)
 		switch e {
 		case ErrFileNotFound:
-			return syscall.ENOENT
+			return 0, syscall.ENOENT
 		case InvalidRange:
-			return syscall.ERANGE
+			return 0, syscall.ERANGE
 		}
 
 		log.Err("BlockBlob::ReadInBufferWithETag : Failed to download blob %s [%s]", name, err.Error())
-		return err
+		return 0, err
 	}
 
 	var streamBody io.ReadCloser = downloadResponse.NewRetryReader(ctx, nil)
-	dataRead, err := io.ReadFull(streamBody, data)
+	defer func() {
+		if err := streamBody.Close(); err != nil {
+			log.Err("BlockBlob::ReadInBuffer : Failed to close body for blob %s [%s]", name, err.Error())
+		}
+	}()
 
-	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
-		log.Err("BlockBlob::ReadInBuffer : Failed to copy data from body to buffer for blob %s [%s]", name, err.Error())
-		return err
+	// Read until the buffer is full or the body ends. io.ReadFull would report a body that ends cleanly before the
+	// buffer is full the same way as one that is cut off, as io.ErrUnexpectedEOF. Only a clean end means the range goes
+	// past the end of the blob. A body that is cut off, even after the retries of the reader, fails the read, whether or
+	// not the response has a Content-Length, which the transport removes when it decompresses a gzip encoded blob.
+	// A clean end is io.EOF itself: an error that wraps it, such as from a request for the rest of a cut off body that
+	// fails because the connection closes, is not.
+	dataRead := 0
+	var readErr error
+	for dataRead < len(data) && readErr == nil {
+		var n int
+		n, readErr = streamBody.Read(data[dataRead:])
+		dataRead += n
 	}
 
-	if dataRead < 0 {
+	if readErr != nil && readErr != io.EOF {
+		log.Err("BlockBlob::ReadInBuffer : Failed to copy data from body to buffer for blob %s [%s]", name, readErr.Error())
+		return 0, readErr
+	}
+
+	if dataRead < 0 || dataRead > len(data) {
 		log.Err("BlockBlob::ReadInBuffer : Failed to copy data from body to buffer for blob %s", name)
-		return errors.New("failed to copy data from body to buffer")
+		return 0, errors.New("failed to copy data from body to buffer")
 	}
 
-	err = streamBody.Close()
-	if err != nil {
-		log.Err("BlockBlob::ReadInBuffer : Failed to close body for blob %s [%s]", name, err.Error())
+	// The service returns fewer bytes than requested only when the range goes past the end of the blob, and then its
+	// Content-Length is shorter as well. Also fail a body that ends cleanly but before its Content-Length.
+	if downloadResponse.ContentLength != nil {
+		expected := min(*downloadResponse.ContentLength, int64(len(data)))
+		if int64(dataRead) < expected {
+			log.Err("BlockBlob::ReadInBuffer : Incomplete download of blob %s at offset %d, expected %d bytes, received %d bytes",
+				name, offset, expected, dataRead)
+			return 0, fmt.Errorf("incomplete download of blob %s at offset %d: expected %d bytes, received %d bytes: %w",
+				name, offset, expected, dataRead, io.ErrUnexpectedEOF)
+		}
+	}
+
+	if length > 0 && int64(dataRead) < length {
+		// Blob is smaller than expected, most likely it was truncated or overwritten after its size was fetched.
+		log.Warn("BlockBlob::ReadInBuffer : Short read for blob %s at offset %d, requested %d bytes, received %d bytes",
+			name, offset, length, dataRead)
 	}
 
 	if etag != nil {
 		*etag = sanitizeEtag(downloadResponse.ETag)
+	}
+
+	return dataRead, nil
+}
+
+// readRangeInBuffer : Download exactly length bytes from offset into data, failing on a short read.
+// Used by internal read-modify-write paths which must not upload partially filled buffers.
+func (bb *BlockBlob) readRangeInBuffer(name string, offset int64, length int64, data []byte) error {
+	if length == 0 {
+		return nil
+	}
+
+	n, err := bb.ReadInBuffer(name, offset, length, data, nil)
+	if err != nil {
+		return err
+	}
+
+	if int64(n) != length {
+		log.Err("BlockBlob::readRangeInBuffer : Short read for blob %s at offset %d, expected %d bytes, received %d bytes",
+			name, offset, length, n)
+		return fmt.Errorf("short read for blob %s at offset %d: expected %d bytes, received %d bytes", name, offset, length, n)
 	}
 
 	return nil
@@ -1408,6 +1479,7 @@ func (bb *BlockBlob) createNewBlocksTruncate(blockList *common.BlockOffsetList, 
 
 			if lastBlock.EndIndex-lastBlock.StartIndex < blockSize {
 				// last block is smaller than block size, so adjust it
+				existingSize := lastBlock.EndIndex - lastBlock.StartIndex
 				lastBlock.EndIndex = min(lastBlock.StartIndex+blockSize, options.NewSize)
 
 				lastBlock.Data = make([]byte, lastBlock.EndIndex-lastBlock.StartIndex)
@@ -1416,7 +1488,8 @@ func (bb *BlockBlob) createNewBlocksTruncate(blockList *common.BlockOffsetList, 
 				// create the new block id for this block otherwise it would corrupt the state of the blob.
 				lastBlock.Id = common.GetBlockID(blockList.BlockIdLength)
 
-				err := bb.ReadInBuffer(options.Name, lastBlock.StartIndex, lastBlock.EndIndex-lastBlock.StartIndex, lastBlock.Data, nil)
+				// Only the existing part of the block is in storage, the extended part stays zero-filled.
+				err := bb.readRangeInBuffer(options.Name, lastBlock.StartIndex, existingSize, lastBlock.Data)
 				if err != nil {
 					log.Err("BlockBlob::createNewBlocksTruncate : Failed to adjust last block %s [%v]", options.Name, err)
 					return err
@@ -1472,7 +1545,7 @@ func (bb *BlockBlob) removeBlocksTruncate(blockList *common.BlockOffsetList, opt
 		// create the new block id for this block otherwise it would corrupt the state of the blob.
 		blk.Id = common.GetBlockID(blockList.BlockIdLength)
 
-		err := bb.ReadInBuffer(options.Name, blk.StartIndex, blk.EndIndex-blk.StartIndex, blk.Data, nil)
+		err := bb.readRangeInBuffer(options.Name, blk.StartIndex, blk.EndIndex-blk.StartIndex, blk.Data)
 		if err != nil {
 			log.Err("BlockBlob::removeBlocksTruncate : Failed to remove blocks %s [%v]", options.Name, err)
 			return err
@@ -1543,7 +1616,7 @@ func (bb *BlockBlob) TruncateFileWithoutBlocks(options *internal.TruncateFileOpt
 
 	if options.OldSize > 0 {
 		// Read the file
-		err = bb.ReadInBuffer(options.Name, 0, min(options.NewSize, options.OldSize), buf, nil)
+		err = bb.readRangeInBuffer(options.Name, 0, min(options.NewSize, options.OldSize), buf)
 		if err != nil {
 			log.Err("BlockBlob::TruncateFileWithoutBlocks : Failed to read small file %s[%v]", options.Name, err)
 			return err
@@ -1583,7 +1656,7 @@ func (bb *BlockBlob) TruncateFileUsingBlocks(options *internal.TruncateFileOptio
 		buf := make([]byte, options.OldSize)
 
 		// Read the file
-		err = bb.ReadInBuffer(options.Name, 0, options.OldSize, buf, nil)
+		err = bb.readRangeInBuffer(options.Name, 0, options.OldSize, buf)
 		if err != nil {
 			log.Err("BlockBlob::TruncateFileUsingBlocks : Failed to read small file %s[%v]", options.Name, err)
 			return err
@@ -1707,9 +1780,10 @@ func (bb *BlockBlob) Write(options *internal.WriteFileOptions) error {
 		oldDataBuffer := make([]byte, oldDataSize+newBufferSize)
 		if !appendOnly {
 			// fetch the blocks that will be impacted by the new changes so we can overwrite them
-			err = bb.ReadInBuffer(name, fileOffsets.BlockList[index].StartIndex, oldDataSize, oldDataBuffer, nil)
+			err = bb.readRangeInBuffer(name, fileOffsets.BlockList[index].StartIndex, oldDataSize, oldDataBuffer)
 			if err != nil {
 				log.Err("BlockBlob::Write : Failed to read data in buffer %s [%s]", name, err.Error())
+				return err
 			}
 		}
 		// this gives us where the offset with respect to the buffer that holds our old data - so we can start writing the new data
