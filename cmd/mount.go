@@ -72,8 +72,8 @@ type LogOptions struct {
 	LogCompress    bool   `config:"compress" yaml:"compress,omitempty"`
 }
 
-// distributedCacheMountOptions contains only the discovery values mount needs
-// to determine whether distributed_cache should be included in the pipeline.
+// distributedCacheMountOptions contains the discovery values mount checks to warn
+// when they are set but distributed_cache is not listed in components:.
 type distributedCacheMountOptions struct {
 	DiscoveryEndpoint string `config:"discovery-endpoint"`
 	ServerList        string `config:"server-list"`
@@ -81,6 +81,14 @@ type distributedCacheMountOptions struct {
 
 func (opt distributedCacheMountOptions) isConfigured() bool {
 	return opt.DiscoveryEndpoint != "" || opt.ServerList != ""
+}
+
+// distCacheDiscoverySet reports whether a discovery endpoint or server list was given on the
+// command line or in the config file. Environment variables are left out: launchers such as the
+// Blob CSI driver pass their whole environment to every mount they start.
+func distCacheDiscoverySet() bool {
+	return options.DistributedCache.isConfigured() &&
+		(config.IsSet("distributed_cache.discovery-endpoint") || config.IsSet("distributed_cache.server-list"))
 }
 
 type mountOptions struct {
@@ -322,8 +330,6 @@ var mountCmd = &cobra.Command{
 				pipeline = append(pipeline, "block_cache")
 			} else if options.Preload {
 				pipeline = append(pipeline, "xload")
-			} else if options.DistributedCache.isConfigured() {
-				pipeline = append(pipeline, "distributed_cache") // L2 cache
 			} else {
 				pipeline = append(pipeline, "file_cache")
 			}
@@ -841,17 +847,13 @@ func applyLibfuseReadOnlyOption(libfuseOpts []string) {
 // the L1 for distributed_cache. userComponents is the components list as parsed
 // from the config file, before any synthesis or auto-injection.
 func normalizeDistCacheConfig(userComponents []string) error {
-	// distributed_cache is "wanted" whenever either surface signals it:
-	// either it is listed in components:, or a discovery method has been
-	// provided via CLI, environment, or YAML. Both surfaces are authoritative,
-	// so the incompatible-L1 check below runs whichever one the user chose.
-	// This prevents the case where the CLI/YAML/environment
-	// distributed_cache signal is silently ignored because a components:
-	// pipeline was also configured (e.g. with file_cache), which would
-	// otherwise run the sibling L1 with no dist-cache and no error.
-	userWantsDistCache := common.ComponentInPipeline(userComponents, "distributed_cache") ||
-		options.DistributedCache.isConfigured()
-	if !userWantsDistCache {
+	// distributed_cache is enabled only by listing it in components:. Discovery settings from the
+	// command line, the config file or the environment only configure it, so on their own they must
+	// not change or reject an unrelated mount.
+	if !common.ComponentInPipeline(userComponents, "distributed_cache") {
+		if distCacheDiscoverySet() {
+			log.Warn("mount: distributed_cache is not listed in components:, ignoring its discovery settings")
+		}
 		return nil
 	}
 
@@ -871,12 +873,6 @@ func normalizeDistCacheConfig(userComponents []string) error {
 		if common.ComponentInPipeline(userComponents, name) || config.IsSet(name) {
 			return fmt.Errorf("mount: distributed_cache is a single configuration surface, remove %s from components: and any %s: section", name, name)
 		}
-	}
-
-	// An explicit components: list skips pipeline synthesis, so a discovery
-	// endpoint alone would otherwise be silently ignored.
-	if len(userComponents) > 0 && !common.ComponentInPipeline(userComponents, "distributed_cache") {
-		return fmt.Errorf("mount: distributed-cache discovery is configured but distributed_cache is missing from components:; add distributed_cache or omit components: to use automatic pipeline selection")
 	}
 
 	// Also reject sibling L1 enable *flags* — the hyphenated CLI keys (or
