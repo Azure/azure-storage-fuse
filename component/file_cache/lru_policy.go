@@ -525,8 +525,17 @@ func (p *lruPolicy) deleteItem(name string) bool {
 
 	// Remove the directories that only held this file. Otherwise every directory that ever held a cached file stays
 	// in the cache, and du, which measures the cache usage, slows down as it reads all of them.
-	removeEmptyParents(p.tmpPath, name)
+	p.removeEmptyDirs(name)
 	return true
+}
+
+// removeEmptyDirs removes the directories that became empty when the file name was deleted.
+func (p *lruPolicy) removeEmptyDirs(name string) {
+	if p.dirLock != nil {
+		p.dirLock.Lock()
+		defer p.dirLock.Unlock()
+	}
+	removeEmptyParents(p.tmpPath, name)
 }
 
 func (p *lruPolicy) printNodes() {

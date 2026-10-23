@@ -38,6 +38,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -57,6 +58,9 @@ type cachePolicyConfig struct {
 	lowThreshold  float64
 
 	fileLocks *common.LockMap
+
+	// Held for writing while empty directories are removed from the cache. Nil means no locking.
+	dirLock *sync.RWMutex
 
 	policyTrace bool
 }
@@ -135,15 +139,12 @@ func deleteFile(name string) error {
 }
 
 // removeEmptyParents removes the directories above name, a path in the cache directory tmpPath, that are empty. It
-// stops at the first directory that is not empty and never removes tmpPath. Code that creates a file in the cache
-// retries if its directory is removed before the file is created in it, see FileCache.createLocalFile.
+// stops at the first directory that is not empty and never removes tmpPath or anything outside it. Both paths are
+// cleaned first, so ".." and repeated separators cannot reach outside the cache. Callers hold dirLock for writing,
+// see FileCache.createLocalFile.
 func removeEmptyParents(tmpPath string, name string) {
-	prefix := tmpPath
-	if !strings.HasSuffix(prefix, string(os.PathSeparator)) {
-		prefix += string(os.PathSeparator)
-	}
-
-	for dir := filepath.Dir(name); dir != tmpPath && strings.HasPrefix(dir, prefix); dir = filepath.Dir(dir) {
+	root := filepath.Clean(tmpPath)
+	for dir := filepath.Dir(filepath.Clean(name)); isBelow(root, dir); dir = filepath.Dir(dir) {
 		// rmdir fails on a directory that is not empty, so a directory is never removed with anything in it.
 		err := syscall.Rmdir(dir)
 		if err == nil || err == syscall.ENOENT {
@@ -155,4 +156,10 @@ func removeEmptyParents(tmpPath string, name string) {
 		}
 		return
 	}
+}
+
+// isBelow reports whether path is inside the directory root, and is not root itself. Both must be clean.
+func isBelow(root string, path string) bool {
+	rel, err := filepath.Rel(root, path)
+	return err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }

@@ -38,6 +38,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -457,6 +458,35 @@ func (suite *lruPolicyTestSuite) TestFileInUseKeepsDirectory() {
 
 	suite.True(suite.policy.deleteItem(file))
 	suite.True(cacheEntryExists("open/file"))
+}
+
+// The cache policy removes empty directories while holding dirLock for writing.
+func (suite *lruPolicyTestSuite) TestEmptyDirectoryRemovalTakesDirLock() {
+	defer suite.cleanupTest()
+	suite.cleanupTest()
+	suite.Require().NoError(os.MkdirAll(cache_path, 0777))
+	var dirLock sync.RWMutex
+	suite.setupTestHelper(cachePolicyConfig{
+		tmpPath:       cache_path,
+		maxEviction:   defaultMaxEviction,
+		highThreshold: defaultMaxThreshold,
+		lowThreshold:  defaultMinThreshold,
+		fileLocks:     &common.LockMap{},
+		dirLock:       &dirLock,
+	})
+
+	file := suite.cacheFileIn("dir/file")
+	dirLock.RLock()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		suite.policy.deleteItem(file)
+	}()
+
+	suite.Never(func() bool { return !cacheEntryExists("dir") }, 200*time.Millisecond, 10*time.Millisecond)
+	dirLock.RUnlock()
+	<-done
+	suite.False(cacheEntryExists("dir"))
 }
 
 // listNodes returns the names in the LRU list, failing on a loop or a broken back link.

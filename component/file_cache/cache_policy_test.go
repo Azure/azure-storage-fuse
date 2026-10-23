@@ -187,6 +187,45 @@ func (suite *cachePolicyTestSuite) TestRemoveEmptyParentsOutsideCacheDirectory()
 	suite.NoError(err)
 }
 
+// A name that is not in canonical form, with ".." or repeated separators, is cleaned first. Directories it resolves
+// to inside the cache are removed, and nothing outside the cache is, even if the name starts with the cache path.
+func (suite *cachePolicyTestSuite) TestRemoveEmptyParentsNonCanonicalName() {
+	defer suite.cleanupTest()
+	outside := filepath.Join(filepath.Dir(cache_path), "outside_"+filepath.Base(cache_path))
+	suite.Require().NoError(os.MkdirAll(filepath.Join(outside, "x"), 0777))
+	defer os.RemoveAll(outside)
+	suite.mkdirs("a/c", "a/b")
+
+	// Resolves to <cache>/a/c/file.
+	removeEmptyParents(cache_path, cache_path+"//a/b/../c//file")
+	suite.requireRemoved("a/c")
+	suite.requireExists("a/b")
+
+	// Resolves to a directory next to the cache.
+	removeEmptyParents(cache_path, cache_path+"/../"+filepath.Base(outside)+"/x/file")
+	_, err := os.Stat(filepath.Join(outside, "x"))
+	suite.NoError(err, "a directory outside the cache was removed")
+
+	// Resolves to the cache directory itself.
+	removeEmptyParents(cache_path, cache_path+"/a/b/../../file")
+	suite.requireExists("")
+}
+
+// The cache path may end with a separator or be in non-canonical form. The cache directory is never removed.
+func (suite *cachePolicyTestSuite) TestRemoveEmptyParentsNonCanonicalCachePath() {
+	defer suite.cleanupTest()
+	suite.mkdirs("a/b")
+
+	removeEmptyParents(cache_path+"/", filepath.Join(cache_path, "a/b/file"))
+	suite.requireRemoved("a")
+	suite.requireExists("")
+
+	suite.mkdirs("a")
+	removeEmptyParents(cache_path+"//.", filepath.Join(cache_path, "a/file"))
+	suite.requireRemoved("a")
+	suite.requireExists("")
+}
+
 func TestCachePolicyTestSuite(t *testing.T) {
 	suite.Run(t, new(cachePolicyTestSuite))
 }

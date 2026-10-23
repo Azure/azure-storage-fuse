@@ -35,7 +35,6 @@ package file_cache
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -64,6 +63,10 @@ type FileCache struct {
 	tmpPath   string
 	fileLocks *common.LockMap
 	policy    cachePolicy
+
+	// Held for reading while a file is created in the cache, and for writing while an empty directory is removed
+	// from it, so a directory is not removed between creating it and creating the file in it.
+	dirLock sync.RWMutex
 
 	createEmptyFile bool
 	allowNonEmpty   bool
@@ -428,6 +431,7 @@ func (fc *FileCache) GetPolicyConfig(conf FileCacheOptions) cachePolicyConfig {
 		cacheTimeout:  uint32(fc.cacheTimeout),
 		maxSizeMB:     fc.maxCacheSizeMB,
 		fileLocks:     fc.fileLocks,
+		dirLock:       &fc.dirLock,
 		policyTrace:   conf.EnablePolicyTrace,
 	}
 
@@ -471,7 +475,9 @@ func (fc *FileCache) invalidateDirectory(name string) {
 			if !d.IsDir() {
 				fc.policy.CachePurge(path)
 			} else {
+				fc.dirLock.Lock()
 				_ = deleteFile(path)
+				fc.dirLock.Unlock()
 			}
 		}
 		return nil
@@ -482,7 +488,9 @@ func (fc *FileCache) invalidateDirectory(name string) {
 		return
 	}
 
+	fc.dirLock.Lock()
 	_ = deleteFile(localPath)
+	fc.dirLock.Unlock()
 }
 
 // Note: The primary purpose of the file cache is to keep track of files that are opened by the user.
@@ -703,7 +711,9 @@ func (fc *FileCache) deleteEmptyDirs(options internal.DeleteDirOptions) (bool, e
 	}
 
 	if !strings.EqualFold(fc.tmpPath, localPath) {
+		fc.dirLock.Lock()
 		err = os.Remove(localPath)
+		fc.dirLock.Unlock()
 		// The cache policy may have removed the empty directory already.
 		if err != nil && !os.IsNotExist(err) {
 			return false, err
@@ -738,39 +748,17 @@ func (fc *FileCache) RenameDir(options internal.RenameDirOptions) error {
 	return nil
 }
 
-// Times to try creating a local file whose directory is removed while the file is being created.
-const createLocalFileAttempts = 10
-
-// Called after the directories of a local file are created and before the file is. Tests use it to remove the
-// directory at that point.
-var beforeLocalFileCreate = func(dir string) {}
-
 // createLocalFile opens localPath with flag, creating the file and its missing parent directories. The cache policy
-// removes cache directories that become empty, so a directory can be removed after it is created here and before the
-// file is created in it. Creating the file then fails with ENOENT, so try again.
+// removes cache directories that become empty. Holding dirLock for reading keeps it from removing the directory after
+// it is created here and before the file is created in it.
 func (fc *FileCache) createLocalFile(localPath string, flag int, mode os.FileMode) (*os.File, error) {
-	dir := filepath.Dir(localPath)
+	fc.dirLock.RLock()
+	defer fc.dirLock.RUnlock()
 
-	var err error
-	for range createLocalFileAttempts {
-		err = os.MkdirAll(dir, fc.defaultPermission)
-		if err == nil {
-			beforeLocalFileCreate(dir)
-
-			var f *os.File
-			f, err = os.OpenFile(localPath, flag, mode)
-			if err == nil {
-				return f, nil
-			}
-		}
-
-		if !errors.Is(err, fs.ErrNotExist) {
-			return nil, err
-		}
-		log.Debug("FileCache::createLocalFile : directory of %s was removed, retrying [%s]", localPath, err.Error())
+	if err := os.MkdirAll(filepath.Dir(localPath), fc.defaultPermission); err != nil {
+		return nil, err
 	}
-
-	return nil, err
+	return os.OpenFile(localPath, flag, mode)
 }
 
 // CreateFile: Create the file in local cache.
