@@ -43,6 +43,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -81,7 +82,8 @@ type FileCache struct {
 
 	refreshSec        uint32
 	hardLimit         bool
-	diskHighWaterMark float64
+	diskHighWaterMark float64 // Bytes the cache may hold with hard-limit, 0 without it
+	warnedUnknownSize atomic.Bool
 
 	lazyWrite    bool
 	fileCloseOpt sync.WaitGroup
@@ -130,7 +132,9 @@ const (
 // Verification to check satisfaction criteria with Component Interface
 var _ internal.Component = &FileCache{}
 
-var fileCacheStatsCollector *stats_manager.StatsCollector
+// The stats collector of the running file cache. It is atomic because the goroutines of a file cache read it while
+// another file cache, such as in tests, starts.
+var fileCacheStatsCollector atomic.Pointer[stats_manager.StatsCollector]
 
 func (fc *FileCache) Name() string {
 	return compName
@@ -158,19 +162,17 @@ func (fc *FileCache) Start(ctx context.Context) error {
 		return fmt.Errorf("config error in %s error [cache policy missing]", fc.Name())
 	}
 
-	err := fc.usage.start()
-	if err != nil {
-		log.Err("FileCache::Start : cannot measure usage of %s, disabling disk usage checks [%s]", fc.tmpPath, err.Error())
-	}
+	// create stats collector for file cache, before the goroutines that update it start
+	fileCacheStatsCollector.Store(stats_manager.NewStatsCollector(fc.Name()))
 
-	err = fc.policy.StartPolicy()
+	fc.usage.start()
+
+	err := fc.policy.StartPolicy()
 	if err != nil {
 		fc.usage.stop()
+		fileCacheStatsCollector.Load().Destroy()
 		return fmt.Errorf("config error in %s error [fail to start policy]", fc.Name())
 	}
-
-	// create stats collector for file cache
-	fileCacheStatsCollector = stats_manager.NewStatsCollector(fc.Name())
 
 	return nil
 }
@@ -189,7 +191,7 @@ func (fc *FileCache) Stop() error {
 	fc.usage.stop()
 	_ = common.TempCacheCleanup(fc.tmpPath)
 
-	fileCacheStatsCollector.Destroy()
+	fileCacheStatsCollector.Load().Destroy()
 
 	return nil
 }
@@ -415,6 +417,60 @@ func (fc *FileCache) StatFs() (*syscall.Statfs_t, bool, error) {
 	statfs.Bfree = statfs.Bavail
 
 	return statfs, true, nil
+}
+
+// exceedsHardLimit reports whether growing the cache by growth bytes would take its usage over the hard limit. Until
+// the usage is measured, or at all without du, the limit is not enforced, as before when du failed: failing every
+// operation instead would turn a failure to measure the cache into an outage. A warning is logged the first time.
+func (fc *FileCache) exceedsHardLimit(growth int64) bool {
+	if fc.diskHighWaterMark == 0 || growth <= 0 {
+		return false
+	}
+
+	usage, ok := fc.usage.usageBytes()
+	if !ok {
+		if fc.warnedUnknownSize.CompareAndSwap(false, true) {
+			log.Warn("FileCache::exceedsHardLimit : usage of %s is not measured yet, hard-limit is not enforced until it is",
+				fc.tmpPath)
+		}
+		return false
+	}
+	return float64(usage+growth) > fc.diskHighWaterMark
+}
+
+// sizeCountedKey holds, for a handle opened with hard-limit, the size up to which its file is counted as cache growth.
+// The kernel sends writes to a file in parallel and they all see the same file size, so counting growth from the file
+// size would count the same bytes several times. The counted size only moves up: shrinking a file is not subtracted
+// from the growth either, so growing it back is not counted again.
+const sizeCountedKey = "fileCacheSizeCounted"
+
+func (fc *FileCache) trackSizeCounted(handle *handlemap.Handle, size int64) {
+	if fc.diskHighWaterMark == 0 {
+		return
+	}
+	counted := &atomic.Int64{}
+	counted.Store(size)
+	handle.SetValue(sizeCountedKey, counted)
+}
+
+// sizeCounted returns the counted size of the handle's file, or nil without hard-limit.
+func sizeCounted(handle *handlemap.Handle) *atomic.Int64 {
+	value, ok := handle.GetValue(sizeCountedKey)
+	if !ok {
+		return nil
+	}
+	counted, _ := value.(*atomic.Int64)
+	return counted
+}
+
+// countGrowth moves the counted size up to size and counts the difference as cache growth.
+func (fc *FileCache) countGrowth(counted *atomic.Int64, size int64) {
+	for current := counted.Load(); size > current; current = counted.Load() {
+		if counted.CompareAndSwap(current, size) {
+			fc.usage.addGrowth(size - current)
+			return
+		}
+	}
 }
 
 func (fc *FileCache) GetPolicyConfig(conf FileCacheOptions) cachePolicyConfig {
@@ -799,6 +855,7 @@ func (fc *FileCache) CreateFile(options internal.CreateFileOptions) (*handlemap.
 
 	handle := handlemap.NewHandle(options.Name)
 	handle.UnixFD = uint64(f.Fd())
+	fc.trackSizeCounted(handle, 0)
 
 	if !fc.offloadIO {
 		handle.Flags.Set(handlemap.HandleFlagCached)
@@ -1025,17 +1082,14 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 		}
 
 		if fileSize > 0 {
-			if fc.diskHighWaterMark != 0 {
-				currSize, ok := fc.usage.usageMB()
-				if ok && (currSize+float64(fileSize)) > fc.diskHighWaterMark {
-					log.Err("FileCache::OpenFile : cache size limit reached [%f] failed to open %s", currSize, options.Name)
-					_ = f.Close()
-					err = os.Remove(localPath)
-					if err != nil {
-						log.Err("FileCache::OpenFile : Failed to remove file %s [%s]", localPath, err.Error())
-					}
-					return nil, syscall.ENOSPC
+			if fc.exceedsHardLimit(fileSize) {
+				log.Err("FileCache::OpenFile : cache size limit reached, failed to open %s", options.Name)
+				_ = f.Close()
+				err = os.Remove(localPath)
+				if err != nil {
+					log.Err("FileCache::OpenFile : Failed to remove file %s [%s]", localPath, err.Error())
 				}
+				return nil, syscall.ENOSPC
 			}
 			// Download/Copy the file from storage to the local file.
 			err = fc.NextComponent().CopyToFile(
@@ -1055,6 +1109,7 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 				}
 				return nil, err
 			}
+			fc.usage.addGrowth(fileSize)
 		}
 
 		// Update the last download time of this file
@@ -1084,10 +1139,10 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 			}
 		}
 
-		fileCacheStatsCollector.UpdateStats(stats_manager.Increment, dlFiles, (int64)(1))
+		fileCacheStatsCollector.Load().UpdateStats(stats_manager.Increment, dlFiles, (int64)(1))
 	} else {
 		log.Debug("FileCache::OpenFile : %s will be served from cache", options.Name)
-		fileCacheStatsCollector.UpdateStats(stats_manager.Increment, cacheServed, (int64)(1))
+		fileCacheStatsCollector.Load().UpdateStats(stats_manager.Increment, cacheServed, (int64)(1))
 	}
 
 	// Open the file and grab a shared lock to prevent deletion by the cache policy.
@@ -1108,6 +1163,7 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 	if err == nil {
 		handle.Size = inf.Size()
 	}
+	fc.trackSizeCounted(handle, handle.Size)
 
 	handle.UnixFD = uint64(f.Fd())
 	if !fc.offloadIO {
@@ -1246,12 +1302,11 @@ func (fc *FileCache) WriteFile(options *internal.WriteFileOptions) (int, error) 
 		return 0, syscall.EBADF
 	}
 
-	if fc.diskHighWaterMark != 0 {
-		currSize, ok := fc.usage.usageMB()
-		if ok && (currSize+float64(len(options.Data))) > fc.diskHighWaterMark {
-			log.Err("FileCache::WriteFile : cache size limit reached [%f] failed to open %s", fc.maxCacheSizeMB, options.Handle.Path)
-			return 0, syscall.ENOSPC
-		}
+	// With hard-limit, count how much the write extends the file. Writing over existing data takes no more space.
+	counted := sizeCounted(options.Handle)
+	if counted != nil && fc.exceedsHardLimit(options.Offset+int64(len(options.Data))-counted.Load()) {
+		log.Err("FileCache::WriteFile : cache size limit reached, failed to write %s", options.Handle.Path)
+		return 0, syscall.ENOSPC
 	}
 
 	// Read and write operations are very frequent so updating cache policy for every read is a costly operation
@@ -1265,6 +1320,9 @@ func (fc *FileCache) WriteFile(options *internal.WriteFileOptions) (int, error) 
 	// Removing f.WriteAt as it involves lot of house keeping and then calls syscall.Pwrite
 	// Instead we will call syscall directly for better perf
 	bytesWritten, err := syscall.Pwrite(options.Handle.FD(), options.Data, options.Offset)
+	if counted != nil && bytesWritten > 0 {
+		fc.countGrowth(counted, options.Offset+int64(bytesWritten))
+	}
 
 	if err == nil {
 		// Mark the handle dirty so the file is written back to storage on FlushFile.
@@ -1613,14 +1671,6 @@ func (fc *FileCache) TruncateFile(options internal.TruncateFileOptions) error {
 		return err
 	}
 
-	if fc.diskHighWaterMark != 0 {
-		currSize, ok := fc.usage.usageMB()
-		if ok && (currSize+float64(options.NewSize)) > fc.diskHighWaterMark {
-			log.Err("FileCache::TruncateFile : cache size limit reached [%f] failed to open %s", fc.maxCacheSizeMB, options.Name)
-			return syscall.ENOSPC
-		}
-	}
-
 	if options.Handle != nil {
 		// The call is coming from an open handle, so we can just truncate the local file, and the change will be
 		// flushed to storage on close.
@@ -1630,10 +1680,19 @@ func (fc *FileCache) TruncateFile(options internal.TruncateFileOptions) error {
 			return syscall.EBADF
 		}
 
+		counted := sizeCounted(options.Handle)
+		if counted != nil && fc.exceedsHardLimit(options.NewSize-counted.Load()) {
+			log.Err("FileCache::TruncateFile : cache size limit reached, failed to truncate %s", options.Name)
+			return syscall.ENOSPC
+		}
+
 		err := f.Truncate(options.NewSize)
 		if err != nil {
 			log.Err("FileCache::TruncateFile : error truncating file %s [%s]", options.Handle.Path, err.Error())
 			return err
+		}
+		if counted != nil {
+			fc.countGrowth(counted, options.NewSize)
 		}
 
 		options.Handle.Flags.Set(handlemap.HandleFlagDirty)
@@ -1645,6 +1704,15 @@ func (fc *FileCache) TruncateFile(options internal.TruncateFileOptions) error {
 	flock.Lock()
 	defer flock.Unlock()
 
+	// Only a cached copy of the file takes space in the cache.
+	localPath := filepath.Join(fc.tmpPath, options.Name)
+	info, statErr := os.Stat(localPath)
+	cached := statErr == nil || os.IsExist(statErr)
+	if cached && fc.exceedsHardLimit(options.NewSize-info.Size()) {
+		log.Err("FileCache::TruncateFile : cache size limit reached, failed to truncate %s", options.Name)
+		return syscall.ENOSPC
+	}
+
 	err := fc.NextComponent().TruncateFile(options)
 	err = fc.validateStorageError(options.Name, err, "TruncateFile", true)
 	if err != nil {
@@ -1653,9 +1721,7 @@ func (fc *FileCache) TruncateFile(options internal.TruncateFileOptions) error {
 	}
 
 	// Update the size of the file in the local cache
-	localPath := filepath.Join(fc.tmpPath, options.Name)
-	info, err := os.Stat(localPath)
-	if err == nil || os.IsExist(err) {
+	if cached {
 		fc.policy.CacheValid(localPath)
 
 		if info.Size() != options.NewSize {
@@ -1664,6 +1730,7 @@ func (fc *FileCache) TruncateFile(options internal.TruncateFileOptions) error {
 				log.Err("FileCache::TruncateFile : error truncating cached file %s [%s]", localPath, err.Error())
 				return err
 			}
+			fc.usage.addGrowth(options.NewSize - info.Size())
 		}
 	}
 

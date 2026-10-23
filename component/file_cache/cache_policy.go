@@ -91,8 +91,8 @@ func getUsagePercentage(curSize float64, maxSizeMB float64) float64 {
 
 	log.Debug("cachePolicy::getUsagePercentage : current cache usage : %f%%", usagePercent)
 
-	fileCacheStatsCollector.UpdateStats(stats_manager.Replace, cacheUsage, fmt.Sprintf("%f MB", curSize))
-	fileCacheStatsCollector.UpdateStats(stats_manager.Replace, usgPer, fmt.Sprintf("%f%%", usagePercent))
+	fileCacheStatsCollector.Load().UpdateStats(stats_manager.Replace, cacheUsage, fmt.Sprintf("%f MB", curSize))
+	fileCacheStatsCollector.Load().UpdateStats(stats_manager.Replace, usgPer, fmt.Sprintf("%f%%", usagePercent))
 
 	return usagePercent
 }

@@ -453,31 +453,38 @@ func GetUsage(path string) (float64, error) {
 // GetUsageWithContext returns the disk usage of path in MB. du walks the whole tree under path, so this can take
 // minutes for a large tree. If ctx is done first, du is killed and the error is returned.
 func GetUsageWithContext(ctx context.Context, path string) (float64, error) {
-	var currSize float64
-	var out bytes.Buffer
-
 	duBinary := selectedDuPath()
 	if duBinary == "" {
 		return 0, ErrDuNotFound
 	}
+	return getUsage(ctx, duBinary, path)
+}
+
+func getUsage(ctx context.Context, duBinary string, path string) (float64, error) {
+	var currSize float64
+	var out, errOut bytes.Buffer
 
 	// du - estimates file space usage
 	// https://man7.org/linux/man-pages/man1/du.1.html
 	// Note: We cannot just pass -BM as a parameter here since it will result in less accurate estimates of the size of the path
 	// (i.e. du will round up to 1M if the path is smaller than 1M).
 	cmd := exec.CommandContext(ctx, duBinary, "-sh", path)
+	// Keep du's messages in English, so onlyVanishedEntries can read them.
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
 	cmd.Stdout = &out
+	cmd.Stderr = &errOut
 
 	err := cmd.Run()
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return 0, ctxErr
 	}
 	if err != nil {
-		// du exits with 1 when it cannot read some entries, for example files deleted while it runs, and still prints
-		// the total of the entries it read. Use that total.
+		// du exits with 1 when it cannot read some entries and still prints the total of the rest. That total is
+		// complete only if the entries it could not read no longer exist, such as files deleted while it ran. Any
+		// other error, such as a directory it may not read, leaves out entries that take space.
 		var exitErr *exec.ExitError
-		if !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 || out.Len() == 0 {
-			return 0, err
+		if !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 || out.Len() == 0 || !onlyVanishedEntries(errOut.String()) {
+			return 0, fmt.Errorf("du failed [%w]: %s", err, strings.TrimSpace(errOut.String()))
 		}
 	}
 
@@ -508,6 +515,18 @@ func GetUsageWithContext(ctx context.Context, path string) (float64, error) {
 	}
 
 	return currSize, nil
+}
+
+// onlyVanishedEntries reports whether every error du printed is for an entry that no longer exists. A failed
+// traversal (fts_read) leaves out a whole tree, so it does not count.
+func onlyVanishedEntries(stderr string) bool {
+	lines := strings.Split(strings.TrimSpace(stderr), "\n")
+	for _, line := range lines {
+		if !strings.Contains(line, "No such file or directory") || strings.Contains(line, "fts_read") {
+			return false
+		}
+	}
+	return len(lines) > 0 && lines[0] != ""
 }
 
 func GetFuseMinorVersion() int {

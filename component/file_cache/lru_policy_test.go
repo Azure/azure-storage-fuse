@@ -380,7 +380,13 @@ func (suite *lruPolicyTestSuite) startWithUsage(measure usageFunc) *cacheUsageMo
 	suite.Require().NoError(os.MkdirAll(cache_path, 0777))
 
 	usage := newTestUsageMonitor(measure)
-	suite.Require().NoError(usage.start())
+	usage.start()
+	// The first measurement's notification is not for the policy started below.
+	select {
+	case <-usage.updates():
+	case <-time.After(5 * time.Second):
+		suite.FailNow("no first measurement")
+	}
 	suite.setupTestHelper(cachePolicyConfig{
 		tmpPath:       cache_path,
 		maxEviction:   defaultMaxEviction,

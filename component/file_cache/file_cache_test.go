@@ -74,6 +74,7 @@ type fileCacheTestSuite struct {
 	cache_path        string
 	fake_storage_path string
 	configString      string
+	running           bool // Whether this test started fileCache and loopback and did not stop them yet
 }
 
 func newLoopbackFS() internal.Component {
@@ -116,12 +117,15 @@ func (suite *fileCacheTestSuite) SetupTest() {
 	// Delete the temp directories created
 	os.RemoveAll(suite.cache_path)
 	os.RemoveAll(suite.fake_storage_path)
+	suite.running = false
 	suite.setupTestHelper(defaultConfig)
 }
 
 func (suite *fileCacheTestSuite) setupTestHelper(configuration string) {
 	suite.assert = assert.New(suite.T())
 	suite.configString = configuration
+	// Stop the file cache started for the test before this one, so its goroutines do not keep running.
+	suite.stopComponents()
 
 	err := config.ReadConfigFromReader(strings.NewReader(configuration))
 	suite.assert.NoError(err)
@@ -133,16 +137,26 @@ func (suite *fileCacheTestSuite) setupTestHelper(configuration string) {
 	if err != nil {
 		panic(fmt.Sprintf("Unable to start file cache [%s]", err.Error()))
 	}
-
+	suite.running = true
 }
 
-func (suite *fileCacheTestSuite) cleanupTest() {
+// stopComponents stops the file cache and loopback if they are running. Stopping a file cache twice would hang.
+func (suite *fileCacheTestSuite) stopComponents() {
+	if !suite.running {
+		return
+	}
+	suite.running = false
+
 	err := suite.loopback.Stop()
 	suite.assert.NoError(err)
 	err = suite.fileCache.Stop()
 	if err != nil {
 		panic(fmt.Sprintf("Unable to stop file cache [%s]", err.Error()))
 	}
+}
+
+func (suite *fileCacheTestSuite) cleanupTest() {
+	suite.stopComponents()
 
 	// Delete the temp directories created
 	os.RemoveAll(suite.cache_path)
@@ -201,6 +215,7 @@ func (suite *fileCacheTestSuite) TestConfig() {
 }
 
 func (suite *fileCacheTestSuite) TestNegativeCacheSize() {
+	defer suite.cleanupTest()
 	var cacheSize float64 = -100
 
 	configStr := fmt.Sprintf("file_cache:\n  path: %s\n  max-size-mb: %f\n", suite.cache_path, cacheSize)
@@ -2809,74 +2824,161 @@ func (suite *fileCacheTestSuite) TestReadFileWithRefresh() {
 	suite.assert.NoError(err)
 }
 
+// With hard-limit, an operation fails with ENOSPC if it would grow the cache past high-threshold percent of
+// max-size-mb: here 80% of 10 MB, 8 MB. Usage and sizes are compared in bytes.
 func (suite *fileCacheTestSuite) TestHardLimitOnSize() {
 	defer suite.cleanupTest()
-	// Configure to create empty files so we create the file in storage
-	config := fmt.Sprintf("file_cache:\n  path: %s\n  offload-io: true\n  hard-limit: true\n  max-size-mb: 2\n\nloopbackfs:\n  path: %s",
+	suite.cleanupTest()
+	config := fmt.Sprintf("file_cache:\n  path: %s\n  offload-io: true\n  hard-limit: true\n  max-size-mb: 10\n  timeout-sec: 1000\n\nloopbackfs:\n  path: %s",
 		suite.cache_path, suite.fake_storage_path)
-	suite.setupTestHelper(config) // setup a new file cache with a custom config (teardown will occur after the test as usual)
+	suite.setupTestHelper(config)
+	fc := suite.fileCache
+	suite.InDelta(8*MB, fc.diskHighWaterMark, 0)
 
-	data := make([]byte, 3*MB)
-	pathbig := "filebig"
-	err := os.WriteFile(suite.fake_storage_path+"/"+pathbig, data, 0777)
-	suite.assert.NoError(err)
+	var measured atomic.Int64
+	measured.Store(1)
+	suite.useUsageMeasure(func(context.Context, string) (float64, error) { return float64(measured.Load()), nil })
+	remote := func(name string, size int) {
+		suite.Require().NoError(os.WriteFile(filepath.Join(suite.fake_storage_path, name), make([]byte, size), 0777))
+	}
+	open := func(name string) error {
+		h, err := fc.OpenFile(internal.OpenFileOptions{Name: name, Flags: os.O_RDWR, Mode: 0777})
+		if err == nil {
+			suite.NoError(fc.ReleaseFile(internal.ReleaseFileOptions{Handle: h}))
+		}
+		return err
+	}
 
-	data = make([]byte, 1*MB)
-	pathsmall := "filesmall"
-	err = os.WriteFile(suite.fake_storage_path+"/"+pathsmall, data, 0777)
-	suite.assert.NoError(err)
+	// Downloads: 1 MB measured + 7 MB = 8 MB is allowed, then 8 MB + 1 MB is not.
+	remote("seven", 7*MB)
+	remote("one", MB)
+	suite.NoError(open("seven"))
+	suite.Equal(syscall.ENOSPC, open("one"))
+	_, err := os.Stat(filepath.Join(suite.cache_path, "one"))
+	suite.True(os.IsNotExist(err), "the file refused for the limit must not stay in the cache")
 
-	// try opening small file
-	options := internal.OpenFileOptions{Name: pathsmall, Mode: 0777}
-	f, err := suite.fileCache.OpenFile(options)
-	suite.assert.NoError(err)
-	suite.assert.False(f.Dirty())
-	err = suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: f})
-	suite.assert.NoError(err)
+	// A new measurement replaces what was counted since the previous one: 2 MB + 1 MB fits.
+	measured.Store(2)
+	suite.refreshUsage()
+	suite.NoError(open("one"))
 
-	// try opening bigger file which shall fail due to hardlimit
-	options = internal.OpenFileOptions{Name: pathbig, Mode: 0777}
-	f, err = suite.fileCache.OpenFile(options)
-	suite.assert.Error(err)
-	suite.assert.Nil(f)
-	suite.assert.Equal(syscall.ENOSPC, err)
+	// Writes count only what they add past the end of the file: 3 MB used.
+	measured.Store(3)
+	suite.refreshUsage()
+	h, err := fc.CreateFile(internal.CreateFileOptions{Name: "written", Mode: 0777})
+	suite.Require().NoError(err)
+	_, err = fc.WriteFile(&internal.WriteFileOptions{Handle: h, Data: make([]byte, 4*MB)})
+	suite.NoError(err) // 3 + 4 = 7 MB
+	_, err = fc.WriteFile(&internal.WriteFileOptions{Handle: h, Data: make([]byte, 4*MB)})
+	suite.NoError(err, "overwriting does not grow the cache")
+	_, err = fc.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 4 * MB, Data: make([]byte, 2*MB)})
+	suite.Equal(syscall.ENOSPC, err) // 7 + 2 = 9 MB
+	_, err = fc.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 4 * MB, Data: make([]byte, MB)})
+	suite.NoError(err) // 7 + 1 = 8 MB
 
-	// try writing a small file
-	options1 := internal.CreateFileOptions{Name: pathsmall + "_new", Mode: 0777}
-	f, err = suite.fileCache.CreateFile(options1)
-	suite.assert.NoError(err)
-	data = make([]byte, 1*MB)
-	n, err := suite.fileCache.WriteFile(&internal.WriteFileOptions{Handle: f, Offset: 0, Data: data})
-	suite.assert.NoError(err)
-	suite.assert.Equal(1*MB, n)
-	err = suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: f})
-	suite.assert.NoError(err)
+	// Truncating through the handle counts the change in size: growing by 1 MB is over, shrinking is fine.
+	suite.Equal(syscall.ENOSPC, fc.TruncateFile(internal.TruncateFileOptions{Name: "written", Handle: h, NewSize: 6 * MB}))
+	suite.NoError(fc.TruncateFile(internal.TruncateFileOptions{Name: "written", Handle: h, NewSize: MB}))
+	suite.NoError(fc.ReleaseFile(internal.ReleaseFileOptions{Handle: h}))
 
-	// try writing a bigger file
-	options1 = internal.CreateFileOptions{Name: pathbig + "_new", Mode: 0777}
-	f, err = suite.fileCache.CreateFile(options1)
-	suite.assert.NoError(err)
-	data = make([]byte, 3*MB)
-	n, err = suite.fileCache.WriteFile(&internal.WriteFileOptions{Handle: f, Offset: 0, Data: data})
-	suite.assert.Error(err)
-	suite.assert.Equal(0, n)
-	err = suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: f})
-	suite.assert.NoError(err)
-
-	// try opening small file
-	err = suite.fileCache.TruncateFile(internal.TruncateFileOptions{Name: pathsmall, NewSize: 1 * MB})
-	suite.assert.NoError(err)
-
-	// try opening small file
-	err = suite.fileCache.TruncateFile(internal.TruncateFileOptions{Name: pathsmall, NewSize: 3 * MB})
-	suite.assert.Error(err)
+	// Truncating by name grows only a cached copy: 1 MB used.
+	measured.Store(1)
+	suite.refreshUsage()
+	suite.NoError(fc.TruncateFile(internal.TruncateFileOptions{Name: "one", NewSize: 8 * MB})) // 1 + 7 = 8 MB
+	suite.Equal(syscall.ENOSPC, fc.TruncateFile(internal.TruncateFileOptions{Name: "one", NewSize: 9 * MB}))
+	remote("uncached", 0)
+	suite.NoError(fc.TruncateFile(internal.TruncateFileOptions{Name: "uncached", NewSize: 20 * MB}))
 }
 
-// useUsageMeasure restarts the cache usage monitor so it measures with measure instead of du.
+// The kernel sends the writes to a file in parallel, so they all see the same file size. Each byte added is counted
+// once, and growing a file back after shrinking it is not counted again, as shrinking it was not subtracted.
+func (suite *fileCacheTestSuite) TestHardLimitCountsEachAddedByteOnce() {
+	defer suite.cleanupTest()
+	suite.cleanupTest()
+	config := fmt.Sprintf("file_cache:\n  path: %s\n  offload-io: true\n  hard-limit: true\n  max-size-mb: 100\n  timeout-sec: 1000\n\nloopbackfs:\n  path: %s",
+		suite.cache_path, suite.fake_storage_path)
+	suite.setupTestHelper(config)
+	fc := suite.fileCache
+	suite.useUsageMeasure(func(context.Context, string) (float64, error) { return 0, nil })
+	counted := func() int64 {
+		usage, ok := fc.usage.usageBytes()
+		suite.Require().True(ok)
+		return usage
+	}
+
+	h, err := fc.CreateFile(internal.CreateFileOptions{Name: "file", Mode: 0777})
+	suite.Require().NoError(err)
+	defer func() { suite.NoError(fc.ReleaseFile(internal.ReleaseFileOptions{Handle: h})) }()
+
+	_, err = fc.WriteFile(&internal.WriteFileOptions{Handle: h, Data: make([]byte, MB)})
+	suite.NoError(err)
+	suite.Equal(int64(MB), counted())
+
+	// Parallel writes past the end, counted as WriteFile counts them. WriteFile itself is not called in parallel
+	// here, as it updates Handle.OptCnt without synchronization.
+	sizeCounted := sizeCounted(h)
+	suite.Require().NotNil(sizeCounted)
+	const rounds, writers, chunk = 10, 32, 128 * 1024
+	for round := range rounds {
+		base := int64(MB + round*writers*chunk)
+		start := make(chan struct{})
+		var wg sync.WaitGroup
+		for i := range writers {
+			wg.Go(func() {
+				<-start
+				fc.countGrowth(sizeCounted, base+int64((i+1)*chunk))
+			})
+		}
+		close(start)
+		wg.Wait()
+		suite.Equal(base+writers*chunk, counted())
+	}
+	suite.NoError(fc.TruncateFile(internal.TruncateFileOptions{Name: "file", Handle: h, NewSize: counted()}))
+
+	size := counted()
+	suite.NoError(fc.TruncateFile(internal.TruncateFileOptions{Name: "file", Handle: h, NewSize: 0}))
+	_, err = fc.WriteFile(&internal.WriteFileOptions{Handle: h, Data: make([]byte, MB)})
+	suite.NoError(err)
+	suite.Equal(size, counted(), "growing back after shrinking is not counted again")
+	suite.NoError(fc.TruncateFile(internal.TruncateFileOptions{Name: "file", Handle: h, NewSize: size + MB}))
+	suite.Equal(size+MB, counted())
+
+	// Another handle counts from the size of the cached file.
+	h2, err := fc.OpenFile(internal.OpenFileOptions{Name: "file", Flags: os.O_RDWR, Mode: 0777})
+	suite.Require().NoError(err)
+	_, err = fc.WriteFile(&internal.WriteFileOptions{Handle: h2, Offset: size, Data: make([]byte, MB)})
+	suite.NoError(err)
+	suite.Equal(size+MB, counted(), "overwriting does not grow the cache")
+	_, err = fc.WriteFile(&internal.WriteFileOptions{Handle: h2, Offset: size + MB, Data: make([]byte, MB)})
+	suite.NoError(err)
+	suite.Equal(size+2*MB, counted())
+	suite.NoError(fc.ReleaseFile(internal.ReleaseFileOptions{Handle: h2}))
+}
+
+// useUsageMeasure restarts the cache usage monitor so it measures with measure instead of du, and waits for its
+// first measurement.
 func (suite *fileCacheTestSuite) useUsageMeasure(measure usageFunc) {
-	suite.fileCache.usage.stop()
-	suite.fileCache.usage.measure = measure
-	suite.Require().NoError(suite.fileCache.usage.start())
+	usage := suite.fileCache.usage
+	usage.stop()
+	usage.measure = measure
+	before := usage.started.Load()
+	usage.start()
+	suite.waitForMeasurement(before)
+}
+
+// refreshUsage asks for a new measurement and waits for it.
+func (suite *fileCacheTestSuite) refreshUsage() {
+	before := suite.fileCache.usage.started.Load()
+	suite.fileCache.usage.requestRefresh()
+	suite.waitForMeasurement(before)
+}
+
+// waitForMeasurement waits for a measurement that started after measurement number before to succeed.
+func (suite *fileCacheTestSuite) waitForMeasurement(before uint64) {
+	suite.Require().Eventually(func() bool {
+		sample := suite.fileCache.usage.lastSample()
+		return sample != nil && sample.seq > before
+	}, 5*time.Second, 10*time.Millisecond)
 }
 
 // blockingUsage returns a measure function that reports first on its first call. Later calls signal entered and
@@ -2894,17 +2996,17 @@ func blockingUsage(first float64, entered chan<- struct{}, release <-chan struct
 	})
 }
 
-// runWithin fails the test if op does not return within timeout.
-func (suite *fileCacheTestSuite) runWithin(timeout time.Duration, name string, op func()) {
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		op()
-	}()
+// runWithin runs op in another goroutine and returns its error. It fails the test if op does not return within
+// timeout. op must not make assertions, which belong in the test goroutine.
+func (suite *fileCacheTestSuite) runWithin(timeout time.Duration, name string, op func() error) error {
+	done := make(chan error, 1)
+	go func() { done <- op() }()
 	select {
-	case <-done:
+	case err := <-done:
+		return err
 	case <-time.After(timeout):
 		suite.FailNow(name + " waited for the cache usage measurement")
+		return nil
 	}
 }
 
@@ -2963,38 +3065,50 @@ func (suite *fileCacheTestSuite) TestFileOperationsDoNotWaitForUsageMeasurement(
 	fc.usage.requestRefresh()
 	<-entered
 
+	// The hard limit is 8 MB and 1 MB is measured. Results are checked here, in the test goroutine.
 	const timeout = 5 * time.Second
-	suite.runWithin(timeout, "StatFs", func() {
-		stat, ret, err := fc.StatFs()
-		suite.NoError(err)
-		suite.True(ret)
-		suite.Equal(9*MB/uint64(stat.Frsize), stat.Bavail)
-	})
+	var stat *syscall.Statfs_t
+	suite.NoError(suite.runWithin(timeout, "StatFs", func() (err error) {
+		stat, _, err = fc.StatFs()
+		return err
+	}))
+	suite.Equal(9*MB/uint64(stat.Frsize), stat.Bavail)
 
 	remote := "remote"
 	suite.Require().NoError(os.WriteFile(filepath.Join(suite.fake_storage_path, remote), make([]byte, MB), 0777))
-	suite.runWithin(timeout, "OpenFile", func() {
+	suite.NoError(suite.runWithin(timeout, "OpenFile", func() error {
 		h, err := fc.OpenFile(internal.OpenFileOptions{Name: remote, Flags: os.O_RDWR, Mode: 0777})
-		suite.Require().NoError(err)
-		suite.NoError(fc.ReleaseFile(internal.ReleaseFileOptions{Handle: h}))
-	})
+		if err != nil {
+			return err
+		}
+		return fc.ReleaseFile(internal.ReleaseFileOptions{Handle: h})
+	})) // 2 MB
 
-	suite.runWithin(timeout, "WriteFile", func() {
+	var written int
+	var overLimit error
+	suite.NoError(suite.runWithin(timeout, "WriteFile", func() error {
 		h, err := fc.CreateFile(internal.CreateFileOptions{Name: "local", Mode: 0777})
-		suite.Require().NoError(err)
-		n, err := fc.WriteFile(&internal.WriteFileOptions{Handle: h, Data: make([]byte, MB)})
-		suite.NoError(err)
-		suite.Equal(MB, n)
-		// The hard limit is still enforced while du runs.
-		_, err = fc.WriteFile(&internal.WriteFileOptions{Handle: h, Data: make([]byte, 9*MB)})
-		suite.Equal(syscall.ENOSPC, err)
-		suite.NoError(fc.ReleaseFile(internal.ReleaseFileOptions{Handle: h}))
-	})
+		if err != nil {
+			return err
+		}
+		if written, err = fc.WriteFile(&internal.WriteFileOptions{Handle: h, Data: make([]byte, MB)}); err != nil {
+			return err
+		} // 3 MB
+		_, overLimit = fc.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: MB, Data: make([]byte, 6*MB)})
+		return fc.ReleaseFile(internal.ReleaseFileOptions{Handle: h})
+	}))
+	suite.Equal(MB, written)
+	suite.Equal(syscall.ENOSPC, overLimit, "the hard limit is still enforced while du runs")
 
-	suite.runWithin(timeout, "TruncateFile", func() {
-		suite.NoError(fc.TruncateFile(internal.TruncateFileOptions{Name: remote, NewSize: 2 * MB}))
-		suite.Equal(syscall.ENOSPC, fc.TruncateFile(internal.TruncateFileOptions{Name: remote, NewSize: 9 * MB}))
-	})
+	overLimit = nil
+	suite.NoError(suite.runWithin(timeout, "TruncateFile", func() error {
+		if err := fc.TruncateFile(internal.TruncateFileOptions{Name: remote, NewSize: 2 * MB}); err != nil {
+			return err
+		} // 4 MB
+		overLimit = fc.TruncateFile(internal.TruncateFileOptions{Name: remote, NewSize: 7 * MB})
+		return nil
+	}))
+	suite.Equal(syscall.ENOSPC, overLimit)
 }
 
 // Without du, the file cache still starts. statfs reports the cache as empty, as it did when du failed.
@@ -3011,6 +3125,7 @@ func (suite *fileCacheTestSuite) TestStartWithoutUsageMeasurement() {
 	}
 	suite.Require().NoError(suite.loopback.Start(context.Background()))
 	suite.Require().NoError(suite.fileCache.Start(context.Background()))
+	suite.running = true
 
 	stat, ret, err := suite.fileCache.StatFs()
 	suite.Require().NoError(err)
@@ -3035,11 +3150,18 @@ func (suite *fileCacheTestSuite) TestUsageRecoversAfterFailedMeasurement() {
 	suite.loopback = newLoopbackFS()
 	suite.fileCache = newTestFileCache(suite.loopback)
 	fc := suite.fileCache
+	entered := make(chan struct{})
 	release := make(chan struct{})
 	var calls atomic.Int32
+	// Like du: the second measurement started before the 9 MB write and sees 4 MB, later ones see 4+9 MB.
 	fc.usage.measure = func(ctx context.Context, _ string) (float64, error) {
-		if calls.Add(1) == 1 {
+		switch calls.Add(1) {
+		case 1:
 			return 0, context.DeadlineExceeded
+		case 2:
+			close(entered)
+		default:
+			return 13, nil
 		}
 		select {
 		case <-release:
@@ -3051,6 +3173,8 @@ func (suite *fileCacheTestSuite) TestUsageRecoversAfterFailedMeasurement() {
 	fc.usage.interval = 10 * time.Millisecond
 	suite.Require().NoError(suite.loopback.Start(context.Background()))
 	suite.Require().NoError(fc.Start(context.Background()))
+	suite.running = true
+	<-entered // the retry is running
 
 	h, err := fc.CreateFile(internal.CreateFileOptions{Name: "file", Mode: 0777})
 	suite.Require().NoError(err)
@@ -3062,12 +3186,13 @@ func (suite *fileCacheTestSuite) TestUsageRecoversAfterFailedMeasurement() {
 	_, err = fc.WriteFile(&internal.WriteFileOptions{Handle: h, Data: make([]byte, 9*MB)})
 	suite.NoError(err, "the hard limit is not checked while the usage is unknown")
 
+	// The 9 MB written while the measurement ran count on top of the 4 MB it measured.
 	close(release)
-	suite.Require().Eventually(func() bool {
-		stat, _, err := fc.StatFs()
-		return err == nil && stat.Bavail == 6*MB/uint64(stat.Frsize)
-	}, 5*time.Second, 10*time.Millisecond)
-	_, err = fc.WriteFile(&internal.WriteFileOptions{Handle: h, Data: make([]byte, 9*MB)})
+	suite.waitForMeasurement(0)
+	stat, _, err = fc.StatFs()
+	suite.Require().NoError(err)
+	suite.Zero(stat.Bavail)
+	_, err = fc.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 9 * MB, Data: make([]byte, MB)})
 	suite.Equal(syscall.ENOSPC, err)
 }
 
@@ -3078,7 +3203,10 @@ func (suite *fileCacheTestSuite) TestStopDoesNotWaitForUsageMeasurement() {
 	suite.fileCache.usage.requestRefresh()
 	<-entered
 
-	suite.runWithin(5*time.Second, "Stop", suite.cleanupTest)
+	suite.NoError(suite.runWithin(5*time.Second, "Stop", func() error {
+		suite.cleanupTest()
+		return nil
+	}))
 }
 
 // create a list of empty directories in local and storage and then try to delete those to validate empty directories
@@ -3210,16 +3338,13 @@ func (suite *fileCacheTestSuite) TestOpenFileDownloadFailure() {
 
 	// Create a new file cache with the mock component
 	// First, stop the default file cache
-	err := suite.fileCache.Stop()
-	suite.assert.NoError(err)
-	err = suite.loopback.Stop()
-	suite.assert.NoError(err)
+	suite.stopComponents()
 
 	randStr := randomString(8)
 	cachePath := filepath.Join(home_dir, "file_cache"+randStr)
 	defaultConfig := fmt.Sprintf("file_cache:\n  path: %s\n  offload-io: true\n  timeout-sec: 0", cachePath)
 
-	err = config.ReadConfigFromReader(strings.NewReader(defaultConfig))
+	err := config.ReadConfigFromReader(strings.NewReader(defaultConfig))
 	suite.assert.NoError(err)
 
 	fileCache := NewFileCacheComponent()
@@ -3280,14 +3405,6 @@ func (suite *fileCacheTestSuite) TestOpenFileDownloadFailure() {
 	err = mockComponent.Stop()
 	suite.assert.NoError(err)
 	os.RemoveAll(cachePath)
-
-	// Restart the default file cache for other tests
-	suite.loopback = newLoopbackFS()
-	suite.fileCache = newTestFileCache(suite.loopback)
-	err = suite.loopback.Start(context.Background())
-	suite.assert.NoError(err)
-	err = suite.fileCache.Start(context.Background())
-	suite.assert.NoError(err)
 }
 
 // In order for 'go test' to run this suite, we need to create

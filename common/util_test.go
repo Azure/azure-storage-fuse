@@ -434,21 +434,47 @@ func (suite *utilTestSuite) TestGetUSage() {
 	_ = os.RemoveAll(dirName)
 }
 
-// du exits with 1 when it cannot read an entry, such as a file deleted while it runs or a directory it may not read,
-// but still prints the total of the rest. That total is used.
-func (suite *utilTestSuite) TestGetUsageWithUnreadableEntry() {
-	dirName := suite.T().TempDir()
-	suite.assert.NoError(os.WriteFile(filepath.Join(dirName, "file"), make([]byte, 1024*1024), 0600))
-	locked := filepath.Join(dirName, "locked")
-	suite.assert.NoError(os.Mkdir(locked, 0700))
-	suite.assert.NoError(os.WriteFile(filepath.Join(locked, "file"), []byte("data"), 0600))
-	suite.assert.NoError(os.Chmod(locked, 0))
-	defer func() { _ = os.Chmod(locked, 0700) }()
+// writeFakeDu writes a script that acts as du: it prints stdout and stderr and exits with code. It exits with 99
+// unless LC_ALL is C, so du's messages are in English.
+func (suite *utilTestSuite) writeFakeDu(stdout string, stderr string, code int) string {
+	path := filepath.Join(suite.T().TempDir(), "du")
+	script := fmt.Sprintf("#!/bin/sh\n[ \"$LC_ALL\" = C ] || exit 99\nprintf %%b %q\nprintf %%b %q >&2\nexit %d\n",
+		stdout, stderr, code)
+	suite.Require().NoError(os.WriteFile(path, []byte(script), 0700))
+	return path
+}
 
-	usage, err := GetUsageWithContext(context.Background(), dirName)
-	suite.assert.NoError(err)
-	suite.assert.GreaterOrEqual(usage, float64(1))
-	suite.assert.Less(usage, float64(2))
+// du exits with 1 when entries vanish while it runs, such as files the cache deletes, and still prints the total of
+// the rest, which is complete. Any other failure leaves out entries that take space, so the total is rejected.
+func (suite *utilTestSuite) TestGetUsageExitStatus() {
+	const total = "1.5M\t/cache\n"
+	vanished := "du: cannot access '/cache/a': No such file or directory\n" +
+		"du: cannot read directory '/cache/b': No such file or directory\n"
+
+	for _, tc := range []struct {
+		name   string
+		stdout string
+		stderr string
+		code   int
+		valid  bool
+	}{
+		{"success", total, "", 0, true},
+		{"entries vanished", total, vanished, 1, true},
+		{"permission denied", total, "du: cannot read directory '/cache/b': Permission denied\n", 1, false},
+		{"vanished and I/O error", total, vanished + "du: cannot access '/cache/c': Input/output error\n", 1, false},
+		{"traversal failed", total, "du: fts_read failed: /cache/d: No such file or directory\n", 1, false},
+		{"no message", total, "", 1, false},
+		{"no total", "", vanished, 1, false},
+		{"other exit code", total, vanished, 2, false},
+	} {
+		usage, err := getUsage(context.Background(), suite.writeFakeDu(tc.stdout, tc.stderr, tc.code), "/cache")
+		if tc.valid {
+			suite.assert.NoError(err, tc.name)
+			suite.assert.InDelta(1.5, usage, 1e-9, tc.name)
+		} else {
+			suite.assert.Error(err, tc.name)
+		}
+	}
 }
 
 // GetUsageWithContext stops du and returns the context's error once the context is done.

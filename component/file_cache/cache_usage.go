@@ -67,6 +67,7 @@ type cacheUsageMonitor struct {
 
 	started atomic.Uint64               // Number of measurements started
 	last    atomic.Pointer[usageSample] // Last successful measurement, nil before the first
+	growth  atomic.Int64                // Bytes added to the cache since the last measurement started
 
 	refreshSignal chan struct{}
 	updateSignal  chan struct{}
@@ -92,20 +93,13 @@ func newCacheUsageMonitor(path string) *cacheUsageMonitor {
 	}
 }
 
-// start measures the usage once and then keeps measuring it in the background. If du is not installed, start
-// returns the error and does not start measuring. If the first measurement fails for another reason, such as a
-// timeout, the usage stays unknown until a later measurement succeeds.
-func (m *cacheUsageMonitor) start() error {
+// start measures the usage in the background, first right away and then on the interval. If du is not installed,
+// it stops measuring and the usage stays unknown. Nothing waits for a measurement, including mount.
+func (m *cacheUsageMonitor) start() {
 	ctx, cancel := context.WithCancel(context.Background())
-	if err := m.refresh(ctx); errors.Is(err, common.ErrDuNotFound) {
-		cancel()
-		return err
-	}
-
 	m.cancel = cancel
 	m.wg.Add(1)
 	go m.run(ctx)
-	return nil
 }
 
 // stop stops measuring and kills a measurement in progress.
@@ -126,15 +120,22 @@ func (m *cacheUsageMonitor) run(ctx context.Context) {
 	timer := time.NewTimer(m.interval)
 	defer timer.Stop()
 
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-timer.C:
-		case <-m.refreshSignal:
+	for first := true; ; first = false {
+		if !first {
+			select {
+			case <-ctx.Done():
+				return
+			case <-timer.C:
+			case <-m.refreshSignal:
+			}
 		}
 
 		err := m.refresh(ctx)
+		if errors.Is(err, common.ErrDuNotFound) {
+			log.Err("cacheUsageMonitor::run : du not found, disabling disk usage checks for %s", m.path)
+			return
+		}
+
 		timer.Reset(m.interval)
 		if err == nil {
 			select {
@@ -150,6 +151,9 @@ func (m *cacheUsageMonitor) refresh(ctx context.Context) error {
 	defer cancel()
 
 	seq := m.started.Add(1)
+	// du counts what was added before it started. What is added while it runs is counted again, so the usage errs
+	// high until the next measurement.
+	growth := m.growth.Load()
 	begin := time.Now()
 	usage, err := m.measure(ctx, m.path)
 	elapsed := time.Since(begin)
@@ -172,16 +176,32 @@ func (m *cacheUsageMonitor) refresh(ctx context.Context) error {
 	}
 
 	m.last.Store(&usageSample{mb: usage, seq: seq})
+	m.growth.Add(-growth)
 	return nil
 }
 
-// usageMB returns the last measured usage in MB. It returns false if no measurement has succeeded.
-func (m *cacheUsageMonitor) usageMB() (float64, bool) {
+// addGrowth counts bytes added to the cache, so the usage includes them before the next measurement.
+func (m *cacheUsageMonitor) addGrowth(bytes int64) {
+	if bytes > 0 {
+		m.growth.Add(bytes)
+	}
+}
+
+// usageBytes returns the last measured usage plus the bytes added since that measurement started. Files removed
+// since then are still counted, so it errs high until the next measurement. It returns false if no measurement has
+// succeeded.
+func (m *cacheUsageMonitor) usageBytes() (int64, bool) {
 	sample := m.lastSample()
 	if sample == nil {
 		return 0, false
 	}
-	return sample.mb, true
+	return int64(sample.mb*MB) + m.growth.Load(), true
+}
+
+// usageMB returns usageBytes in MB.
+func (m *cacheUsageMonitor) usageMB() (float64, bool) {
+	usage, ok := m.usageBytes()
+	return float64(usage) / MB, ok
 }
 
 // lastSample returns the last successful measurement, or nil if no measurement has succeeded.

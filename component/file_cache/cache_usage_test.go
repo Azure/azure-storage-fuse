@@ -87,6 +87,12 @@ func (suite *cacheUsageMonitorTestSuite) requireUpdate(m *cacheUsageMonitor) {
 	}
 }
 
+// startAndWait starts m and waits for its first measurement to succeed.
+func (suite *cacheUsageMonitorTestSuite) startAndWait(m *cacheUsageMonitor) {
+	m.start()
+	suite.requireUpdate(m)
+}
+
 func (suite *cacheUsageMonitorTestSuite) requireNoUpdate(m *cacheUsageMonitor) {
 	select {
 	case <-m.updates():
@@ -97,7 +103,7 @@ func (suite *cacheUsageMonitorTestSuite) requireNoUpdate(m *cacheUsageMonitor) {
 
 func (suite *cacheUsageMonitorTestSuite) TestStartMeasuresUsage() {
 	m := newTestUsageMonitor(func(context.Context, string) (float64, error) { return 42, nil })
-	suite.Require().NoError(m.start())
+	suite.startAndWait(m)
 	defer m.stop()
 
 	usage, ok := m.usageMB()
@@ -105,20 +111,57 @@ func (suite *cacheUsageMonitorTestSuite) TestStartMeasuresUsage() {
 	suite.InDelta(42, usage, 0)
 }
 
-// Without du, start fails, the usage stays unknown and stop must not hang.
-func (suite *cacheUsageMonitorTestSuite) TestStartFailsWithoutDu() {
+// Without du, the monitor stops measuring after the first try, the usage stays unknown and stop must not hang.
+func (suite *cacheUsageMonitorTestSuite) TestStopsMeasuringWithoutDu() {
+	var calls atomic.Int32
 	m := newTestUsageMonitor(func(context.Context, string) (float64, error) {
+		calls.Add(1)
 		return 0, common.ErrDuNotFound
 	})
-	suite.ErrorIs(m.start(), common.ErrDuNotFound)
-
-	usage, ok := m.usageMB()
-	suite.False(ok)
-	suite.Zero(usage)
+	m.interval = 10 * time.Millisecond
+	m.start()
+	suite.Eventually(func() bool { return calls.Load() == 1 }, 5*time.Second, 10*time.Millisecond)
 
 	m.requestRefresh()
 	suite.requireNoUpdate(m)
+	suite.Equal(int32(1), calls.Load())
+	usage, ok := m.usageMB()
+	suite.False(ok)
+	suite.Zero(usage)
 	m.stop()
+}
+
+// start does not wait for the first measurement, so mount does not wait for du.
+func (suite *cacheUsageMonitorTestSuite) TestStartDoesNotWaitForMeasurement() {
+	release := make(chan struct{})
+	m := newTestUsageMonitor(func(ctx context.Context, _ string) (float64, error) {
+		select {
+		case <-release:
+			return 3, nil
+		case <-ctx.Done():
+			return 0, ctx.Err()
+		}
+	})
+
+	started := make(chan struct{})
+	go func() {
+		m.start()
+		close(started)
+	}()
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		suite.FailNow("start waited for the measurement")
+	}
+	defer m.stop()
+
+	_, ok := m.usageMB()
+	suite.False(ok)
+	close(release)
+	suite.requireUpdate(m)
+	usage, ok := m.usageMB()
+	suite.True(ok)
+	suite.InDelta(3, usage, 0)
 }
 
 // If the measurement at start fails for another reason, such as a timeout, start succeeds and the measurement is
@@ -133,7 +176,7 @@ func (suite *cacheUsageMonitorTestSuite) TestStartRetriesFailedMeasurement() {
 			return 7, nil
 		})
 		m.interval = 10 * time.Millisecond
-		suite.Require().NoError(m.start(), failure.Error())
+		m.start()
 
 		_, ok := m.usageMB()
 		suite.False(ok, failure.Error())
@@ -155,7 +198,7 @@ func (suite *cacheUsageMonitorTestSuite) TestMeasuresDirectoryWithDu() {
 	suite.Require().NoError(os.WriteFile(filepath.Join(dir, "file"), make([]byte, MB), 0600))
 
 	m := newCacheUsageMonitor(dir)
-	suite.Require().NoError(m.start())
+	suite.startAndWait(m)
 	defer m.stop()
 
 	usage, ok := m.usageMB()
@@ -170,10 +213,9 @@ func (suite *cacheUsageMonitorTestSuite) TestMeasuresOnInterval() {
 		return float64(calls.Add(1)), nil
 	})
 	m.interval = 10 * time.Millisecond
-	suite.Require().NoError(m.start())
+	suite.startAndWait(m)
 	defer m.stop()
 
-	suite.requireUpdate(m)
 	suite.Eventually(func() bool {
 		usage, _ := m.usageMB()
 		return usage >= 3
@@ -186,7 +228,7 @@ func (suite *cacheUsageMonitorTestSuite) TestRequestRefresh() {
 	m := newTestUsageMonitor(func(context.Context, string) (float64, error) {
 		return float64(value.Load()), nil
 	})
-	suite.Require().NoError(m.start())
+	suite.startAndWait(m)
 	defer m.stop()
 
 	value.Store(7)
@@ -204,7 +246,7 @@ func (suite *cacheUsageMonitorTestSuite) TestFailedMeasurementKeepsLastUsage() {
 		failures.Add(1)
 		return 0, errors.New("du failed")
 	}))
-	suite.Require().NoError(m.start())
+	suite.startAndWait(m)
 	defer m.stop()
 
 	m.requestRefresh()
@@ -216,6 +258,50 @@ func (suite *cacheUsageMonitorTestSuite) TestFailedMeasurementKeepsLastUsage() {
 	suite.InDelta(5, usage, 0)
 }
 
+// Bytes added to the cache count in the usage until a measurement that started after they were added replaces them.
+func (suite *cacheUsageMonitorTestSuite) TestGrowthCountsUntilNextMeasurement() {
+	var measured atomic.Int64
+	measured.Store(1)
+	entered := make(chan struct{}, 1)
+	release := make(chan struct{})
+	var block atomic.Bool
+	m := newTestUsageMonitor(func(ctx context.Context, _ string) (float64, error) {
+		if block.Load() {
+			entered <- struct{}{}
+			<-release
+		}
+		return float64(measured.Load()), nil
+	})
+	suite.startAndWait(m)
+	defer m.stop()
+
+	m.addGrowth(2 * MB)
+	m.addGrowth(-MB) // ignored, only growth is counted
+	usage, ok := m.usageBytes()
+	suite.True(ok)
+	suite.EqualValues(3*MB, usage)
+
+	// A new measurement includes what was added before it started.
+	measured.Store(4)
+	m.requestRefresh()
+	suite.requireUpdate(m)
+	usage, _ = m.usageBytes()
+	suite.EqualValues(4*MB, usage)
+
+	// What is added while a measurement runs still counts after it, as du may not have seen it.
+	block.Store(true)
+	m.requestRefresh()
+	<-entered
+	m.addGrowth(MB)
+	measured.Store(5)
+	close(release)
+	suite.requireUpdate(m)
+	usage, _ = m.usageBytes()
+	suite.EqualValues(6*MB, usage)
+	mb, _ := m.usageMB()
+	suite.InDelta(6, mb, 1e-9)
+}
+
 // A measurement that runs past the timeout is killed and the last measured usage is kept.
 func (suite *cacheUsageMonitorTestSuite) TestTimeoutKeepsLastUsage() {
 	errs := make(chan error, 1)
@@ -225,7 +311,7 @@ func (suite *cacheUsageMonitorTestSuite) TestTimeoutKeepsLastUsage() {
 		return 0, ctx.Err()
 	}))
 	m.timeout = 50 * time.Millisecond
-	suite.Require().NoError(m.start())
+	suite.startAndWait(m)
 	defer m.stop()
 
 	m.requestRefresh()
@@ -251,7 +337,7 @@ func (suite *cacheUsageMonitorTestSuite) TestUsageDoesNotWaitForMeasurement() {
 		<-release
 		return 9, nil
 	}))
-	suite.Require().NoError(m.start())
+	suite.startAndWait(m)
 	defer m.stop()
 
 	m.requestRefresh()
@@ -283,7 +369,7 @@ func (suite *cacheUsageMonitorTestSuite) TestOneMeasurementAtATime() {
 		return 1, nil
 	})
 	m.interval = time.Millisecond
-	suite.Require().NoError(m.start())
+	m.start()
 
 	var wg sync.WaitGroup
 	deadline := time.Now().Add(300 * time.Millisecond)
@@ -317,7 +403,7 @@ func (suite *cacheUsageMonitorTestSuite) TestIntervalCountsFromEndOfMeasurement(
 		return 1, nil
 	})
 	m.interval = interval
-	suite.Require().NoError(m.start())
+	m.start()
 
 	suite.Eventually(func() bool {
 		mu.Lock()
@@ -343,7 +429,7 @@ func (suite *cacheUsageMonitorTestSuite) TestStopCancelsMeasurement() {
 		errs <- ctx.Err()
 		return 0, ctx.Err()
 	}))
-	suite.Require().NoError(m.start())
+	suite.startAndWait(m)
 
 	m.requestRefresh()
 	<-entered
