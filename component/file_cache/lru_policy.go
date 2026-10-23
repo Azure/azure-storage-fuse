@@ -39,7 +39,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 )
 
@@ -77,14 +76,13 @@ type lruPolicy struct {
 	// Channel to contain files that are in use so push them up in lru list
 	validateChan chan string
 
-	// Channel to check disk usage is within the limits configured or not
-	diskUsageMonitor <-chan time.Time
-
 	// Channel to check for file eviction based on file-cache timeout
 	cacheTimeoutMonitor <-chan time.Time
 
-	// DU utility was found on the path or not
-	duPresent bool
+	// Eviction passes run since cache usage went above the high threshold, and the number of the first measurement
+	// the next check can use. Used only by clearCache.
+	usageEvictionPasses int
+	usageNextSeq        uint64
 }
 
 const (
@@ -93,6 +91,9 @@ const (
 
 	// Check for disk usage in below number of minutes
 	DiskUsageCheckInterval = 1
+
+	// Most eviction passes to run, one per usage measurement, before waiting for the next regular measurement.
+	maxUsageEvictionPasses = 3
 )
 
 // Retry deleting files whose lock was busy. This is a variable so tests can change it.
@@ -112,7 +113,6 @@ func NewLRUPolicy(cfg cachePolicyConfig) cachePolicy {
 			name:  "##",
 			usage: -1,
 		},
-		duPresent: false,
 	}
 
 	return obj
@@ -132,17 +132,6 @@ func (p *lruPolicy) StartPolicy() error {
 	p.purgePending = make(map[string]struct{})
 	p.purgeSignal = make(chan struct{}, 1)
 	p.validateChan = make(chan string, 10000)
-
-	_, err := common.GetUsage(p.tmpPath)
-	if err == nil {
-		p.duPresent = true
-	} else {
-		log.Err("lruPolicy::StartPolicy : 'du' command not found, disabling disk usage checks")
-	}
-
-	if p.duPresent {
-		p.diskUsageMonitor = time.Tick(time.Duration(DiskUsageCheckInterval * time.Minute))
-	}
 
 	// Only start the timeoutMonitor if evictTime is non-zero.
 	// If evictTime=0, we delete on invalidate so there is no need for a timeout monitor signal to be sent.
@@ -320,6 +309,11 @@ func (p *lruPolicy) clearCache() {
 	busy := make(map[string]struct{})
 	var retry <-chan time.Time
 
+	var usageUpdates <-chan struct{}
+	if p.usage != nil {
+		usageUpdates = p.usage.updates()
+	}
+
 	for {
 		select {
 		case <-p.purgeSignal:
@@ -344,27 +338,8 @@ func (p *lruPolicy) clearCache() {
 			p.printNodes()
 			p.deleteExpiredNodes()
 
-		case <-p.diskUsageMonitor:
-			// File cache timeout has not occurred so just monitor the cache usage
-			cleanupCount := 0
-			pUsage := getUsagePercentage(p.tmpPath, p.maxSizeMB)
-			if pUsage > p.highThreshold {
-				continueDeletion := true
-				for continueDeletion {
-					log.Info("lruPolicy::ClearCache : High threshold reached %f > %f", pUsage, p.highThreshold)
-
-					cleanupCount++
-					p.updateMarker()
-					p.printNodes()
-					p.deleteExpiredNodes()
-
-					pUsage := getUsagePercentage(p.tmpPath, p.maxSizeMB)
-					if pUsage < p.lowThreshold || cleanupCount >= 3 {
-						log.Info("lruPolicy::ClearCache : Threshold stabilized %f > %f", pUsage, p.lowThreshold)
-						continueDeletion = false
-					}
-				}
-			}
+		case <-usageUpdates:
+			p.checkCacheUsage()
 
 		case <-p.closeSignal:
 			return
@@ -374,6 +349,40 @@ func (p *lruPolicy) clearCache() {
 			retry = time.After(purgeRetryInterval)
 		}
 	}
+}
+
+// checkCacheUsage runs after each cache usage measurement. When usage is above the high threshold, it evicts the
+// files not used since the previous eviction pass and requests a new measurement. It continues with the first
+// measurement that started after the pass, until usage is below the low threshold or maxUsageEvictionPasses passes
+// have run. The next round starts only with a later measurement. du is never run here, so this goroutine keeps
+// deleting queued files while usage is measured.
+func (p *lruPolicy) checkCacheUsage() {
+	sample := p.usage.lastSample()
+	// A measurement is stored before its notification is sent, so it can be seen twice. During a round, a measurement
+	// that started before the last pass ended does not show what the pass freed.
+	if sample == nil || sample.seq < p.usageNextSeq {
+		return
+	}
+	pUsage := getUsagePercentage(sample.mb, p.maxSizeMB)
+
+	if p.usageEvictionPasses == 0 {
+		if pUsage <= p.highThreshold {
+			return
+		}
+		log.Info("lruPolicy::ClearCache : High threshold reached %f > %f", pUsage, p.highThreshold)
+	} else if pUsage < p.lowThreshold || p.usageEvictionPasses >= maxUsageEvictionPasses {
+		log.Info("lruPolicy::ClearCache : Threshold stabilized %f > %f", pUsage, p.lowThreshold)
+		p.usageEvictionPasses = 0
+		p.usageNextSeq = sample.seq + 1
+		return
+	}
+
+	p.usageEvictionPasses++
+	p.updateMarker()
+	p.printNodes()
+	p.deleteExpiredNodes()
+	p.usageNextSeq = p.usage.nextSeq()
+	p.usage.requestRefresh()
 }
 
 func (p *lruPolicy) removeNode(name string) {

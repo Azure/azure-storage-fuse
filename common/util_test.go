@@ -35,6 +35,7 @@ package common
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"fmt"
 	"os"
@@ -45,6 +46,7 @@ import (
 	"sync"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/prometheus/procfs"
 	"github.com/stretchr/testify/assert"
@@ -430,6 +432,42 @@ func (suite *utilTestSuite) TestGetUSage() {
 	suite.assert.LessOrEqual(int(usage), 4)
 
 	_ = os.RemoveAll(dirName)
+}
+
+// du exits with 1 when it cannot read an entry, such as a file deleted while it runs or a directory it may not read,
+// but still prints the total of the rest. That total is used.
+func (suite *utilTestSuite) TestGetUsageWithUnreadableEntry() {
+	dirName := suite.T().TempDir()
+	suite.assert.NoError(os.WriteFile(filepath.Join(dirName, "file"), make([]byte, 1024*1024), 0600))
+	locked := filepath.Join(dirName, "locked")
+	suite.assert.NoError(os.Mkdir(locked, 0700))
+	suite.assert.NoError(os.WriteFile(filepath.Join(locked, "file"), []byte("data"), 0600))
+	suite.assert.NoError(os.Chmod(locked, 0))
+	defer func() { _ = os.Chmod(locked, 0700) }()
+
+	usage, err := GetUsageWithContext(context.Background(), dirName)
+	suite.assert.NoError(err)
+	suite.assert.GreaterOrEqual(usage, float64(1))
+	suite.assert.Less(usage, float64(2))
+}
+
+// GetUsageWithContext stops du and returns the context's error once the context is done.
+func (suite *utilTestSuite) TestGetUsageWithContextDone() {
+	dirName := suite.T().TempDir()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := GetUsageWithContext(ctx, dirName)
+	suite.assert.ErrorIs(err, context.Canceled)
+
+	ctx, cancel = context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+	_, err = GetUsageWithContext(ctx, dirName)
+	suite.assert.ErrorIs(err, context.DeadlineExceeded)
+
+	usage, err := GetUsageWithContext(context.Background(), dirName)
+	suite.assert.NoError(err)
+	suite.assert.Less(usage, float64(1))
 }
 
 func (suite *utilTestSuite) TestDirectoryCleanup() {
