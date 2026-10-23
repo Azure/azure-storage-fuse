@@ -306,8 +306,12 @@ func (suite *LoopbackFSTestSuite) TestStageAndCommitData() {
 	assert.NoError(err)
 
 	blockList := []string{"123", "789", "456"}
-	err = lfs.CommitData(internal.CommitDataOptions{Name: "testBlock", List: blockList})
+	var newETag string
+	err = lfs.CommitData(internal.CommitDataOptions{Name: "testBlock", List: blockList, NewETag: &newETag})
 	assert.NoError(err)
+	attr, err := lfs.GetAttr(internal.GetAttrOptions{Name: "testBlock"})
+	assert.NoError(err)
+	assert.Equal(attr.ETag, newETag)
 }
 
 // This test is for opening the file in O_TRUNC on the existing file

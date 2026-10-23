@@ -10,6 +10,7 @@ components:
   - xload
   - block_cache
   - file_cache
+  - distributed_cache
   - attr_cache
   - azstorage
 
@@ -41,7 +42,16 @@ file_cache:
   # Optional 
   timeout-sec: <default cache eviction timeout (in sec). Default - 120 sec>
   max-size-mb: <maximum cache size allowed. Default - 80% of free disk space>
-  
+
+# Distributed cache configuration (optional, for multi-node shared caching)
+# Requires a running DACS cache server cluster (https://github.com/Azure/dacs).
+# NOTE: distributed_cache is supported only for read-only mounts; set
+# `read-only: true` at the top of this file (or pass --read-only on the mount
+# command line), otherwise mount will fail.
+distributed_cache:
+  discovery-endpoint: <discovery endpoint for auto-detecting cache servers. Recommended for production>
+  dns-server: <DNS server for resolving distributed-cache endpoints. Set this to the Kubernetes cluster DNS service IP, typically the kube-dns/CoreDNS ClusterIP. Accepts an IP or host:port. Default - system resolver>
+
 # Azure storage configuration
 azstorage:
 # Required
