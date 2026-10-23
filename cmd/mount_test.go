@@ -115,6 +115,10 @@ components:
 `
 
 var configDistCacheCLIBase string = `
+components:
+  - libfuse
+  - distributed_cache
+  - azstorage
 azstorage:
   account-name: myAccountName
   account-key: myAccountKey
@@ -897,12 +901,10 @@ func (suite *mountTestSuite) TestDistributedCacheCLIWithReadOnlyPasses() {
 	suite.assert.Equal("example.com:9065", endpoint)
 }
 
-// If the config file already specifies a non-empty components: pipeline (here
-// with file_cache), passing --distributed-cache-discovery-endpoint on the CLI
-// must not silently leave file_cache in place — the resulting pipeline must
-// either error out with the mutual-exclusion message, or reflect the CLI
-// intent by containing distributed_cache + block_cache and dropping file_cache.
-func (suite *mountTestSuite) TestDistributedCacheCLIOverridesExplicitFileCachePipeline() {
+// distributed_cache is enabled only by components:. With a file_cache pipeline in
+// components:, --distributed-cache-discovery-endpoint on its own must not change
+// the pipeline or reject the mount.
+func (suite *mountTestSuite) TestDistributedCacheCLIDoesNotOverrideExplicitFileCachePipeline() {
 	defer suite.cleanupTest()
 
 	mntDir, err := os.MkdirTemp("", "mntdir")
@@ -934,16 +936,10 @@ azstorage:
 	op, _ := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileName),
 		"--distributed-cache-discovery-endpoint=example.com:9065")
 
-	// Either the mutual-exclusion gate fires (preferred, explicit user
-	// signal), or the CLI override wins. Silently keeping file_cache in the
-	// pipeline while --distributed-cache-discovery-endpoint was requested is
-	// the bug we're guarding against.
-	if strings.Contains(op, "distributed_cache is a single configuration surface") {
-		return
-	}
-	suite.assert.Contains(options.Components, "block_cache")
-	suite.assert.Contains(options.Components, "distributed_cache")
-	suite.assert.NotContains(options.Components, "file_cache")
+	suite.assert.NotContains(op, "distributed_cache is a single configuration surface")
+	suite.assert.Contains(options.Components, "file_cache")
+	suite.assert.NotContains(options.Components, "distributed_cache")
+	suite.assert.NotContains(options.Components, "block_cache")
 }
 
 func (suite *mountTestSuite) TestDistributedCacheCLIWithFuseRoOptionPasses() {
