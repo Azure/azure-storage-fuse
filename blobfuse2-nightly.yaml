@@ -83,12 +83,12 @@ parameters:
     default: true
 
   # Distributed cache E2E: runs kind + DACS (pinned public MCR artifacts) on
-  # an amd64 nightly agent. Off by default; queue the pipeline with this
-  # parameter set to true to opt in.
+  # an amd64 nightly agent. On by default so every scheduled nightly run
+  # includes it; queue the pipeline with this parameter set to false to skip it.
   - name: dist_cache_test
     displayName: 'Run distributed cache E2E tests (requires kind + DACS image)'
     type: boolean
-    default: false
+    default: true
 
 stages:
 
@@ -1453,8 +1453,8 @@ stages:
 
   # -----------------------------------------------------------------------
   # Distributed cache E2E.
-  # Gated on the `dist_cache_test` parameter. Queue a manual run with the
-  # parameter set to true.
+  # Gated on the `dist_cache_test` parameter, which defaults to true so the
+  # scheduled nightly run includes this stage.
   - ${{ if eq(parameters.dist_cache_test, true) }}:
     - stage: DistCacheValidation
       dependsOn: BuildAndTest
