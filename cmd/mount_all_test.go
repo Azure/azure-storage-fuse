@@ -3,7 +3,7 @@
    |     |  |      |     | |     | |     |     | |       |            |
    |     |  |      |     | |     | |     |     | |       |            |
    | --- |  |      |     | |-----| |---- |     | |-----| |-----  ------
-   |     |  |      |     | |     | |     |     | |       | |       |
+   |     |  |      |     | |     | |     |     |       | |       |
    | ____|  |_____ | ____| | ____| |     |_____|  _____| |_____  |_____
 
 
@@ -48,6 +48,7 @@ import (
 
 func TestMountAllRejectsDistributedCache(t *testing.T) {
 	const discovery = "distributed_cache:\n  discovery-endpoint: discovery:9065\n"
+	const listed = "components: [libfuse, distributed_cache, azstorage]\n"
 	const discoveryFlag = "--distributed-cache-discovery-endpoint=discovery:9065"
 
 	tests := []struct {
@@ -61,20 +62,22 @@ func TestMountAllRejectsDistributedCache(t *testing.T) {
 		secure        bool
 		allowed       bool
 	}{
-		{name: "components", yaml: "components: [libfuse, distributed_cache, azstorage]\n", configFile: true},
-		{name: "discovery YAML", yaml: discovery, configFile: true},
-		{name: "default config file", yaml: discovery, configFile: true, defaultConfig: true},
-		{name: "read-only config", yaml: "read-only: true\n" + discovery, configFile: true},
-		{name: "server list YAML", yaml: "distributed_cache:\n  server-list: cache:9065\n", configFile: true},
-		{name: "discovery CLI with config", args: []string{discoveryFlag}, configFile: true},
-		{name: "discovery environment with config", env: "discovery:9065", configFile: true},
-		{name: "server list environment with config", serverList: "cache:9065", configFile: true},
-		{name: "encrypted config", yaml: discovery, configFile: true, secure: true},
-		{name: "discovery CLI without config", args: []string{discoveryFlag}},
-		{name: "discovery environment without config", env: "discovery:9065"},
-		{name: "server list environment without config", serverList: "cache:9065"},
-		{name: "conflicting file cache config", yaml: discovery + "file_cache:\n  path: /user-cache\n", configFile: true},
-		{name: "conflicting tmp path", args: []string{discoveryFlag, "--tmp-path=/user-cache"}},
+		{name: "components", yaml: listed, configFile: true},
+		{name: "components in default config file", yaml: listed + discovery, configFile: true, defaultConfig: true},
+		{name: "components in read-only config", yaml: "read-only: true\n" + listed + discovery, configFile: true},
+		{name: "components with discovery CLI", yaml: listed, args: []string{discoveryFlag}, configFile: true},
+		{name: "components in encrypted config", yaml: listed + discovery, configFile: true, secure: true},
+		// Discovery settings without distributed_cache in components: do not enable it.
+		{name: "discovery YAML alone allowed", yaml: discovery, configFile: true, allowed: true},
+		{name: "server list YAML alone allowed", yaml: "distributed_cache:\n  server-list: cache:9065\n", configFile: true, allowed: true},
+		{name: "discovery CLI with config allowed", args: []string{discoveryFlag}, configFile: true, allowed: true},
+		{name: "discovery environment with config allowed", env: "discovery:9065", configFile: true, allowed: true},
+		{name: "server list environment with config allowed", serverList: "cache:9065", configFile: true, allowed: true},
+		{name: "discovery CLI without config allowed", args: []string{discoveryFlag}, allowed: true},
+		{name: "discovery environment without config allowed", env: "discovery:9065", allowed: true},
+		{name: "server list environment without config allowed", serverList: "cache:9065", allowed: true},
+		{name: "discovery with file cache config allowed", yaml: discovery + "file_cache:\n  path: /user-cache\n", configFile: true, allowed: true},
+		{name: "discovery CLI with tmp path allowed", args: []string{discoveryFlag, "--tmp-path=/user-cache"}, allowed: true},
 		{name: "file cache config allowed", yaml: "components: [libfuse, file_cache, azstorage]\n", configFile: true, allowed: true},
 		{name: "file cache CLI allowed", args: []string{"--tmp-path=/user-cache"}, allowed: true},
 		{name: "empty discovery allowed", args: []string{"--distributed-cache-discovery-endpoint="}, allowed: true},
