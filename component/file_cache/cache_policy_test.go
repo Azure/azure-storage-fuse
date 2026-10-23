@@ -172,6 +172,13 @@ func (suite *cachePolicyTestSuite) TestRemoveEmptyParentsSkipsMissingDirectory()
 
 	suite.requireRemoved("a")
 	suite.requireExists("")
+
+	// Directories below the missing one are gone too.
+	suite.mkdirs("a")
+	removeEmptyParents(cache_path, filepath.Join(cache_path, "a/missing/deeper/file"))
+
+	suite.requireRemoved("a")
+	suite.requireExists("")
 }
 
 // Nothing outside the cache directory is removed, including a sibling whose name starts with the cache path.
@@ -224,6 +231,46 @@ func (suite *cachePolicyTestSuite) TestRemoveEmptyParentsNonCanonicalCachePath()
 	removeEmptyParents(cache_path+"//.", filepath.Join(cache_path, "a/file"))
 	suite.requireRemoved("a")
 	suite.requireExists("")
+}
+
+// rmdir follows symlinks in the middle of a path. A symlink in the cache, for example left in a reused cache directory,
+// must not let the removal reach the directories it points to.
+func (suite *cachePolicyTestSuite) TestRemoveEmptyParentsDoesNotFollowSymlinks() {
+	defer suite.cleanupTest()
+	outside := filepath.Join(filepath.Dir(cache_path), "outside_"+filepath.Base(cache_path))
+	suite.Require().NoError(os.MkdirAll(filepath.Join(outside, "child", "grandchild"), 0777))
+	defer os.RemoveAll(outside)
+	suite.mkdirs("a")
+	suite.Require().NoError(os.Symlink(outside, filepath.Join(cache_path, "link")))
+	suite.Require().NoError(os.Symlink(outside, filepath.Join(cache_path, "a", "link")))
+	suite.Require().NoError(os.Symlink(filepath.Join(outside, "child", "grandchild"), filepath.Join(cache_path, "last")))
+
+	removeEmptyParents(cache_path, filepath.Join(cache_path, "link/child/grandchild/file"))
+	removeEmptyParents(cache_path, filepath.Join(cache_path, "a/link/child/grandchild/file"))
+	removeEmptyParents(cache_path, filepath.Join(cache_path, "last/file"))
+
+	_, err := os.Stat(filepath.Join(outside, "child", "grandchild"))
+	suite.NoError(err, "a directory outside the cache was removed through a symlink")
+	for _, link := range []string{"link", "a/link", "last"} {
+		_, err := os.Lstat(filepath.Join(cache_path, link))
+		suite.NoError(err, "%s should exist", link)
+	}
+}
+
+// The cache path itself may be a symlink to the cache directory.
+func (suite *cachePolicyTestSuite) TestRemoveEmptyParentsSymlinkedCachePath() {
+	defer suite.cleanupTest()
+	link := cache_path + "_link"
+	suite.Require().NoError(os.Symlink(cache_path, link))
+	defer os.Remove(link)
+	suite.mkdirs("a/b")
+
+	removeEmptyParents(link, filepath.Join(link, "a/b/file"))
+
+	suite.requireRemoved("a")
+	suite.requireExists("")
+	_, err := os.Lstat(link)
+	suite.NoError(err)
 }
 
 func TestCachePolicyTestSuite(t *testing.T) {

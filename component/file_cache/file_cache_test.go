@@ -2978,29 +2978,50 @@ func (suite *fileCacheTestSuite) TestEmptyDirectoryRemovalWaitsForFileCreation()
 	suite.requireRemovedFromCache("dir")
 }
 
-// Creating a file waits while the cache policy removes empty directories, so the directory it creates cannot be
-// removed before the file is created in it.
+// Creating a file, or downloading one that is not cached, waits while the cache policy removes empty directories, so
+// the directory it creates cannot be removed before the file is created in it.
 func (suite *fileCacheTestSuite) TestFileCreationWaitsForEmptyDirectoryRemoval() {
 	defer suite.cleanupTest()
 	suite.Require().NoError(os.MkdirAll(filepath.Join(suite.fake_storage_path, "dir"), 0777))
+	suite.Require().NoError(os.WriteFile(filepath.Join(suite.fake_storage_path, "dir", "remote"), []byte("data"), 0777))
 
-	// Hold the lock as the cache policy does while it removes empty directories.
-	suite.fileCache.dirLock.Lock()
-	created := make(chan *handlemap.Handle, 1)
-	go func() {
-		h, err := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: "dir/file", Mode: 0777})
-		suite.NoError(err)
-		created <- h
-	}()
-	suite.Never(func() bool { return len(created) > 0 }, 200*time.Millisecond, 10*time.Millisecond,
-		"a file was created while empty directories were being removed")
-	suite.fileCache.dirLock.Unlock()
+	type result struct {
+		handle *handlemap.Handle
+		err    error
+	}
+	for _, tc := range []struct {
+		name string
+		op   func() (*handlemap.Handle, error)
+	}{
+		{"CreateFile", func() (*handlemap.Handle, error) {
+			return suite.fileCache.CreateFile(internal.CreateFileOptions{Name: "dir/file", Mode: 0777})
+		}},
+		{"OpenFile", func() (*handlemap.Handle, error) {
+			return suite.fileCache.OpenFile(internal.OpenFileOptions{Name: "dir/remote", Flags: os.O_RDONLY, Mode: 0777})
+		}},
+	} {
+		suite.Run(tc.name, func() {
+			suite.Require().NoError(os.RemoveAll(filepath.Join(suite.cache_path, "dir")))
 
-	select {
-	case h := <-created:
-		suite.NoError(suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h}))
-	case <-time.After(5 * time.Second):
-		suite.FailNow("CreateFile did not finish")
+			// Hold the lock as the cache policy does while it removes empty directories.
+			suite.fileCache.dirLock.Lock()
+			created := make(chan result, 1)
+			go func() {
+				h, err := tc.op()
+				created <- result{h, err}
+			}()
+			suite.Never(func() bool { return len(created) > 0 }, 200*time.Millisecond, 10*time.Millisecond,
+				"a file was created while empty directories were being removed")
+			suite.fileCache.dirLock.Unlock()
+
+			select {
+			case r := <-created:
+				suite.Require().NoError(r.err)
+				suite.NoError(suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: r.handle}))
+			case <-time.After(5 * time.Second):
+				suite.FailNow(tc.name + " did not finish")
+			}
+		})
 	}
 }
 
@@ -3043,6 +3064,65 @@ func (suite *fileCacheTestSuite) TestConcurrentCreateAndRemoveInSameDirectory() 
 				if err := suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h}); err != nil {
 					failures.Add(1)
 					suite.T().Errorf("ReleaseFile %s: %v", name, err)
+				}
+			}
+		})
+	}
+	wg.Wait()
+
+	suite.Zero(failures.Load())
+	suite.requireRemovedFromCache("shared")
+}
+
+// Like TestConcurrentCreateAndRemoveInSameDirectory, with files also opened from storage: OpenFile downloads a file
+// that is not cached into the same directories, which the cache policy removes when the previous files are evicted.
+// Each open must read the file's own data.
+func (suite *fileCacheTestSuite) TestConcurrentOpenAndRemoveInSameDirectory() {
+	defer suite.cleanupTest()
+
+	const workers = 16
+	const filesPerWorker = 50
+	name := func(w, i int) string { return fmt.Sprintf("shared/dir%d/w%d-%d", i%2, w, i) }
+	for w := range workers {
+		for i := range filesPerWorker {
+			path := filepath.Join(suite.fake_storage_path, name(w, i))
+			suite.Require().NoError(os.MkdirAll(filepath.Dir(path), 0777))
+			suite.Require().NoError(os.WriteFile(path, []byte(name(w, i)), 0777))
+		}
+	}
+
+	var wg sync.WaitGroup
+	var failures atomic.Int32
+	fail := func(format string, args ...any) {
+		failures.Add(1)
+		suite.T().Errorf(format, args...)
+	}
+	for w := range workers {
+		wg.Go(func() {
+			for i := range filesPerWorker {
+				// Half of the workers also create new files in the same directories.
+				if w%2 == 0 {
+					created := fmt.Sprintf("shared/dir%d/new-w%d-%d", i%2, w, i)
+					h, err := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: created, Mode: 0777})
+					if err != nil {
+						fail("CreateFile %s: %v", created, err)
+					} else if err := suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h}); err != nil {
+						fail("ReleaseFile %s: %v", created, err)
+					}
+				}
+
+				h, err := suite.fileCache.OpenFile(internal.OpenFileOptions{Name: name(w, i), Flags: os.O_RDONLY, Mode: 0777})
+				if err != nil {
+					fail("OpenFile %s: %v", name(w, i), err)
+					continue
+				}
+				data := make([]byte, 64)
+				n, err := suite.fileCache.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Data: data})
+				if (err != nil && err != io.EOF) || string(data[:n]) != name(w, i) {
+					fail("ReadInBuffer %s: read %q [%v]", name(w, i), data[:n], err)
+				}
+				if err := suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h}); err != nil {
+					fail("ReleaseFile %s: %v", name(w, i), err)
 				}
 			}
 		})
