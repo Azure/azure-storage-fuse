@@ -142,7 +142,8 @@ components:
 }
 
 func TestNormalizeDistCacheConfig_DistCacheSectionWithoutComponents(t *testing.T) {
-	// distributed_cache: set but components: omitted — the synthesis-path case.
+	// distributed_cache: set but components: omitted. Only components: enables
+	// distributed_cache, so the section is ignored and nothing is fanned out.
 	setDistCacheYAML(t, `
 read-only: true
 distributed_cache:
@@ -153,10 +154,7 @@ distributed_cache:
 
 	err := normalizeDistCacheConfig(nil)
 	assert.NoError(t, err)
-
-	var blockSize uint32
-	assert.NoError(t, config.UnmarshalKey("block_cache.block-size-mb", &blockSize))
-	assert.Equal(t, uint32(32), blockSize)
+	assert.False(t, viper.IsSet("block_cache.block-size-mb"))
 }
 
 func TestDistributedCacheMountOptions_DiscoveryMethods(t *testing.T) {
@@ -186,18 +184,47 @@ distributed_cache:
 			defer viper.Reset()
 
 			assert.True(t, options.DistributedCache.isConfigured())
+			assert.True(t, distCacheDiscoverySet(), "config file discovery settings are detected")
 		})
 	}
 }
 
-func TestNormalizeDistCacheConfig_DiscoversEndpointFromEnvironment(t *testing.T) {
+func TestNormalizeDistCacheConfig_EnvironmentAloneDoesNotEnableDistCache(t *testing.T) {
+	// Launchers such as the Blob CSI driver pass their environment to every mount they start, so
+	// these variables must not turn distributed_cache on for, or reject, an unrelated mount.
 	t.Setenv("DISTRIBUTED_CACHE_DISCOVERY_ENDPOINT", "discovery.example.com:9065")
-	setDistCacheYAML(t, "")
+	t.Setenv("DISTRIBUTED_CACHE_SERVER_LIST", "cache-0:9065")
 	defer viper.Reset()
 
-	err := normalizeDistCacheConfig(nil)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "read-only")
+	for _, components := range [][]string{
+		nil,
+		{"libfuse", "file_cache", "attr_cache", "azstorage"},
+		{"libfuse", "block_cache", "attr_cache", "azstorage"},
+		{"libfuse", "attr_cache", "azstorage"},
+	} {
+		setDistCacheYAML(t, "")
+		assert.True(t, options.DistributedCache.isConfigured(), "environment values are still read")
+		assert.False(t, distCacheDiscoverySet())
+		assert.NoError(t, normalizeDistCacheConfig(components), "read-write mount, components=%v", components)
+	}
+}
+
+func TestNormalizeDistCacheConfig_EnvironmentSuppliesEndpointOnceListed(t *testing.T) {
+	t.Setenv("DISTRIBUTED_CACHE_DISCOVERY_ENDPOINT", "discovery.example.com:9065")
+	setDistCacheYAML(t, `
+read-only: true
+components:
+  - libfuse
+  - distributed_cache
+  - azstorage
+`)
+	defer viper.Reset()
+
+	assert.NoError(t, normalizeDistCacheConfig(options.Components))
+
+	var endpoint string
+	assert.NoError(t, config.UnmarshalKey("distributed_cache.discovery-endpoint", &endpoint))
+	assert.Equal(t, "discovery.example.com:9065", endpoint)
 }
 
 func TestIsLibfuseReadOnlyOption(t *testing.T) {
@@ -220,10 +247,6 @@ func TestIsLibfuseReadOnlyOption(t *testing.T) {
 		})
 	}
 }
-
-// A distributed_cache: section alongside an explicit components: that omits
-// distributed_cache is silently ignored, matching how the codebase treats stray
-// block_cache:/file_cache: sections. Normalize must not raise a
 
 // --- read-only gating --------------------------------------------------------
 
@@ -252,9 +275,9 @@ distributed_cache:
 	assert.Contains(t, err.Error(), "read-only")
 }
 
-func TestNormalizeDistCacheConfig_RejectsWhenReadOnlyFalseViaCLIFlag(t *testing.T) {
-	// CLI-flag synthesis path with read-only explicitly false; the
-	// discovery-endpoint being set (via CLI or YAML) is the enable signal.
+func TestNormalizeDistCacheConfig_DiscoveryWithoutComponentsAllowsReadWrite(t *testing.T) {
+	// A discovery endpoint without distributed_cache in components: does not
+	// enable it, so a read-write mount is not rejected.
 	setDistCacheYAML(t, `
 read-only: false
 distributed_cache:
@@ -263,8 +286,7 @@ distributed_cache:
 	defer viper.Reset()
 
 	err := normalizeDistCacheConfig(nil)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "read-only")
+	assert.NoError(t, err)
 }
 
 func TestNormalizeDistCacheConfig_ReadOnlyNotCheckedWhenDistCacheAbsent(t *testing.T) {
@@ -298,11 +320,10 @@ block_cache:
 	assert.Contains(t, err.Error(), "read-only")
 }
 
-// A distributed_cache: section alongside an explicit components: that
-// omits distributed_cache is no longer treated as a stray/no-op: the
-// presence of discovery-endpoint is the enable signal. These paths are
-// covered by the read-only gating and sibling-L1 rejection tests below.
-func TestNormalizeDistCacheConfig_StaleSectionNoL1ErrorsWithoutReadOnly(t *testing.T) {
+// A distributed_cache: section alongside an explicit components: that omits
+// distributed_cache is ignored like any other unused section, even on a
+// read-write mount, and nothing is fanned out to block_cache.
+func TestNormalizeDistCacheConfig_StaleSectionIsIgnored(t *testing.T) {
 	setDistCacheYAML(t, `
 distributed_cache:
   discovery-endpoint: d
@@ -314,8 +335,8 @@ components:
 	defer viper.Reset()
 
 	err := normalizeDistCacheConfig([]string{"libfuse", "azstorage"})
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "read-only")
+	assert.NoError(t, err)
+	assert.False(t, viper.IsSet("block_cache.block-size-mb"))
 }
 
 func TestNormalizeDistCacheConfig_RejectsBlockCacheInComponents(t *testing.T) {
@@ -434,14 +455,10 @@ stream:
 	}
 }
 
-// The CLI-flag entry path (discovery-endpoint set via CLI/YAML) combined
-// with a sibling L1 already present in components: must be rejected for
-// every incompatible L1 — block_cache, file_cache, xload, stream. Mirrors
-// the components-list entry path (RejectsBlockCacheInComponents /
-// RejectsOtherL1InComponents), but exercises the flag-driven activation
-// so we catch regressions where the gate only fires when
-// distributed_cache is spelled out in components:.
-func TestNormalizeDistCacheConfig_RejectsSiblingL1InComponentsViaCLIFlag(t *testing.T) {
+// A sibling L1 in components: (block_cache, file_cache, xload, stream) next to a
+// distributed_cache: section is an ordinary mount when distributed_cache itself
+// is not listed: the section is ignored.
+func TestNormalizeDistCacheConfig_SiblingL1InComponentsIgnoresSection(t *testing.T) {
 	for _, name := range []string{"block_cache", "file_cache", "xload", "stream"} {
 		t.Run(name, func(t *testing.T) {
 			setDistCacheYAML(t, `
@@ -452,16 +469,15 @@ distributed_cache:
 			defer viper.Reset()
 
 			err := normalizeDistCacheConfig([]string{"libfuse", name, "azstorage"})
-			assert.Error(t, err)
-			assert.Contains(t, err.Error(), name)
+			assert.NoError(t, err)
 		})
 	}
 }
 
 // Same as above but the sibling L1 is signalled via its top-level YAML
 // section (e.g. `block_cache:` / `file_cache:`) rather than a components:
-// entry, again with distributed_cache activated through the discovery-endpoint.
-func TestNormalizeDistCacheConfig_RejectsSiblingL1SectionViaCLIFlag(t *testing.T) {
+// entry. Without distributed_cache in components:, this is an ordinary mount.
+func TestNormalizeDistCacheConfig_SiblingL1SectionIgnoresDistCacheSection(t *testing.T) {
 	cases := []struct {
 		name string
 		yaml string
@@ -513,15 +529,14 @@ stream:
 			defer viper.Reset()
 
 			err := normalizeDistCacheConfig([]string{"libfuse", "azstorage"})
-			assert.Error(t, err)
-			assert.Contains(t, err.Error(), tc.name)
+			assert.NoError(t, err)
 		})
 	}
 }
 
 // A sibling L1 tuning knob passed on the CLI (e.g.
 // `--block-cache-block-size=80`, which binds to `block_cache.block-size-mb`)
-// alongside a distributed-cache discovery-endpoint must be rejected — the
+// on a distributed_cache mount must be rejected — the
 // user likely meant `--distributed-cache-block-size`. Parse real flags so the
 // parent-key check must inspect changed descendants in the config flag tree.
 func TestNormalizeDistCacheConfig_RejectsSiblingL1TuningKnobsViaCLI(t *testing.T) {
@@ -594,18 +609,18 @@ distributed_cache:
 			assert.False(t, viper.IsSet(tc.wantSub), "CLI settings must not be simulated through Viper")
 			assert.True(t, config.IsSet(tc.key), "the bound child flag must be set")
 
-			for _, components := range [][]string{nil, {"libfuse", "distributed_cache", "azstorage"}} {
-				err := normalizeDistCacheConfig(components)
-				require.Error(t, err)
-				assert.Contains(t, err.Error(), tc.wantSub)
-				assert.False(t, viper.IsSet("block_cache.block-size-mb"), "reject before fan-out")
-			}
+			err := normalizeDistCacheConfig([]string{"libfuse", "distributed_cache", "azstorage"})
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.wantSub)
+			assert.False(t, viper.IsSet("block_cache.block-size-mb"), "reject before fan-out")
+
+			// Without distributed_cache in components:, the same setting is an ordinary mount.
+			assert.NoError(t, normalizeDistCacheConfig(nil))
 		})
 	}
 }
 
-// Sibling L1 CLI enable-flags must be rejected when combined with
-// a distributed-cache discovery-endpoint.
+// Sibling L1 CLI enable-flags must be rejected on a distributed_cache mount.
 func TestNormalizeDistCacheConfig_RejectsSiblingL1CLIFlags(t *testing.T) {
 	for _, key := range []string{"streaming", "block-cache", "preload"} {
 		t.Run(key, func(t *testing.T) {
@@ -618,14 +633,14 @@ distributed_cache:
 `)
 			require.NoError(t, mountCmd.Flags().Parse([]string{"--" + key + "=true"}))
 
-			err := normalizeDistCacheConfig(nil)
+			err := normalizeDistCacheConfig([]string{"libfuse", "distributed_cache", "azstorage"})
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), key)
 		})
 	}
 }
 
-// An explicit `--<flag>=false` alongside a distributed-cache discovery-endpoint must NOT reject.
+// An explicit `--<flag>=false` on a distributed_cache mount must NOT reject.
 func TestNormalizeDistCacheConfig_DisabledSiblingL1CLIFlagsAreOK(t *testing.T) {
 	for _, key := range []string{"streaming", "block-cache", "preload"} {
 		t.Run(key, func(t *testing.T) {
@@ -638,13 +653,13 @@ distributed_cache:
 `)
 			require.NoError(t, mountCmd.Flags().Parse([]string{"--" + key + "=false"}))
 
-			err := normalizeDistCacheConfig(nil)
+			err := normalizeDistCacheConfig([]string{"libfuse", "distributed_cache", "azstorage"})
 			assert.NoError(t, err)
 		})
 	}
 }
 
-func TestNormalizeDistCacheConfig_RejectsExplicitComponentsWithoutDistCache(t *testing.T) {
+func TestNormalizeDistCacheConfig_IgnoresSectionWhenComponentsOmitDistCache(t *testing.T) {
 	setDistCacheYAML(t, `
 read-only: true
 distributed_cache:
@@ -657,11 +672,10 @@ components:
 	defer viper.Reset()
 
 	err := normalizeDistCacheConfig([]string{"libfuse", "attr_cache", "azstorage"})
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "distributed_cache is missing from components")
+	assert.NoError(t, err)
 }
 
-func TestNormalizeDistCacheConfig_ServerListWithExplicitComponentsWithoutDistCache(t *testing.T) {
+func TestNormalizeDistCacheConfig_IgnoresServerListWhenComponentsOmitDistCache(t *testing.T) {
 	setDistCacheYAML(t, `
 read-only: true
 distributed_cache:
@@ -670,8 +684,7 @@ distributed_cache:
 	defer viper.Reset()
 
 	err := normalizeDistCacheConfig([]string{"libfuse", "azstorage"})
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "distributed_cache is missing from components")
+	assert.NoError(t, err)
 }
 
 func TestNormalizeDistCacheConfig_AcceptsExplicitComponentsWithDistCache(t *testing.T) {
