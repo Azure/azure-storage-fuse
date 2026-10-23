@@ -372,8 +372,8 @@ func isSyslogFamily(loggerType string) bool {
 func crashOutputTarget(loggerType, logFilePath string) string {
 	switch loggerType {
 	case "base":
-		// BaseLogger may be configured with "stdout" or no file at all; nothing useful to also write to.
-		if logFilePath == "" || logFilePath == "stdout" {
+		// BaseLogger may be configured with "stdout"/"/dev/stdout" or no file at all; nothing useful to also write to.
+		if isStreamDestination(logFilePath) {
 			return ""
 		}
 		return logFilePath

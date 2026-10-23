@@ -30,6 +30,11 @@ require (
 )
 
 require (
+	github.com/nearora-msft/dist-cache-client-go v0.1.1-0.20261009101416-5c6cc71245fd
+	google.golang.org/protobuf v1.36.11
+)
+
+require (
 	github.com/Azure/azure-sdk-for-go/sdk/storage/internal v0.1.0 // indirect
 	github.com/apache/arrow-go/v18 v18.7.0 // indirect
 	github.com/goccy/go-json v0.10.6 // indirect
