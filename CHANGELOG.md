@@ -1,3 +1,7 @@
+## Unreleased
+**Bug Fixes**
+- Stop logging raw mount command-line arguments, which can contain secure-config passphrases or other credentials. Prefer `BLOBFUSE2_SECURE_CONFIG_PASSPHRASE` over `--passphrase` to avoid exposing the key in process arguments.
+
 ## 2.5.6 (2026-10-23)
 **Breaking Changes**
 - File and directory names that contain a backslash (`\`) are now rejected with `EINVAL`. Azure Storage treats `\` as `/`, so earlier versions created a different path than the one requested: for example, `touch 'a\b'` created a directory `a` containing a file `b`. ([PR #2395](https://github.com/Azure/azure-storage-fuse/pull/2395))
