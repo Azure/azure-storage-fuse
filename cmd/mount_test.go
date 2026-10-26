@@ -468,6 +468,50 @@ func (suite *mountTestSuite) TestUndefinedLibfuseOption() {
 	suite.assert.Contains(op, "Invalid FUSE options")
 }
 
+func (suite *mountTestSuite) TestDefaultPermissionsOption() {
+	for _, tt := range []struct {
+		name    string
+		option  string
+		enabled bool
+		invalid bool
+	}{
+		{name: "omitted"},
+		{name: "enabled", option: "default_permissions", enabled: true},
+		{name: "explicit true", option: "default_permissions=true", enabled: true},
+		{name: "whitespace", option: " default_permissions ", enabled: true},
+		{name: "false", option: "default_permissions=false", invalid: true},
+		{name: "empty value", option: "default_permissions=", invalid: true},
+		{name: "invalid value", option: "default_permissions=invalid", invalid: true},
+		{name: "invalid suffix", option: "default_permissions_extra", invalid: true},
+		{name: "multiple values", option: "default_permissions=true=false", invalid: true},
+	} {
+		suite.Run(tt.name, func() {
+			defer suite.cleanupTest()
+			options = mountOptions{}
+			dir := suite.T().TempDir()
+			configFile := filepath.Join(dir, "config.yaml")
+			suite.Require().NoError(os.WriteFile(configFile, []byte("logging:\n  level: invalid-level\ncomponents:\n  - libfuse\n"), 0600))
+			mountDir := filepath.Join(dir, "mount")
+			suite.Require().NoError(os.Mkdir(mountDir, 0700))
+			args := []string{"mount", mountDir, "--config-file=" + configFile, "--disable-version-check"}
+			if tt.option != "" {
+				args = append(args, "-o", tt.option)
+			}
+
+			out, err := executeCommandC(rootCmd, args...)
+			suite.Require().Error(err)
+			if tt.invalid {
+				suite.Assert().Contains(out, "Invalid FUSE options")
+				return
+			}
+			suite.Assert().Contains(out, "invalid log level")
+			var enabled bool
+			suite.Require().NoError(config.UnmarshalKey("lfuse.default-permissions", &enabled))
+			suite.Assert().Equal(tt.enabled, enabled)
+		})
+	}
+}
+
 // mount failure test where umask value is invalid
 func (suite *mountTestSuite) TestInvalidUmaskValue() {
 	defer suite.cleanupTest()
@@ -573,6 +617,10 @@ func (suite *mountTestSuite) TestFuseOptions() {
 		{opt: "negative_timeout=10", ignore: false},
 		{opt: "ro", ignore: false},
 		{opt: "allow_root", ignore: false},
+		{opt: "default_permissions", ignore: false},
+		{opt: "default_permissions=true", ignore: false},
+		{opt: "default_permissions=false", ignore: false},
+		{opt: "default_permissions_extra", ignore: false},
 		{opt: "umask=777", ignore: false},
 		{opt: "uid=1000", ignore: false},
 		{opt: "gid=1000", ignore: false},

@@ -111,6 +111,7 @@ func (lf *Libfuse) convertConfig() *C.fuse_options_t {
 	fuse_opts.readonly = C.bool(lf.readOnly)
 	fuse_opts.allow_other = C.bool(lf.allowOther)
 	fuse_opts.allow_root = C.bool(lf.allowRoot)
+	fuse_opts.default_permissions = C.bool(lf.defaultPermissions)
 	fuse_opts.trace_enable = C.bool(lf.traceEnable)
 	fuse_opts.non_empty = C.bool(lf.nonEmptyMount)
 	fuse_opts.umask = C.int(lf.umask)
@@ -209,6 +210,10 @@ func populateFuseArgs(opts *C.fuse_options_t, args *C.fuse_args_t) (*C.fuse_opti
 
 	if opts.allow_root {
 		options += ",allow_root"
+	}
+
+	if opts.default_permissions {
+		options += ",default_permissions"
 	}
 
 	if opts.non_empty {

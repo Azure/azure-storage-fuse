@@ -297,6 +297,8 @@ func parseFuseConfig(config []string) error {
 			bfv2AllowOtherOption = true
 		} else if v == "allow_other=false" {
 			bfv2AllowOtherOption = false
+		} else if v == "default_permissions" || v == "default_permissions=true" {
+			bfv2FuseConfigOptions.DefaultPermissions = true
 		} else if v == "nonempty" {
 			bfv2NonEmptyMountOption = true
 		} else if strings.HasPrefix(v, "attr_timeout=") {

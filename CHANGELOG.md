@@ -1,3 +1,7 @@
+## Unreleased
+**Bug Fixes**
+- Honor explicitly requested `-o default_permissions` kernel ownership and mode checks in both fuse2 and fuse3 mounts, and preserve the option during `mountv1` configuration conversion. The equivalent `libfuse.default-permissions` configuration defaults to false and is distinct from the numeric `default-permission` setting.
+
 ## 2.5.6 (2026-10-23)
 **Breaking Changes**
 - File and directory names that contain a backslash (`\`) are now rejected with `EINVAL`. Azure Storage treats `\` as `/`, so earlier versions created a different path than the one requested: for example, `touch 'a\b'` created a directory `a` containing a file `b`. ([PR #2395](https://github.com/Azure/azure-storage-fuse/pull/2395))
