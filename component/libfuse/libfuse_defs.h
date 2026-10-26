@@ -83,6 +83,7 @@ typedef struct fuse_options
     bool    readonly;
     bool    allow_other;
     bool    allow_root;
+    bool    default_permissions;
     bool    trace_enable;
     bool    non_empty;
     int     umask;

@@ -376,6 +376,8 @@ var mountCmd = &cobra.Command{
 					continue
 				} else if v == "allow_other" || v == "allow_other=true" {
 					config.Set("allow-other", "true")
+				} else if v == "default_permissions" || v == "default_permissions=true" {
+					config.Set("lfuse.default-permissions", "true")
 				} else if strings.HasPrefix(v, "attr_timeout=") {
 					config.Set("lfuse.attribute-expiration-sec", parameter[1])
 				} else if strings.HasPrefix(v, "entry_timeout=") {

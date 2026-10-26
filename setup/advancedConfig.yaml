@@ -68,6 +68,7 @@ components:
 # Libfuse configuration
 libfuse:
   default-permission: 0777|0666|0644|0444 <default permissions to be presented for block blobs>
+  default-permissions: true|false <enable kernel ownership and mode checks, also available as -o default_permissions. Distinct from default-permission. Default - false>
   attribute-expiration-sec: <time kernel can cache inode attributes (in sec). Default - 120 sec>
   entry-expiration-sec: <time kernel can cache directory listing attributes (in sec). Default - 120 sec>
   negative-entry-expiration-sec: <time kernel can cache attributes of non existent paths (in sec). Default - 120 sec>
