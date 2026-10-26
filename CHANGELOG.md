@@ -1,7 +1,11 @@
 ## 2.5.7 (2026-10-26)
+**Breaking Changes**
+
+**Features**
+
+**Bug Fixes**
+
 **Other Changes**
-- Update `github.com/prometheus/procfs` from 0.22.0 to 0.23.0. ([PR #2431](https://github.com/Azure/azure-storage-fuse/pull/2431))
-- Increase the release publish job timeout to 360 minutes to allow package publishing to complete. ([PR #2428](https://github.com/Azure/azure-storage-fuse/pull/2428))
 
 ## 2.5.6 (2026-10-23)
 **Breaking Changes**
