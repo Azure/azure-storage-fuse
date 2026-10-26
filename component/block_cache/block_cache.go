@@ -810,13 +810,29 @@ func (bc *BlockCache) startPrefetch(handle *handlemap.Handle, index uint64, pref
 				i++
 				//This list may contain dirty blocks which are yet to be committed.
 				select {
-				case _, ok := <-block.state:
+				case status, ok := <-block.state:
 					// As we are first reader of this block here its important to unblock any future readers on this block
 					if ok {
-						block.flags.Clear(BlockFlagDownloading)
 						block.Unblock()
-						// Block is downloaded so it's safe to ready it for reuse
-						block.node = handle.Buffers.Cooked.PushBack(block)
+						switch status {
+						case BlockStatusDownloaded:
+							block.flags.Clear(BlockFlagDownloading)
+							block.flags.Set(BlockFlagSynced)
+							block.node = handle.Buffers.Cooked.PushBack(block)
+						case BlockStatusDownloadFailed:
+							log.Err("BlockCache::startPrefetch : Failed to download block %v for %v=>%s", block.id, handle.ID, handle.Path)
+							bc.releaseDownloadFailedBlock(handle, block)
+						case BlockStatusUploaded:
+							block.flags.Clear(BlockFlagUploading)
+							block.node = handle.Buffers.Cooked.PushBack(block)
+						case BlockStatusUploadFailed:
+							log.Err("BlockCache::startPrefetch : Failed to upload block %v for %v=>%s", block.id, handle.ID, handle.Path)
+							block.flags.Clear(BlockFlagUploading)
+							block.node = handle.Buffers.Cooking.PushBack(block)
+						default:
+							log.Err("BlockCache::startPrefetch : Unexpected block status %v for %v=>%s", status, handle.ID, handle.Path)
+							block.node = handle.Buffers.Cooking.PushBack(block)
+						}
 					} else {
 						block.node = handle.Buffers.Cooking.PushBack(block)
 					}
