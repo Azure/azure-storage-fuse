@@ -1,4 +1,4 @@
-## 2.5.7 (2026-10-26)
+## 2.5.7 (Unreleased)
 **Breaking Changes**
 
 **Features**
