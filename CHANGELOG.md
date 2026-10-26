@@ -1,3 +1,12 @@
+## 2.5.7 (Unreleased)
+**Breaking Changes**
+
+**Features**
+
+**Bug Fixes**
+
+**Other Changes**
+
 ## 2.5.6 (2026-10-23)
 **Breaking Changes**
 - File and directory names that contain a backslash (`\`) are now rejected with `EINVAL`. Azure Storage treats `\` as `/`, so earlier versions created a different path than the one requested: for example, `touch 'a\b'` created a directory `a` containing a file `b`. ([PR #2395](https://github.com/Azure/azure-storage-fuse/pull/2395))
