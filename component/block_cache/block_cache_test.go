@@ -35,6 +35,7 @@ package block_cache
 
 import (
 	"bytes"
+	"container/list"
 	"context"
 	"crypto/md5"
 	"encoding/base64"
@@ -56,9 +57,12 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/component/loopback"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
+	"github.com/golang/mock/gomock"
 	"github.com/pbnjay/memory"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -2964,6 +2968,114 @@ func (suite *blockCacheTestSuite) TestReadCommittedLastBlocksOverwrite() {
 	_, err = os.Stat(storagePath)
 	suite.assert.NoError(err)
 	suite.assert.Equal(h.Size, int64((15*_1MB)+(_1MB/2)))
+}
+
+func TestStartPrefetchCompletionStatus(t *testing.T) {
+	require.NoError(t, log.SetDefaultLogger("silent", common.LogConfig{}))
+
+	tests := []struct {
+		name         string
+		status       int
+		flags        []uint64
+		closed       bool
+		wantCooked   bool
+		wantReleased bool
+	}{
+		{name: "failed download", status: BlockStatusDownloadFailed, flags: []uint64{BlockFlagDownloading, BlockFlagFailed}, wantReleased: true},
+		{name: "completed download", status: BlockStatusDownloaded, flags: []uint64{BlockFlagDownloading}, wantCooked: true},
+		{name: "pending download", flags: []uint64{BlockFlagDownloading}},
+		{name: "dirty block", flags: []uint64{BlockFlagDirty}, closed: true},
+		{name: "pending upload", flags: []uint64{BlockFlagUploading, BlockFlagDirty}},
+		{name: "failed upload", status: BlockStatusUploadFailed, flags: []uint64{BlockFlagUploading, BlockFlagDirty, BlockFlagFailed}},
+		{name: "completed upload", status: BlockStatusUploaded, flags: []uint64{BlockFlagUploading, BlockFlagSynced}, wantCooked: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pool := &BlockPool{resetBlockCh: make(chan *Block, int(MIN_PREFETCH)+1)}
+			bc := &BlockCache{blockSize: 8, blockPool: pool}
+			handle := handlemap.NewHandle("completion-status")
+			handle.Size = int64(MIN_PREFETCH+1) * int64(bc.blockSize)
+			handle.OptCnt = MIN_RANDREAD + 1
+			handle.Buffers = &handlemap.Buffers{Cooked: list.New(), Cooking: list.New()}
+
+			for id := int64(0); id < int64(MIN_PREFETCH); id++ {
+				block := &Block{data: []byte("verified")}
+				block.ReUse()
+				block.id = id
+				block.Unblock()
+				block.flags.Set(BlockFlagSynced)
+				block.node = handle.Buffers.Cooked.PushBack(block)
+				handle.SetValue(fmt.Sprint(id), block)
+			}
+
+			target := &Block{data: []byte("rejected")}
+			target.ReUse()
+			target.id = int64(MIN_PREFETCH)
+			target.offset = uint64(target.id) * bc.blockSize
+			key := fmt.Sprint(target.id)
+			offset := target.offset
+			for _, flag := range tt.flags {
+				target.flags.Set(flag)
+			}
+			if tt.status != 0 {
+				target.Ready(tt.status)
+			}
+			if tt.closed {
+				target.Unblock()
+			}
+			target.node = handle.Buffers.Cooking.PushBack(target)
+			handle.SetValue(key, target)
+
+			// The target is last, so the old cleanup would retain even a failed
+			// download among the five most recent cooked blocks.
+			require.NoError(t, bc.startPrefetch(handle, 1, false))
+
+			value, found := handle.GetValue(key)
+			if tt.wantReleased {
+				require.False(t, found)
+				require.Nil(t, target.node)
+				require.Len(t, pool.resetBlockCh, 1)
+				require.Same(t, target, <-pool.resetBlockCh)
+
+				mock := internal.NewMockComponent(gomock.NewController(t))
+				mock.EXPECT().GetAttr(internal.GetAttrOptions{Name: handle.Path}).Return(nil, syscall.EIO)
+				bc.SetNextComponent(mock)
+				block, err := bc.getBlock(handle, offset)
+				require.ErrorIs(t, err, syscall.EIO)
+				require.Nil(t, block)
+			} else {
+				require.True(t, found)
+				require.Same(t, target, value)
+				require.NotNil(t, target.node)
+				require.Equal(t, []byte("rejected"), target.data)
+				if tt.wantCooked {
+					require.Equal(t, 0, handle.Buffers.Cooking.Len())
+					require.False(t, target.flags.IsSet(BlockFlagDownloading))
+					require.False(t, target.flags.IsSet(BlockFlagUploading))
+					require.True(t, target.flags.IsSet(BlockFlagSynced))
+					block, err := bc.getBlock(handle, offset)
+					require.NoError(t, err)
+					require.Same(t, target, block)
+					require.Len(t, pool.resetBlockCh, 1)
+					<-pool.resetBlockCh
+				} else {
+					require.Equal(t, 1, handle.Buffers.Cooking.Len())
+					require.Same(t, target, handle.Buffers.Cooking.Front().Value)
+					require.Empty(t, pool.resetBlockCh)
+					if tt.status == BlockStatusUploadFailed {
+						require.True(t, target.IsDirty())
+						require.True(t, target.IsFailed())
+						require.False(t, target.flags.IsSet(BlockFlagUploading))
+					}
+				}
+			}
+
+			require.Equal(t, int(MIN_PREFETCH), handle.Buffers.Cooked.Len())
+			require.NoError(t, bc.startPrefetch(handle, 1, false))
+			require.Empty(t, pool.resetBlockCh, "cleanup must not release a block twice")
+		})
+	}
 }
 
 // In order for 'go test' to run this suite, we need to create
