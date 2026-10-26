@@ -1,3 +1,8 @@
+## 2.5.7 (2026-10-26)
+**Other Changes**
+- Update `github.com/prometheus/procfs` from 0.22.0 to 0.23.0. ([PR #2431](https://github.com/Azure/azure-storage-fuse/pull/2431))
+- Increase the release publish job timeout to 360 minutes to allow package publishing to complete. ([PR #2428](https://github.com/Azure/azure-storage-fuse/pull/2428))
+
 ## 2.5.6 (2026-10-23)
 **Breaking Changes**
 - File and directory names that contain a backslash (`\`) are now rejected with `EINVAL`. Azure Storage treats `\` as `/`, so earlier versions created a different path than the one requested: for example, `touch 'a\b'` created a directory `a` containing a file `b`. ([PR #2395](https://github.com/Azure/azure-storage-fuse/pull/2395))
