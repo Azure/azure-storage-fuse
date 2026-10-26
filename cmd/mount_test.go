@@ -436,6 +436,52 @@ func (suite *mountTestSuite) TestDirectIODisableKernelCacheCombo() {
 	suite.assert.Contains(op, "direct-io and disable-kernel-cache cannot be enabled together")
 }
 
+func (suite *mountTestSuite) TestMountDoesNotLogPassphrase() {
+	const passphrase = "synthetic-key-01"
+	for _, level := range []string{"LOG_INFO", "LOG_DEBUG", "LOG_WARNING"} {
+		for _, form := range []string{"equals", "separate", "environment"} {
+			suite.Run(level+"/"+form, func() {
+				defer suite.cleanupTest()
+				options = mountOptions{}
+				dir := suite.T().TempDir()
+				mountDir := filepath.Join(dir, "mount")
+				suite.Require().NoError(os.Mkdir(mountDir, 0700))
+				configFile := filepath.Join(dir, "config"+SecureConfigExtension)
+				ciphertext, err := common.EncryptData([]byte("components:\n  - log_test_missing_component\n"), []byte(passphrase))
+				suite.Require().NoError(err)
+				suite.Require().NoError(os.WriteFile(configFile, ciphertext, 0600))
+				logFile := filepath.Join(dir, "mount.log")
+				args := []string{
+					"mount", mountDir, "--config-file=" + configFile,
+					"--log-type=base", "--log-level=" + level,
+					"--log-file-path=" + logFile, "--default-working-dir=" + dir,
+					"--disable-version-check",
+				}
+				switch form {
+				case "equals":
+					args = append(args, "--passphrase="+passphrase)
+				case "separate":
+					args = append(args, "--passphrase", passphrase)
+				case "environment":
+					suite.T().Setenv(SecureConfigEnvName, passphrase)
+				}
+				oldArgs := os.Args
+				os.Args = append([]string{"blobfuse2"}, args...)
+				defer func() { os.Args = oldArgs }()
+
+				out, err := executeCommandC(rootCmd, args...)
+				suite.Require().ErrorContains(err, "component log_test_missing_component not registered")
+				suite.Assert().NotContains(out, passphrase)
+				logged, err := os.ReadFile(logFile)
+				suite.Require().NoError(err)
+				suite.Assert().Contains(string(logged), "Starting Blobfuse2 Mount")
+				suite.Assert().NotContains(string(logged), passphrase)
+				suite.Assert().NotContains(string(logged), "Mount Command:")
+			})
+		}
+	}
+}
+
 // mount failure test where a libfuse option is incorrect
 func (suite *mountTestSuite) TestInvalidLibfuseOption() {
 	defer suite.cleanupTest()

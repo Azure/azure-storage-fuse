@@ -510,7 +510,6 @@ var mountCmd = &cobra.Command{
 		var pipeline *internal.Pipeline
 
 		log.Crit("Starting Blobfuse2 Mount : %s on [%s]", common.Blobfuse2Version, common.GetCurrentDistro())
-		log.Info("Mount Command: %s", os.Args)
 		log.Crit("Logging level set to : %s", logLevel.String())
 		log.Crit("Log options: %+v", options.Logging)
 		log.Debug("Mount allowed on nonempty path : %v", options.NonEmpty)
@@ -1005,7 +1004,7 @@ func init() {
 		"Encrypt auto generated config file for each container")
 
 	mountCmd.PersistentFlags().StringVar(&options.PassPhrase, "passphrase", "",
-		"Key to decrypt config file. Can also be specified by env-variable BLOBFUSE2_SECURE_CONFIG_PASSPHRASE.\nKey length shall be 16 (AES-128), 24 (AES-192), or 32 (AES-256) bytes in length.")
+		"Key to decrypt config file. Prefer env-variable BLOBFUSE2_SECURE_CONFIG_PASSPHRASE to keep the key out of process arguments.\nKey length shall be 16 (AES-128), 24 (AES-192), or 32 (AES-256) bytes in length.")
 
 	mountCmd.PersistentFlags().String("log-type", "syslog", "Type of logger to be used by the system. Set to syslog by default. Allowed values are silent|syslog|base.")
 	config.BindPFlag("logging.type", mountCmd.PersistentFlags().Lookup("log-type"))
