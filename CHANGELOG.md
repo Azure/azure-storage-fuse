@@ -4,6 +4,7 @@
 **Features**
 
 **Bug Fixes**
+- Follow listing continuation tokens when checking whether a directory is empty. An empty page with more results must not allow removal of a non-empty directory, especially on ADLS accounts where directory deletion is recursive.
 
 **Other Changes**
 
