@@ -960,6 +960,13 @@ func libfuse_release(path *C.char, fi *C.fuse_file_info_t) C.int {
 	markNativeWritesDirty(fileHandle, handle)
 
 	err := fuseFS.NextComponent().ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
+
+	handlemap.Delete(handle.ID)
+	C.release_native_file_object(fi)
+
+	// decrement open file handles count
+	libfuseStatsCollector.UpdateStats(stats_manager.Decrement, openHandles, (int64)(1))
+
 	if err != nil {
 		log.Err("Libfuse::libfuse_release : error closing file %s, handle: %d [%s]", handle.Path, handle.ID, err.Error())
 		switch err {
@@ -971,12 +978,6 @@ func libfuse_release(path *C.char, fi *C.fuse_file_info_t) C.int {
 			return -C.EIO
 		}
 	}
-
-	handlemap.Delete(handle.ID)
-	C.release_native_file_object(fi)
-
-	// decrement open file handles count
-	libfuseStatsCollector.UpdateStats(stats_manager.Decrement, openHandles, (int64)(1))
 
 	return 0
 }

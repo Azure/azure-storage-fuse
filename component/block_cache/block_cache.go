@@ -526,16 +526,17 @@ func (bc *BlockCache) releaseFileInternal(options internal.ReleaseFileOptions) e
 
 	defer bc.fileCloseOpt.Done()
 
+	var err error
 	if options.Handle.Dirty() {
 		log.Info("BlockCache::ReleaseFileInternal : name=%s, handle=%d dirty. Flushing the file.", options.Handle.Path, options.Handle.ID)
-		err := bc.FlushFile(internal.FlushFileOptions{Handle: options.Handle, CloseInProgress: true}) //nolint
+		err = bc.FlushFile(internal.FlushFileOptions{Handle: options.Handle, CloseInProgress: true}) //nolint
 		if err != nil {
 			log.Err("BlockCache::ReleaseFileInternal : failed to flush file %s", options.Handle.Path)
-			return err
 		}
 	}
 
 	// Release the blocks that are in use and wipe out handle map
+	// If FlushFile failed above then unflushed data is lost
 	options.Handle.Cleanup()
 
 	// Release the buffers which are still under download after they have been written
@@ -565,7 +566,7 @@ func (bc *BlockCache) releaseFileInternal(options internal.ReleaseFileOptions) e
 	}
 	options.Handle.Buffers.Cooked = nil
 
-	return nil
+	return err
 }
 
 func (bc *BlockCache) getBlockSize(fileSize uint64, block *Block) uint64 {

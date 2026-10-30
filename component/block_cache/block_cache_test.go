@@ -2348,6 +2348,32 @@ func (suite *blockCacheTestSuite) TestBlockFailOverwrite() {
 	suite.assert.Equal(int64(0), fs.Size())
 }
 
+// TestReleaseFileUploadFailure : release returns the blocks of the file to the pool even if the upload fails
+func (suite *blockCacheTestSuite) TestReleaseFileUploadFailure() {
+	tobj, err := setupPipeline("")
+	defer tobj.cleanupPipeline()
+	suite.assert.NoError(err)
+
+	err = tobj.blockCache.CreateDir(internal.CreateDirOptions{Name: "dir", Mode: 0777})
+	suite.assert.NoError(err)
+	h, err := tobj.blockCache.CreateFile(internal.CreateFileOptions{Name: "dir/file", Mode: 0777})
+	suite.assert.NoError(err)
+
+	usage := tobj.blockCache.blockPool.Usage()
+	_, err = tobj.blockCache.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: 0, Data: dataBuff[:_1MB]})
+	suite.assert.NoError(err)
+	suite.assert.Greater(tobj.blockCache.blockPool.Usage(), usage)
+
+	// Deleting the directory will make the upload fail since loopback's StageData writes each block as a file next to dir/file
+	err = os.RemoveAll(filepath.Join(tobj.fake_storage_path, "dir"))
+	suite.assert.NoError(err)
+
+	err = tobj.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h})
+	suite.assert.Error(err)
+	suite.assert.Eventually(func() bool { return tobj.blockCache.blockPool.Usage() == usage },
+		5*time.Second, 10*time.Millisecond, "blocks of the file must be returned to the pool")
+}
+
 func (suite *blockCacheTestSuite) TestBlockDownloadOffsetGreaterThanFileSize() {
 	cfg := "block_cache:\n  block-size-mb: 1\n  mem-size-mb: 20\n  prefetch: 12\n  parallelism: 10"
 	tobj, err := setupPipeline(cfg)

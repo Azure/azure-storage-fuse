@@ -4,6 +4,7 @@
 **Features**
 
 **Bug Fixes**
+- Free file handle on close even when upload fails, to prevent a memory leak, avoid pinning files in file_cache, and free pool buffers in block_cache. ([PR #2427](https://github.com/Azure/azure-storage-fuse/pull/2427))
 
 **Other Changes**
 
