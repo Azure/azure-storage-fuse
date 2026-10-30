@@ -2872,6 +2872,297 @@ func (suite *fileCacheTestSuite) TestHardLimitOnSize() {
 	suite.assert.Error(err)
 }
 
+func (suite *fileCacheTestSuite) inCache(rel string) bool {
+	_, err := os.Stat(filepath.Join(suite.cache_path, rel))
+	return err == nil
+}
+
+func (suite *fileCacheTestSuite) requireRemovedFromCache(rel string) {
+	suite.Require().Eventually(func() bool { return !suite.inCache(rel) }, 5*time.Second, 10*time.Millisecond,
+		"%s should be removed from the cache", rel)
+	suite.Require().True(suite.inCache(""), "the cache directory must not be removed")
+}
+
+// writeFile creates name through the file cache, writes data to it and closes it. Unlike Azure Storage, loopbackfs
+// needs the file's directory to exist in storage, so it is created first.
+func (suite *fileCacheTestSuite) writeFile(name string, data []byte) {
+	suite.Require().NoError(os.MkdirAll(filepath.Dir(filepath.Join(suite.fake_storage_path, name)), 0777))
+	h, err := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: name, Mode: 0777})
+	suite.Require().NoError(err)
+	_, err = suite.fileCache.WriteFile(&internal.WriteFileOptions{Handle: h, Data: data})
+	suite.Require().NoError(err)
+	suite.Require().NoError(suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h}))
+}
+
+// With a zero timeout, closing a file deletes its cached copy and the directories it leaves empty.
+func (suite *fileCacheTestSuite) TestReleaseRemovesEmptyDirectories() {
+	defer suite.cleanupTest()
+
+	suite.writeFile("a/b/c/file", []byte("data"))
+
+	suite.requireRemovedFromCache("a")
+	data, err := os.ReadFile(filepath.Join(suite.fake_storage_path, "a/b/c/file"))
+	suite.NoError(err)
+	suite.Equal("data", string(data))
+}
+
+// Evicting a file when its timeout expires removes the directories it leaves empty.
+func (suite *fileCacheTestSuite) TestTimeoutEvictionRemovesEmptyDirectories() {
+	defer suite.cleanupTest()
+	suite.cleanupTest()
+	config := fmt.Sprintf("file_cache:\n  path: %s\n  offload-io: true\n  timeout-sec: 1\n\nloopbackfs:\n  path: %s",
+		suite.cache_path, suite.fake_storage_path)
+	suite.setupTestHelper(config)
+
+	suite.writeFile("a/b/file", []byte("data"))
+	suite.writeFile("a/keep/file", []byte("data"))
+	suite.True(suite.inCache("a/b/file"))
+
+	// Keep the second file open so it is not evicted, which must keep its directories.
+	h, err := suite.fileCache.OpenFile(internal.OpenFileOptions{Name: "a/keep/file", Flags: os.O_RDONLY, Mode: 0777})
+	suite.Require().NoError(err)
+	defer func() { suite.NoError(suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h})) }()
+
+	suite.requireRemovedFromCache("a/b")
+	suite.True(suite.inCache("a/keep/file"))
+}
+
+func (suite *fileCacheTestSuite) TestDeleteFileRemovesEmptyDirectories() {
+	defer suite.cleanupTest()
+	suite.cleanupTest()
+	config := fmt.Sprintf("file_cache:\n  path: %s\n  offload-io: true\n  timeout-sec: 1000\n\nloopbackfs:\n  path: %s",
+		suite.cache_path, suite.fake_storage_path)
+	suite.setupTestHelper(config)
+
+	suite.writeFile("a/b/file", []byte("data"))
+	suite.writeFile("a/other", []byte("data"))
+	suite.True(suite.inCache("a/b/file"))
+
+	suite.Require().NoError(suite.fileCache.DeleteFile(internal.DeleteFileOptions{Name: "a/b/file"}))
+
+	suite.requireRemovedFromCache("a/b")
+	suite.True(suite.inCache("a/other"))
+}
+
+func (suite *fileCacheTestSuite) TestRenameFileRemovesEmptySourceDirectories() {
+	defer suite.cleanupTest()
+	suite.cleanupTest()
+	config := fmt.Sprintf("file_cache:\n  path: %s\n  offload-io: true\n  timeout-sec: 1000\n\nloopbackfs:\n  path: %s",
+		suite.cache_path, suite.fake_storage_path)
+	suite.setupTestHelper(config)
+
+	suite.writeFile("src/dir/file", []byte("data"))
+	suite.Require().NoError(suite.fileCache.RenameFile(internal.RenameFileOptions{Src: "src/dir/file", Dst: "renamed"}))
+
+	suite.requireRemovedFromCache("src")
+	suite.True(suite.inCache("renamed"))
+}
+
+// The cache policy removes a directory left empty by an evicted file only while no file is being created in the
+// cache, so it cannot remove the directory between createLocalFile creating it and creating the file in it.
+func (suite *fileCacheTestSuite) TestEmptyDirectoryRemovalWaitsForFileCreation() {
+	defer suite.cleanupTest()
+	dir := filepath.Join(suite.cache_path, "dir")
+	file := filepath.Join(dir, "evicted")
+	suite.Require().NoError(os.MkdirAll(dir, 0777))
+	suite.Require().NoError(os.WriteFile(file, []byte("data"), 0666))
+
+	// Hold the lock as createLocalFile does while it creates a file in dir.
+	suite.fileCache.dirLock.RLock()
+	suite.fileCache.policy.CachePurge(file)
+	suite.Require().Eventually(func() bool { return !suite.inCache("dir/evicted") }, 5*time.Second, 10*time.Millisecond)
+	suite.Never(func() bool { return !suite.inCache("dir") }, 200*time.Millisecond, 10*time.Millisecond,
+		"the directory was removed while a file was being created in it")
+	suite.fileCache.dirLock.RUnlock()
+
+	suite.requireRemovedFromCache("dir")
+}
+
+// Creating a file, or downloading one that is not cached, waits while the cache policy removes empty directories, so
+// the directory it creates cannot be removed before the file is created in it.
+func (suite *fileCacheTestSuite) TestFileCreationWaitsForEmptyDirectoryRemoval() {
+	defer suite.cleanupTest()
+	suite.Require().NoError(os.MkdirAll(filepath.Join(suite.fake_storage_path, "dir"), 0777))
+	suite.Require().NoError(os.WriteFile(filepath.Join(suite.fake_storage_path, "dir", "remote"), []byte("data"), 0777))
+
+	type result struct {
+		handle *handlemap.Handle
+		err    error
+	}
+	for _, tc := range []struct {
+		name string
+		op   func() (*handlemap.Handle, error)
+	}{
+		{"CreateFile", func() (*handlemap.Handle, error) {
+			return suite.fileCache.CreateFile(internal.CreateFileOptions{Name: "dir/file", Mode: 0777})
+		}},
+		{"OpenFile", func() (*handlemap.Handle, error) {
+			return suite.fileCache.OpenFile(internal.OpenFileOptions{Name: "dir/remote", Flags: os.O_RDONLY, Mode: 0777})
+		}},
+	} {
+		suite.Run(tc.name, func() {
+			suite.Require().NoError(os.RemoveAll(filepath.Join(suite.cache_path, "dir")))
+
+			// Hold the lock as the cache policy does while it removes empty directories.
+			suite.fileCache.dirLock.Lock()
+			created := make(chan result, 1)
+			go func() {
+				h, err := tc.op()
+				created <- result{h, err}
+			}()
+			suite.Never(func() bool { return len(created) > 0 }, 200*time.Millisecond, 10*time.Millisecond,
+				"a file was created while empty directories were being removed")
+			suite.fileCache.dirLock.Unlock()
+
+			select {
+			case r := <-created:
+				suite.Require().NoError(r.err)
+				suite.NoError(suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: r.handle}))
+			case <-time.After(5 * time.Second):
+				suite.FailNow(tc.name + " did not finish")
+			}
+		})
+	}
+}
+
+// Creating a file recreates its directory if the cache policy removed it.
+func (suite *fileCacheTestSuite) TestCreateFileRecreatesRemovedDirectory() {
+	defer suite.cleanupTest()
+
+	suite.writeFile("a/b/first", []byte("data"))
+	suite.requireRemovedFromCache("a")
+	suite.writeFile("a/b/second", []byte("data"))
+
+	data, err := os.ReadFile(filepath.Join(suite.fake_storage_path, "a/b/second"))
+	suite.NoError(err)
+	suite.Equal("data", string(data))
+}
+
+// Files are created and closed in the same directories from many goroutines. With a zero timeout each close removes
+// the file's cached copy and possibly its directories, which races with creating the next file there. No file
+// operation may fail, and the cache is left without any directory.
+func (suite *fileCacheTestSuite) TestConcurrentCreateAndRemoveInSameDirectory() {
+	defer suite.cleanupTest()
+
+	const workers = 16
+	const filesPerWorker = 100
+	for d := range 2 {
+		suite.Require().NoError(os.MkdirAll(filepath.Join(suite.fake_storage_path, "shared", fmt.Sprintf("dir%d", d)), 0777))
+	}
+	var wg sync.WaitGroup
+	var failures atomic.Int32
+	for w := range workers {
+		wg.Go(func() {
+			for i := range filesPerWorker {
+				name := fmt.Sprintf("shared/dir%d/w%d-%d", i%2, w, i)
+				h, err := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: name, Mode: 0777})
+				if err != nil {
+					failures.Add(1)
+					suite.T().Errorf("CreateFile %s: %v", name, err)
+					continue
+				}
+				if err := suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h}); err != nil {
+					failures.Add(1)
+					suite.T().Errorf("ReleaseFile %s: %v", name, err)
+				}
+			}
+		})
+	}
+	wg.Wait()
+
+	suite.Zero(failures.Load())
+	suite.requireRemovedFromCache("shared")
+}
+
+// Like TestConcurrentCreateAndRemoveInSameDirectory, with files also opened from storage: OpenFile downloads a file
+// that is not cached into the same directories, which the cache policy removes when the previous files are evicted.
+// Each open must read the file's own data.
+func (suite *fileCacheTestSuite) TestConcurrentOpenAndRemoveInSameDirectory() {
+	defer suite.cleanupTest()
+
+	const workers = 16
+	const filesPerWorker = 50
+	name := func(w, i int) string { return fmt.Sprintf("shared/dir%d/w%d-%d", i%2, w, i) }
+	for w := range workers {
+		for i := range filesPerWorker {
+			path := filepath.Join(suite.fake_storage_path, name(w, i))
+			suite.Require().NoError(os.MkdirAll(filepath.Dir(path), 0777))
+			suite.Require().NoError(os.WriteFile(path, []byte(name(w, i)), 0777))
+		}
+	}
+
+	var wg sync.WaitGroup
+	var failures atomic.Int32
+	fail := func(format string, args ...any) {
+		failures.Add(1)
+		suite.T().Errorf(format, args...)
+	}
+	for w := range workers {
+		wg.Go(func() {
+			for i := range filesPerWorker {
+				// Half of the workers also create new files in the same directories.
+				if w%2 == 0 {
+					created := fmt.Sprintf("shared/dir%d/new-w%d-%d", i%2, w, i)
+					h, err := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: created, Mode: 0777})
+					if err != nil {
+						fail("CreateFile %s: %v", created, err)
+					} else if err := suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h}); err != nil {
+						fail("ReleaseFile %s: %v", created, err)
+					}
+				}
+
+				h, err := suite.fileCache.OpenFile(internal.OpenFileOptions{Name: name(w, i), Flags: os.O_RDONLY, Mode: 0777})
+				if err != nil {
+					fail("OpenFile %s: %v", name(w, i), err)
+					continue
+				}
+				data := make([]byte, 64)
+				n, err := suite.fileCache.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Data: data})
+				if (err != nil && err != io.EOF) || string(data[:n]) != name(w, i) {
+					fail("ReadInBuffer %s: read %q [%v]", name(w, i), data[:n], err)
+				}
+				if err := suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h}); err != nil {
+					fail("ReleaseFile %s: %v", name(w, i), err)
+				}
+			}
+		})
+	}
+	wg.Wait()
+
+	suite.Zero(failures.Load())
+	suite.requireRemovedFromCache("shared")
+}
+
+// rmdir on a directory checks the local cache with IsDirEmpty, which deletes the empty local directories. The cache
+// policy can remove the same directories at the same time, which must not make IsDirEmpty report the directory as
+// not empty.
+func (suite *fileCacheTestSuite) TestIsDirEmptyWhileCachePolicyRemovesDirectories() {
+	defer suite.cleanupTest()
+	suite.Require().NoError(os.MkdirAll(filepath.Join(suite.fake_storage_path, "dir"), 0777))
+
+	deep := filepath.Join("dir", "d0", "d1", "d2", "d3", "d4", "d5", "d6", "d7")
+	for range 200 {
+		suite.Require().NoError(os.MkdirAll(filepath.Join(suite.cache_path, deep), 0777))
+
+		start := make(chan struct{})
+		var wg sync.WaitGroup
+		wg.Go(func() {
+			<-start
+			removeEmptyParents(suite.cache_path, filepath.Join(suite.cache_path, deep, "file"))
+		})
+		var empty bool
+		wg.Go(func() {
+			<-start
+			empty = suite.fileCache.IsDirEmpty(internal.IsDirEmptyOptions{Name: "dir"})
+		})
+		close(start)
+		wg.Wait()
+
+		suite.Require().True(empty)
+		suite.Require().False(suite.inCache("dir"))
+	}
+}
+
 // create a list of empty directories in local and storage and then try to delete those to validate empty directories
 // are allowed be to deleted but non empty are not
 func (suite *fileCacheTestSuite) TestDeleteDirectory() {
