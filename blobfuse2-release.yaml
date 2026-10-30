@@ -24,6 +24,14 @@ parameters:
     type: boolean
     default: false
 
+  - name: publish_scope
+    displayName: 'PMC destinations (does not limit build/test jobs)'
+    type: string
+    default: all
+    values:
+      - all
+      - azurelinux4
+
   - name: prerelease
     displayName: 'Post as PreRelease'
     type: boolean
@@ -762,6 +770,7 @@ stages:
                 ./publishcontainer.sh $(AZTEST_DOCKER_REG_USER)  $(AZTEST_DOCKER_REG_PWD) mariner-x86_64
               fi
             displayName: "Create and publish container"
+            condition: and(succeeded(), eq('${{ parameters.publish_scope }}', 'all'))
             workingDirectory: $(work_dir)/docker
 
           # publishing the artifacts generated
@@ -869,6 +878,7 @@ stages:
               ./buildcontainer.sh DockerfileARM arm64
               ./publishcontainer.sh $(AZTEST_DOCKER_REG_USER)  $(AZTEST_DOCKER_REG_PWD) arm64
             displayName: "Create and publish ARM container"
+            condition: and(succeeded(), eq('${{ parameters.publish_scope }}', 'all'))
             workingDirectory: $(work_dir)/docker
 
           # publishing the artifacts generated
@@ -1856,7 +1866,7 @@ stages:
               sudo apt install dotnet-sdk-3.1 -y
             displayName: "Update dependencies"
 
-          - ${{ if eq(parameters.post_release, true) }}:
+          - ${{ if and(eq(parameters.post_release, true), eq(parameters.publish_scope, 'all')) }}:
               # add release tags & push to github
               - task: GithubRelease@1
                 inputs:
@@ -1896,7 +1906,7 @@ stages:
               value: '$(System.DefaultWorkingDirectory)'
 
           steps:
-            - checkout: none
+            - checkout: self
 
             - task: PipAuthenticate@1
               inputs:
@@ -1929,132 +1939,20 @@ stages:
                 downloadPath: $(Build.ArtifactStagingDirectory)
 
             - script: |
-                blobfuseBinaryName=`ls blobfuse2-* | head -n 1`
-                echo "Binary name: $blobfuseBinaryName"
-                if [[ $blobfuseBinaryName == *"preview"* ]]; then
-                  for f in ./blobfuse2-2*; do mv -v "$f" "${f/blobfuse2-/blobfuse2-preview-}" ; done
-                fi
-                ls -l 
-              displayName: 'Rename preview binaries'
-              workingDirectory: $(Build.ArtifactStagingDirectory)/blobfuse2-signed/
-
-            - script: |
-                cd mariner
-                for f in ./blobfuse2*fuse3*.rpm; do mv -v "$f" "${f/-fuse3./-cm2.}"; done
-                ls -lRt
-                mv blobfuse2*.rpm ..
-                cd ..
-                rm -r mariner/
-              displayName: 'Rename Mariner binaries'
-              workingDirectory: $(Build.ArtifactStagingDirectory)/blobfuse2-signed/
-
-            - script: |
                 ls -lRt $(Build.ArtifactStagingDirectory)
               displayName: 'List Artifacts'
 
             - task: AzureCLI@2
-              displayName: 'Upload packages'
+              displayName: 'Publish selected package repositories'
               inputs:
                 addSpnToEnvironment: true
                 azureSubscription: 'WIF_MI_ESRP_V5'
                 scriptType: bash
                 scriptLocation: inlineScript
                 inlineScript: |
-                  pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" package upload blobfuse2-signed
-                workingDirectory: $(Build.ArtifactStagingDirectory)/
-
-            - script: |
-                wget https://raw.githubusercontent.com/Azure/azure-storage-fuse/`echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`/setup/packages.csv -O packages.csv
-                cat ./packages.csv
-              displayName: 'Fetch packages.csv'
-              workingDirectory: $(Build.ArtifactStagingDirectory)/
-
-            - task: AzureCLI@2
-              displayName: 'Add uploaded packages to repository'
-              inputs:
-                addSpnToEnvironment: true
-                azureSubscription: 'WIF_MI_ESRP_V5'
-                scriptType: bash
-                scriptLocation: inlineScript
-                inlineScript: |
-                  fuse3AmdDeb=`pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload blobfuse2*fuse3.x86_64.deb`
-                  echo "Fuse3 AMD DEB ID: $fuse3AmdDeb"
-
-                  fuse3ArmDeb=`pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload blobfuse2*fuse3.arm64.deb`
-                  echo "Fuse3 ARM DEB ID: $fuse3ArmDeb"
-
-                  fuse3AmdRpm=`pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload blobfuse2*fuse3.x86_64.rpm`
-                  echo "Fuse3 AMD RPM ID: $fuse3AmdRpm"
-
-                  fuse3ArmRpm=`pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload blobfuse2*fuse3.aarch64.rpm`
-                  echo "Fuse3 ARM RPM ID: $fuse3ArmRpm"
-
-                  fuse2AmdDeb=`pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload blobfuse2*fuse2.x86_64.deb`
-                  echo "Fuse2 AMD DEB ID: $fuse2AmdDeb"
-
-                  fuse2AmdRpm=`pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload blobfuse2*fuse2.x86_64.rpm`
-                  echo "Fuse2 AMD RPM ID: $fuse2AmdRpm"
-
-                  fuse34AmdDeb=`pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload blobfuse2*fuse3-4.x86_64.deb`
-                  echo "Fuse3-4 AMD DEB ID: $fuse34AmdDeb"
-
-                  fuse34ArmDeb=`pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload blobfuse2*fuse3-4.arm64.deb`
-                  echo "Fuse3-4 ARM DEB ID: $fuse34ArmDeb"
-
-                  marinerAmdRpmFile=$(ls blobfuse2* | grep 'cm2\.x86_64\.rpm')
-                  marinerFuse3AmdRpm=`pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload blobfuse2*cm2.x86_64.rpm`
-                  echo "Mariner fuse3 AMD RPM ID: $marinerFuse3AmdRpm"
-                  echo "Mariner fuse3 AMD RPM $marinerAmdRpmFile"
-
-                  marinerAarchRpmFile=$(ls blobfuse2* | grep 'cm2\.aarch64\.rpm')
-                  marinerFuse3AarchRpm=`pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload blobfuse2*cm2.aarch64.rpm`
-                  echo "Mariner fuse3 ARM RPM ID: $marinerFuse3AarchRpm"
-                  echo "Mariner fuse3 ARM RPM: $marinerAarchRpmFile"
-
-                  is_preview="false"
-                  echo "##vso[task.setvariable variable=is_preview]$is_preview"
-                  if [[ $marinerAmdRpmFile == *"preview"* ]]; then
-                    is_preview="true"
-                    echo "##vso[task.setvariable variable=is_preview]$is_preview"
-                  fi
-
-                  while IFS=, read -r distro fuseArchType repoName releaseName; do
-
-                    # If the package is preview, publish to mariner preview package
-                    if [[ $distro == *"Mariner-"* ]]; then
-                      if [ $is_preview = "true" ]; then
-                        repoName=$(echo $repoName | sed 's/prod/preview/')
-                      fi
-                    fi
-
-                    echo "Uploading packages for $distro"
-                    pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --add-packages ${!fuseArchType} $repoName $releaseName
-                  done < <(tail -n +3 ../packages.csv)
-                workingDirectory: $(Build.ArtifactStagingDirectory)/blobfuse2-signed/
-
-            - task: AzureCLI@2
-              displayName: 'Publish the repository'
-              inputs:
-                addSpnToEnvironment: true
-                azureSubscription: 'WIF_MI_ESRP_V5'
-                scriptType: bash
-                scriptLocation: inlineScript
-                inlineScript: |
-                  while IFS=, read -r distro fuseArchType repoName releaseName; do
-                    if [[ $fuseArchType == *"Arm"* ]]
-                    then
-                      echo "Skipping for ARM type on $distro"
-                    else
-                      if [[ $distro == *"Mariner-"* ]]; then
-                          if [ "$(is_preview)" = "true" ]; then
-                            repoName=$(echo $repoName | sed 's/prod/preview/')
-                          fi
-                      fi
-                      echo "Repository Name: $repoName"
-
-                      echo "Publishing for $distro"
-                      pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo publish $repoName
-                    fi
-                  done < <(tail -n +3 ../packages.csv)
-                workingDirectory: $(Build.ArtifactStagingDirectory)/blobfuse2-signed/
-
+                  bash "$(Build.SourcesDirectory)/tools/publish-packages.sh" \
+                    "$(Build.SourcesDirectory)/setup/packages.csv" \
+                    "$(Build.ArtifactStagingDirectory)/blobfuse2-signed" \
+                    "$PUBLISH_SCOPE"
+              env:
+                PUBLISH_SCOPE: ${{ parameters.publish_scope }}
