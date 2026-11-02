@@ -61,16 +61,13 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
 )
 
-/* --- IMPORTANT NOTE ---
-In below code lot of places we are doing this sort of conversions:
-		- fi.fh = C.ulong(uintptr(unsafe.Pointer(handle)))
-		- handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fi.fh)))
+/*
+File handles
 
-To open/create calls we need to return back a handle to libfuse which shall be an integer value
-As in blobfuse we maintain handle as an object, instead of returning back a running integer value as handle
-we are converting back the pointer to our handle object to an integer value and sending it to libfuse.
-When read/write/flush/close call comes libfuse will supply this handle value back to blobfuse.
-In those calls we will convert integer value back to a pointer and get our valid handle object back for that file.
+libfuse keeps an integer file handle (fi.fh) for each open file and directory, and passes it back with every request
+on it. C memory must not hold Go pointers, so these file handles refer to the handles in handlemap by their ID:
+  - fi.fh of a directory is the handlemap.HandleID of its handle, see libfuse_opendir
+  - fi.fh of a file points to a native object that holds the handlemap.HandleID of its handle, see newFileHandle
 */
 
 const (
@@ -484,15 +481,35 @@ func libfuse_opendir(path *C.char, fi *C.fuse_file_info_t) C.int {
 	})
 
 	handlemap.Add(handle)
-	fi.fh = C.uint64_t(uintptr(unsafe.Pointer(handle)))
+	fi.fh = C.uint64_t(handle.ID)
 	return 0
 }
 
-// libfuse_releasedir opens handle to given directory
+// loadDirHandle returns the handle of the open directory that fi refers to, and the cache that readdir serves it
+// from. found is false if fi does not refer to an open directory.
+func loadDirHandle(fi *C.fuse_file_info_t) (handle *handlemap.Handle, cache *dirChildCache, found bool) {
+	handle, found = handlemap.Load(handlemap.HandleID(fi.fh))
+	if !found {
+		return nil, nil, false
+	}
+
+	handle.RLock()
+	val, _ := handle.GetValue("cache")
+	handle.RUnlock()
+
+	cache, found = val.(*dirChildCache)
+	return handle, cache, found
+}
+
+// libfuse_releasedir releases the handle of a directory
 //
 //export libfuse_releasedir
 func libfuse_releasedir(path *C.char, fi *C.fuse_file_info_t) C.int {
-	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fi.fh)))
+	handle, found := handlemap.Load(handlemap.HandleID(fi.fh))
+	if !found {
+		log.Err("Libfuse::libfuse2_releasedir : unknown handle %d", fi.fh)
+		return -C.EBADF
+	}
 	log.Trace("Libfuse::libfuse2_releasedir : %s, handle: %d", handle.Path, handle.ID)
 
 	handle.Cleanup()
@@ -504,18 +521,13 @@ func libfuse_releasedir(path *C.char, fi *C.fuse_file_info_t) C.int {
 //
 //export libfuse2_readdir
 func libfuse2_readdir(_ *C.char, buf unsafe.Pointer, filler C.fuse_fill_dir_t, off C.off_t, fi *C.fuse_file_info_t) C.int {
-	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fi.fh)))
-
-	handle.RLock()
-	val, found := handle.GetValue("cache")
-	handle.RUnlock()
-
+	handle, cacheInfo, found := loadDirHandle(fi)
 	if !found {
-		return C.int(C_EIO)
+		log.Err("Libfuse::libfuse2_readdir : unknown handle %d", fi.fh)
+		return -C.EBADF
 	}
 
 	off_64 := uint64(off)
-	cacheInfo := val.(*dirChildCache)
 	if off_64 == 0 ||
 		(off_64 >= cacheInfo.eIndex && cacheInfo.token != "") {
 		attrs, token, err := fuseFS.NextComponent().StreamDir(internal.StreamDirOptions{
@@ -599,16 +611,44 @@ func libfuse_rmdir(path *C.char) C.int {
 
 // File Operations
 
-// newFileHandle : Allocate the native object that libfuse keeps as the handle (fi.fh) of an open file. Reads and
-// writes of a file that file_cache holds locally are served natively on the cached file's descriptor. Any other file
-// gets descriptor 0, so its reads and writes go through the pipeline, see native_file_io.h.
-func newFileHandle(handle *handlemap.Handle) C.uint64_t {
+// newFileHandle hands libfuse the native object of a file that was just opened or created as its file handle (fi.fh),
+// see native_file_io.h. Reads and writes of a file that is cached locally are served natively on the cached file's
+// descriptor. Any other file gets descriptor 0, so its reads and writes go through the pipeline.
+// The handle has to be in handlemap already. newFileHandle returns false if the native object cannot be allocated.
+func newFileHandle(handle *handlemap.Handle, fi *C.fuse_file_info_t) bool {
 	var fd C.uint64_t
 	if handle.Cached() {
 		fd = C.uint64_t(handle.UnixFD)
 	}
-	fobj := C.allocate_native_file_object(fd, C.uint64_t(uintptr(unsafe.Pointer(handle))))
-	return C.uint64_t(uintptr(unsafe.Pointer(fobj)))
+
+	fobj := C.allocate_native_file_object(fd, C.uint64_t(handle.ID))
+	if fobj == nil {
+		return false
+	}
+
+	fi.fh = C.uint64_t(uintptr(unsafe.Pointer(fobj)))
+	return true
+}
+
+// abandonFileHandle releases a file that was opened or created, but could not be handed to libfuse. libfuse does not
+// release a file whose open failed.
+func abandonFileHandle(handle *handlemap.Handle) {
+	if err := fuseFS.NextComponent().ReleaseFile(internal.ReleaseFileOptions{Handle: handle}); err != nil {
+		log.Err("Libfuse::abandonFileHandle : error closing file %s, handle: %d [%s]", handle.Path, handle.ID, err.Error())
+	}
+	handlemap.Delete(handle.ID)
+}
+
+// loadFileHandle returns the native object and the handle of the open file that fi refers to, see newFileHandle.
+// found is false if fi does not refer to an open file.
+func loadFileHandle(fi *C.fuse_file_info_t) (fobj *C.file_handle_t, handle *handlemap.Handle, found bool) {
+	if fi == nil || fi.fh == 0 {
+		return nil, nil, false
+	}
+
+	fobj = C.get_native_file_object(fi)
+	handle, found = handlemap.Load(handlemap.HandleID(fobj.obj))
+	return fobj, handle, found
 }
 
 // libfuse_create creates a file with the specified mode and then opens it.
@@ -630,7 +670,11 @@ func libfuse_create(path *C.char, mode C.mode_t, fi *C.fuse_file_info_t) C.int {
 	}
 
 	handlemap.Add(handle)
-	fi.fh = newFileHandle(handle)
+	if !newFileHandle(handle, fi) {
+		log.Err("Libfuse::libfuse2_create : Failed to allocate the file handle of %s", name)
+		abandonFileHandle(handle)
+		return -C.ENOMEM
+	}
 	log.Trace("Libfuse::libfuse2_create : %s, handle %d", name, handle.ID)
 
 	libfuseStatsCollector.PushEvents(createFile, name, map[string]any{md: fs.FileMode(uint32(mode) & 0xffffffff)})
@@ -677,7 +721,11 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 	}
 
 	handlemap.Add(handle)
-	fi.fh = newFileHandle(handle)
+	if !newFileHandle(handle, fi) {
+		log.Err("Libfuse::libfuse2_open : Failed to allocate the file handle of %s", name)
+		abandonFileHandle(handle)
+		return -C.ENOMEM
+	}
 	log.Trace("Libfuse::libfuse2_open : %s, handle %d", name, handle.ID)
 
 	// increment open file handles count
@@ -686,12 +734,15 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 	return 0
 }
 
-// libfuse_read reads data from an open file that is not served natively, see native_file_io.h
+// libfuse_read reads data from an open file that is not served natively, see native_read_file
 //
 //export libfuse_read
-func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.fuse_file_info_t) C.int {
-	fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
-	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
+func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, handleID C.uint64_t) C.int {
+	handle, found := handlemap.Load(handlemap.HandleID(handleID))
+	if !found {
+		log.Err("Libfuse::libfuse2_read : unknown handle %d", handleID)
+		return -C.EBADF
+	}
 
 	offset := uint64(off)
 	data := (*[1 << 30]byte)(unsafe.Pointer(buf))
@@ -700,6 +751,7 @@ func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.f
 	var bytesRead int
 
 	if handle.Cached() {
+		// A locally cached file is only read here if its descriptor is 0, which native IO takes as not served natively
 		bytesRead, err = syscall.Pread(handle.FD(), data[:size], int64(offset))
 	} else {
 		bytesRead, err = fuseFS.NextComponent().ReadInBuffer(
@@ -721,12 +773,15 @@ func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.f
 	return C.int(bytesRead)
 }
 
-// libfuse_write writes data to an open file that is not served natively, see native_file_io.h
+// libfuse_write writes data to an open file that is not served natively, see native_write_file
 //
 //export libfuse_write
-func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.fuse_file_info_t) C.int {
-	fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
-	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
+func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, handleID C.uint64_t) C.int {
+	handle, found := handlemap.Load(handlemap.HandleID(handleID))
+	if !found {
+		log.Err("Libfuse::libfuse2_write : unknown handle %d", handleID)
+		return -C.EBADF
+	}
 
 	offset := uint64(off)
 	data := (*[1 << 30]byte)(unsafe.Pointer(buf))
@@ -770,8 +825,11 @@ func markNativeWritesDirty(fileHandle *C.file_handle_t, handle *handlemap.Handle
 //
 //export libfuse_flush
 func libfuse_flush(path *C.char, fi *C.fuse_file_info_t) C.int {
-	fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
-	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
+	fileHandle, handle, found := loadFileHandle(fi)
+	if !found {
+		log.Err("Libfuse::libfuse2_flush : unknown file handle")
+		return -C.EBADF
+	}
 
 	log.Trace("Libfuse::libfuse2_flush : %s, handle: %d", handle.Path, handle.ID)
 
@@ -795,8 +853,11 @@ func libfuse_flush(path *C.char, fi *C.fuse_file_info_t) C.int {
 //
 //export libfuse_release
 func libfuse_release(path *C.char, fi *C.fuse_file_info_t) C.int {
-	fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
-	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
+	fileHandle, handle, found := loadFileHandle(fi)
+	if !found {
+		log.Err("Libfuse::libfuse2_release : unknown file handle")
+		return -C.EBADF
+	}
 	log.Trace("Libfuse::libfuse2_release : %s, handle: %d", handle.Path, handle.ID)
 
 	// If the file handle is dirty then file-cache needs to flush this file
@@ -822,12 +883,11 @@ func libfuse_release(path *C.char, fi *C.fuse_file_info_t) C.int {
 //
 //export libfuse_fsync
 func libfuse_fsync(path *C.char, datasync C.int, fi *C.fuse_file_info_t) C.int {
-	if fi.fh == 0 {
-		return C.int(-C.EIO)
+	fileHandle, handle, found := loadFileHandle(fi)
+	if !found {
+		log.Err("Libfuse::libfuse2_fsync : unknown file handle")
+		return -C.EBADF
 	}
-
-	fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
-	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
 	log.Trace("Libfuse::libfuse2_fsync : %s, handle: %d", handle.Path, handle.ID)
 
 	// Let the sync (e.g. with sync-to-flush) see writes that were served natively as well
