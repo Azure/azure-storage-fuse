@@ -123,8 +123,6 @@ var libfuseStatsCollector *stats_manager.StatsCollector
 // getCurrentUser looks up the user that runs blobfuse2. A variable, so that tests can make the lookup fail.
 var getCurrentUser = common.GetCurrentUser
 
-// Bitmasks in Go: https://yourbasic.org/golang/bitmask-flag-set-clear/
-
 var ignoreFiles = map[string]bool{
 	".Trash":           true,
 	".Trash-1000":      true,
@@ -292,7 +290,7 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 }
 
 func (lf *Libfuse) GenConfig() string {
-	log.Info("Libfuse::Configure : config generation started")
+	log.Info("Libfuse::GenConfig : config generation started")
 
 	// If DirectIO is enabled, override expiration values
 	directIO := false
@@ -374,9 +372,7 @@ func (lf *Libfuse) Configure(_ bool) error {
 	// Disable libfuse logs if the mount is not running in foreground.
 	// Currently as of 01-05-2025, we emit the libfuse logs only to the stdout.
 	if !common.ForegroundMount {
-		if lf.traceEnable {
-			lf.traceEnable = false
-		}
+		lf.traceEnable = false
 	}
 
 	log.Crit("Libfuse::Configure : read-only %t, allow-other %t, allow-root %t, default-perm %d, entry-timeout %d, attr-time %d, negative-timeout %d, ignore-open-flags %t, nonempty %t, direct_io %t, max_background %d, fuse-trace %t, extension %s, disable-writeback-cache %t, dirPermission %v, mountPath %v, umask %v, disableKernelCache %v, kernelListCacheExpirationSec %v",
