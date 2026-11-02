@@ -80,15 +80,6 @@ type Libfuse struct {
 	kernelListCacheTracker  *kernelListCacheTracker
 }
 
-// To support pagination in readdir calls this structure holds a block of items for a given directory
-type dirChildCache struct {
-	sIndex   uint64              // start index of current block of items
-	eIndex   uint64              // End index of current block of items
-	length   uint64              // Length of the children list
-	token    string              // Token to get next block of items from container
-	children []*internal.ObjAttr // Slice holding current block of children
-}
-
 // Structure defining your config parameters
 type LibfuseOptions struct {
 	mountPath               string

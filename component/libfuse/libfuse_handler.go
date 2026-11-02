@@ -506,23 +506,13 @@ func libfuse_opendir(path *C.char, fi *C.fuse_file_info_t) C.int {
 	}
 
 	handle := handlemap.NewHandle(name)
-
-	// For each handle created using opendir we create
-	// this structure here to hold current block of children to serve readdir
-	handle.SetValue("cache", &dirChildCache{
-		sIndex:   0,
-		eIndex:   0,
-		token:    "",
-		length:   0,
-		children: make([]*internal.ObjAttr, 0),
-	})
-
+	handle.SetValue(dirCacheKey, &dirChildCache{})
 	handlemap.Add(handle)
 	fi.fh = C.uint64_t(handle.ID)
 
 	log.Trace("Libfuse::libfuse_opendir : %s, handle: %d", name, handle.ID)
 
-	if fuseFS.kernelListCacheTtlInSec > 0 {
+	if tracker := fuseFS.kernelListCacheTracker; tracker != nil {
 		// FUSE_CAP_AUTO_INVAL_DATA (enabled by the kernel by default) causes the kernel
 		// to compare the directory's mtime from GETATTR against the mtime it saw when it
 		// cached the listing.  If the mtime has changed, the kernel discards the cached
@@ -533,7 +523,7 @@ func libfuse_opendir(path *C.char, fi *C.fuse_file_info_t) C.int {
 		// it on every GETATTR call instead of the current wall-clock time.  The same
 		// invariant must hold for all other directories: their mtime should not change
 		// unless the directory contents have actually changed.
-		if fuseFS.kernelListCacheTracker.trackDir(name) {
+		if tracker.trackDir(name) {
 			C.enable_dir_cache(fi)
 			log.Debug("Libfuse::libfuse_opendir : kernel list cache hit for %s", name)
 		} else {
@@ -554,7 +544,7 @@ func loadDirHandle(fi *C.fuse_file_info_t) (handle *handlemap.Handle, cache *dir
 	}
 
 	handle.RLock()
-	val, _ := handle.GetValue("cache")
+	val, _ := handle.GetValue(dirCacheKey)
 	handle.RUnlock()
 
 	cache, found = val.(*dirChildCache)
@@ -582,60 +572,38 @@ func libfuse_releasedir(path *C.char, fi *C.fuse_file_info_t) C.int {
 //
 //export libfuse_readdir
 func libfuse_readdir(_ *C.char, buf unsafe.Pointer, filler C.fuse_fill_dir_t, off C.off_t, fi *C.fuse_file_info_t, flag C.fuse_readdir_flags_t) C.int {
-	handle, cacheInfo, found := loadDirHandle(fi)
+	handle, cache, found := loadDirHandle(fi)
 	if !found {
 		log.Err("Libfuse::libfuse_readdir : unknown handle %d", fi.fh)
 		return -C.EBADF
 	}
 
-	off_64 := uint64(off)
-	if off_64 == 0 ||
-		(off_64 >= cacheInfo.eIndex && cacheInfo.token != "") {
-		attrs, token, err := fuseFS.NextComponent().StreamDir(internal.StreamDirOptions{
+	// TODO: fuse2 lists "." and ".." as well, investigate why that does not work with fuse3
+	offset := uint64(off)
+	entries, err := cache.entriesFrom(offset, func(token string, blockOffset uint64) ([]*internal.ObjAttr, string, error) {
+		return fuseFS.NextComponent().StreamDir(internal.StreamDirOptions{
 			Name:   handle.Path,
-			Offset: off_64,
-			Token:  cacheInfo.token,
+			Offset: blockOffset,
+			Token:  token,
 			Count:  common.MaxDirListCount,
 		})
-
-		if err != nil {
-			log.Err("Libfuse::libfuse_readdir : Path %s, handle: %d, offset %d. Error in retrieval %s", handle.Path, handle.ID, off_64, err.Error())
-			return -C.int(errnoOf(err, syscall.ENOENT, syscall.EACCES))
-		}
-
-		// TODO: Investigate why this works in fuse2 but not fuse3
-		// if off_64 == 0 {
-		// 	attrs = append([]*internal.ObjAttr{{Flags: fuseFS.lsFlags, Name: "."}, {Flags: fuseFS.lsFlags, Name: ".."}}, attrs...)
-		// }
-
-		cacheInfo.sIndex = off_64
-		cacheInfo.eIndex = off_64 + uint64(len(attrs))
-		cacheInfo.length = uint64(len(attrs))
-		cacheInfo.token = token
-		cacheInfo.children = cacheInfo.children[:0]
-		cacheInfo.children = attrs
+	})
+	if err != nil {
+		log.Err("Libfuse::libfuse_readdir : Path %s, handle: %d, offset %d. Error in retrieval %s", handle.Path, handle.ID, offset, err.Error())
+		return -C.int(errnoOf(err, syscall.ENOENT, syscall.EACCES))
 	}
 
-	if off_64 >= cacheInfo.eIndex {
-		// If offset is still beyond the end index limit then we are done iterating
-		return 0
-	}
+	var stbuf C.stat_t
+	for i, entry := range entries {
+		fuseFS.fillStat(entry, &stbuf)
 
-	stbuf := C.stat_t{}
-	idx := C.off_t(off)
-
-	// Populate the stat by calling filler
-	for segmentIdx := off_64 - cacheInfo.sIndex; segmentIdx < cacheInfo.length; segmentIdx++ {
-		fuseFS.fillStat(cacheInfo.children[segmentIdx], &stbuf)
-
-		name := C.CString(cacheInfo.children[segmentIdx].Name)
-		if ret := C.fill_dir_entry(filler, buf, name, &stbuf, idx+1); ret != 0 {
-			C.free(unsafe.Pointer(name))
+		// Each entry carries the offset of the entry after it, where the next readdir continues
+		name := C.CString(entry.Name)
+		full := C.fill_dir_entry(filler, buf, name, &stbuf, C.off_t(offset+uint64(i)+1))
+		C.free(unsafe.Pointer(name))
+		if full != 0 {
 			break
 		}
-
-		C.free(unsafe.Pointer(name))
-		idx++
 	}
 
 	return 0
