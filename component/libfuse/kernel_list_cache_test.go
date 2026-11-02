@@ -57,7 +57,7 @@ func (s *kernelListCacheTestSuite) SetupTest() {
 	fuseFS = &Libfuse{}
 }
 
-func (s *kernelListCacheTestSuite) TeardownTest() {
+func (s *kernelListCacheTestSuite) TearDownTest() {
 	fuseFS = nil
 }
 
