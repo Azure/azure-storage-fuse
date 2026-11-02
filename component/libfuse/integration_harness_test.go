@@ -45,6 +45,7 @@ import (
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
@@ -84,7 +85,14 @@ func newIntegrationHarness(t *testing.T, backend internal.Component, libfuseCfg 
 	}
 
 	cfg := fmt.Sprintf("mount-path: %s\n%s", mountDir, libfuseCfg)
-	lf := newTestLibfuse(backend, cfg)
+	if err := config.ReadConfigFromReader(strings.NewReader(cfg)); err != nil {
+		t.Fatalf("failed to read config: %v", err)
+	}
+	lf := NewLibfuseComponent().(*Libfuse)
+	lf.SetNextComponent(backend)
+	if err := lf.Configure(true); err != nil {
+		t.Fatalf("failed to configure libfuse: %v", err)
+	}
 
 	_, cancel := context.WithCancel(context.Background())
 	return &integrationHarness{

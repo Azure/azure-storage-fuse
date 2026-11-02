@@ -1,4 +1,4 @@
-//go:build fuse2
+//go:build unittest && fuse2
 
 /*
     _____           _____   _____   ____          ______  _____  ------
@@ -34,6 +34,9 @@
 */
 
 package libfuse
+
+// The unit tests that call into C live in this file, because cgo cannot be used in _test.go files. The unittest build
+// tag keeps them, and their test dependencies, out of the blobfuse2 binary.
 
 // #cgo CFLAGS: -DFUSE_USE_VERSION=29 -D_FILE_OFFSET_BITS=64 -D__FUSE2__
 // #cgo LDFLAGS: -lfuse -ldl
