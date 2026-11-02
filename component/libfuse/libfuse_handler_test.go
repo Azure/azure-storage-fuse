@@ -201,6 +201,14 @@ func (suite *libfuseTestSuite) TestMkDirError() {
 
 // readdir
 
+func (suite *libfuseTestSuite) TestReaddir() {
+	testReaddir(suite)
+}
+
+func (suite *libfuseTestSuite) TestReaddirError() {
+	testReaddirError(suite)
+}
+
 func (suite *libfuseTestSuite) TestRmDir() {
 	testRmDir(suite)
 }
