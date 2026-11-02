@@ -4,6 +4,7 @@
 **Features**
 
 **Bug Fixes**
+- Fix blobfuse2 crashing when a rename cannot read the attributes of its source for a reason other than the source not existing, such as a permission error or a network failure. The rename now fails with that error (`EACCES`, `EINVAL` or `EIO`), also when the attributes of an existing destination cannot be read. ([PR #2450](https://github.com/Azure/azure-storage-fuse/pull/2450))
 - Return the error of a failed file operation instead of `EIO` when a component wraps or joins it, for example `EACCES` when creating a file on an HNS account fails to set its permissions. ([PR #2448](https://github.com/Azure/azure-storage-fuse/pull/2448))
 - Follow listing continuation tokens when checking whether a directory is empty. An empty page with more results must not allow removal of a non-empty directory, especially on ADLS accounts where directory deletion is recursive. ([PR #2440](https://github.com/Azure/azure-storage-fuse/pull/2440))
 - Free file handle on close even when upload fails, to prevent a memory leak, avoid pinning files in file_cache, and free pool buffers in block_cache. ([PR #2427](https://github.com/Azure/azure-storage-fuse/pull/2427))
