@@ -50,7 +50,9 @@ package libfuse
 import "C"
 import (
 	"errors"
+	"io"
 	"io/fs"
+	"math"
 	"os"
 	"runtime"
 	"strings"
@@ -75,11 +77,6 @@ type libfuseTestSuite struct {
 	libfuse  *Libfuse
 	mockCtrl *gomock.Controller
 	mock     *internal.MockComponent
-}
-
-type fileHandle struct {
-	fd  uint64
-	obj uint64
 }
 
 var emptyConfig = ""
@@ -260,11 +257,65 @@ func testCreateNativeIO(suite *libfuseTestSuite) {
 		info := &C.fuse_file_info_t{}
 		suite.assert.Equal(C.int(0), libfuse_create(path, 0775, info))
 
-		fobj := (*fileHandle)(unsafe.Pointer(uintptr(info.fh)))
-		suite.assert.Equal(tc.fd, fobj.fd)
+		fobj := C.get_native_file_object(info)
+		suite.assert.Equal(tc.fd, uint64(fobj.fd))
+		suite.assert.Equal(uint64(tc.handle.ID), uint64(fobj.obj))
 		C.release_native_file_object(info)
 		handlemap.Delete(tc.handle.ID)
 	}
+}
+
+// testPipelineReadWrite : reads and writes of a file that is not served natively go through the pipeline, with the
+// handle whose ID the native object of the file holds
+func testPipelineReadWrite(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	path := C.CString("/path")
+	defer C.free(unsafe.Pointer(path))
+	data := C.CString("data")
+	defer C.free(unsafe.Pointer(data))
+	buf := (*C.char)(C.calloc(1, 8))
+	defer C.free(unsafe.Pointer(buf))
+
+	handle, _, fi := newNativeFileObject(suite, "path")
+	defer C.release_native_file_object(fi)
+
+	suite.mock.EXPECT().ReadInBuffer(gomock.Any()).DoAndReturn(
+		func(options *internal.ReadInBufferOptions) (int, error) {
+			suite.assert.Same(handle, options.Handle)
+			suite.assert.EqualValues(16, options.Offset)
+			suite.assert.Len(options.Data, 8)
+			return copy(options.Data, "data"), io.EOF
+		})
+	ret := C.native_read_file(path, buf, 8, 16, fi)
+	suite.assert.Equal(C.int(4), ret)
+	suite.assert.Equal("data", C.GoString(buf))
+
+	suite.mock.EXPECT().ReadInBuffer(gomock.Any()).Return(0, errors.New("failed to read"))
+	ret = C.native_read_file(path, buf, 8, 0, fi)
+	suite.assert.Equal(C.int(-C.EIO), ret)
+
+	suite.mock.EXPECT().WriteFile(gomock.Any()).DoAndReturn(
+		func(options *internal.WriteFileOptions) (int, error) {
+			suite.assert.Same(handle, options.Handle)
+			suite.assert.EqualValues(32, options.Offset)
+			suite.assert.Equal([]byte("data"), options.Data)
+			return len(options.Data), nil
+		})
+	ret = C.native_write_file(path, data, 4, 32, fi)
+	suite.assert.Equal(C.int(4), ret)
+
+	suite.mock.EXPECT().WriteFile(gomock.Any()).Return(0, errors.New("failed to write"))
+	ret = C.native_write_file(path, data, 4, 0, fi)
+	suite.assert.Equal(C.int(-C.EIO), ret)
+
+	// A native object whose handle is not in handlemap
+	unknown := &C.fuse_file_info_t{}
+	unknown.fh = C.uint64_t(uintptr(unsafe.Pointer(C.allocate_native_file_object(0, C.uint64_t(math.MaxUint64)))))
+	defer C.release_native_file_object(unknown)
+	ret = C.native_read_file(path, buf, 8, 0, unknown)
+	suite.assert.Equal(C.int(-C.EBADF), ret)
+	ret = C.native_write_file(path, data, 4, 0, unknown)
+	suite.assert.Equal(C.int(-C.EBADF), ret)
 }
 
 // testNativeWriteDirty : a native write marks the handle dirty only if it changed the file
@@ -288,8 +339,7 @@ func testNativeWriteDirty(suite *libfuseTestSuite) {
 		ret   C.int
 		dirty C.uint8_t
 	}{{readOnly, -C.EBADF, 0}, {f, 4, 1}} {
-		handle := handlemap.NewHandle("path")
-		fobj := C.allocate_native_file_object(C.uint64_t(tc.file.Fd()), C.uint64_t(uintptr(unsafe.Pointer(handle))))
+		fobj := C.allocate_native_file_object(C.uint64_t(tc.file.Fd()), 0)
 		info := &C.fuse_file_info_t{}
 		info.fh = C.uint64_t(uintptr(unsafe.Pointer(fobj)))
 
@@ -300,12 +350,16 @@ func testNativeWriteDirty(suite *libfuseTestSuite) {
 	}
 }
 
-// newNativeFileObject : a new handle, and the file info with the native file object that libfuse_open gives libfuse
-func newNativeFileObject(name string) (*handlemap.Handle, *C.file_handle_t, *C.fuse_file_info_t) {
+// newNativeFileObject : a new handle in handlemap, and the file info with the native file object that libfuse_open
+// gives libfuse
+func newNativeFileObject(suite *libfuseTestSuite, name string) (*handlemap.Handle, *C.file_handle_t, *C.fuse_file_info_t) {
 	handle := handlemap.NewHandle(name)
+	handlemap.Add(handle)
+	suite.T().Cleanup(func() { handlemap.Delete(handle.ID) })
+
 	fi := &C.fuse_file_info_t{}
-	fi.fh = newFileHandle(handle)
-	return handle, (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh))), fi
+	suite.Require().True(newFileHandle(handle, fi))
+	return handle, C.get_native_file_object(fi), fi
 }
 
 // testFlushNativeDirty : flush uploads a file changed by native writes, retries a failed upload, and does not upload
@@ -314,7 +368,7 @@ func testFlushNativeDirty(suite *libfuseTestSuite) {
 	defer suite.cleanupTest()
 	path := C.CString("/path")
 	defer C.free(unsafe.Pointer(path))
-	handle, fobj, fi := newNativeFileObject("path")
+	handle, fobj, fi := newNativeFileObject(suite, "path")
 	defer C.release_native_file_object(fi)
 
 	options := internal.FlushFileOptions{Handle: handle}
@@ -341,7 +395,7 @@ func testFlushNativeWriteDuringUpload(suite *libfuseTestSuite) {
 	defer suite.cleanupTest()
 	path := C.CString("/path")
 	defer C.free(unsafe.Pointer(path))
-	handle, fobj, fi := newNativeFileObject("path")
+	handle, fobj, fi := newNativeFileObject(suite, "path")
 
 	fobj.dirty = 1
 	suite.mock.EXPECT().FlushFile(internal.FlushFileOptions{Handle: handle}).DoAndReturn(
@@ -436,7 +490,7 @@ func testReleaseError(suite *libfuseTestSuite) {
 // two flushes are started together many times.
 func testNativeDirtyHandOver(suite *libfuseTestSuite) {
 	defer suite.cleanupTest()
-	handle, fobj, fi := newNativeFileObject("path")
+	handle, fobj, fi := newNativeFileObject(suite, "path")
 	defer C.release_native_file_object(fi)
 
 	for round := 0; round < 200000; round++ {
@@ -463,7 +517,7 @@ func testNativeDirtyHandOver(suite *libfuseTestSuite) {
 // close would upload it. The interleavings that lose it last only an instant, so the round is repeated many times.
 func testNativeWriteDuringHandOver(suite *libfuseTestSuite) {
 	defer suite.cleanupTest()
-	handle, fobj, fi := newNativeFileObject("path")
+	handle, fobj, fi := newNativeFileObject(suite, "path")
 	defer C.release_native_file_object(fi)
 
 	for round := 0; round < 200000; round++ {
@@ -771,15 +825,13 @@ func testFTruncate(suite *libfuseTestSuite) {
 	defer C.free(unsafe.Pointer(path))
 	size := int64(1024)
 
-	handle := handlemap.NewHandle(name)
-	ret_val := C.allocate_native_file_object(C.uint64_t(handle.UnixFD), C.uint64_t(uintptr(unsafe.Pointer(handle))))
-	fi := C.fuse_file_info_t{}
-	fi.fh = C.uint64_t(uintptr(unsafe.Pointer(ret_val)))
+	handle, _, fi := newNativeFileObject(suite, name)
+	defer C.release_native_file_object(fi)
 
 	options := internal.TruncateFileOptions{Handle: handle, Name: name, OldSize: -1, NewSize: size}
 	suite.mock.EXPECT().TruncateFile(options).Return(nil)
 
-	err := libfuse_truncate(path, C.off_t(size), &fi)
+	err := libfuse_truncate(path, C.off_t(size), fi)
 	suite.assert.Equal(C.int(0), err)
 }
 
@@ -790,15 +842,13 @@ func testFTruncateError(suite *libfuseTestSuite) {
 	defer C.free(unsafe.Pointer(path))
 	size := int64(1024)
 
-	handle := handlemap.NewHandle(name)
-	ret_val := C.allocate_native_file_object(C.uint64_t(handle.UnixFD), C.uint64_t(uintptr(unsafe.Pointer(handle))))
-	fi := C.fuse_file_info_t{}
-	fi.fh = C.uint64_t(uintptr(unsafe.Pointer(ret_val)))
+	handle, _, fi := newNativeFileObject(suite, name)
+	defer C.release_native_file_object(fi)
 
 	options := internal.TruncateFileOptions{Handle: handle, Name: name, OldSize: -1, NewSize: size}
 	suite.mock.EXPECT().TruncateFile(options).Return(errors.New("failed to truncate file"))
 
-	err := libfuse_truncate(path, C.off_t(size), &fi)
+	err := libfuse_truncate(path, C.off_t(size), fi)
 	suite.assert.Equal(C.int(-C.EIO), err)
 }
 
@@ -1163,10 +1213,8 @@ func testFsync(suite *libfuseTestSuite) {
 	libfuse_open(path, info)
 	suite.assert.NotEqual(C.ulong(0), info.fh)
 
-	// libfuse component will return back handle in form of an integer value
-	// that needs to be converted back to a pointer to a handle object
-	fobj := (*fileHandle)(unsafe.Pointer(uintptr(info.fh)))
-	handle = (*handlemap.Handle)(unsafe.Pointer(uintptr(fobj.obj)))
+	// The native object of the file refers to its handle by ID
+	suite.assert.Equal(uint64(handle.ID), uint64(C.get_native_file_object(info).obj))
 
 	options := internal.SyncFileOptions{Handle: handle}
 	suite.mock.EXPECT().SyncFile(options).Return(nil)
@@ -1183,8 +1231,9 @@ func testFsyncHandleError(suite *libfuseTestSuite) {
 	info := &C.fuse_file_info_t{}
 	info.flags = C.O_RDWR
 
+	// The file info does not refer to an open file
 	err := libfuse_fsync(path, C.int(0), info)
-	suite.assert.Equal(C.int(-C.EIO), err)
+	suite.assert.Equal(C.int(-C.EBADF), err)
 }
 
 func testFsyncError(suite *libfuseTestSuite) {
@@ -1202,10 +1251,8 @@ func testFsyncError(suite *libfuseTestSuite) {
 	libfuse_open(path, info)
 	suite.assert.NotEqual(C.ulong(0), info.fh)
 
-	// libfuse component will return back handle in form of an integer value
-	// that needs to be converted back to a pointer to a handle object
-	fobj := (*fileHandle)(unsafe.Pointer(uintptr(info.fh)))
-	handle = (*handlemap.Handle)(unsafe.Pointer(uintptr(fobj.obj)))
+	// The native object of the file refers to its handle by ID
+	suite.assert.Equal(uint64(handle.ID), uint64(C.get_native_file_object(info).obj))
 
 	options := internal.SyncFileOptions{Handle: handle}
 	suite.mock.EXPECT().SyncFile(options).Return(errors.New("failed to sync file"))
