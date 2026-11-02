@@ -36,6 +36,7 @@ package libfuse
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -267,12 +268,13 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 	}
 
 	if !config.IsSet(compName+".uid") && !config.IsSet(compName+".gid") && !config.IsSet("lfuse.uid") && !config.IsSet("lfuse.gid") {
-		var err error
-		lf.ownerUID, lf.ownerGID, err = common.GetCurrentUser()
+		uid, gid, err := common.GetCurrentUser()
 		if err != nil {
-			log.Err("Libfuse::Validate : config error [unable to obtain current user info]")
-			return nil
+			// Not worth failing the mount over, the process runs as the current user anyway
+			uid, gid = uint32(os.Getuid()), uint32(os.Getgid())
+			log.Warn("Libfuse::Validate : unable to obtain current user info, using uid %d and gid %d of the process [%s]", uid, gid, err.Error())
 		}
+		lf.ownerUID, lf.ownerGID = uid, gid
 	}
 
 	if config.IsSet(compName + ".max-fuse-threads") {
