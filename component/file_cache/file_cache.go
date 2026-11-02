@@ -1128,7 +1128,6 @@ func (fc *FileCache) ReleaseFile(options internal.ReleaseFileOptions) error {
 	err := fc.FlushFile(internal.FlushFileOptions{Handle: options.Handle, CloseInProgress: true}) //nolint
 	if err != nil {
 		log.Err("FileCache::releaseFileInternal : failed to flush file %s", options.Handle.Path)
-		return err
 	}
 
 	// Take lock and decrement the handle count for this file.
@@ -1144,13 +1143,17 @@ func (fc *FileCache) ReleaseFile(options internal.ReleaseFileOptions) error {
 		return syscall.EBADF
 	}
 
-	err = f.Close()
-	if err != nil {
-		log.Err("FileCache::releaseFileInternal : error closing file %s(%d) [%s]", options.Handle.Path, int(f.Fd()), err.Error())
-		return err
+	closeErr := f.Close()
+	if closeErr != nil {
+		log.Err("FileCache::releaseFileInternal : error closing file %s(%d) [%s]", options.Handle.Path, int(f.Fd()), closeErr.Error())
 	}
 
 	flock.Dec()
+
+	if err != nil {
+		// upload failed, so don't invalidate the local file
+		return err
+	}
 
 	// If it is an fsync op then purge the file
 	if options.Handle.Fsynced() {
