@@ -353,6 +353,14 @@ func (suite *libfuseTestSuite) TestRenameBackslashName() {
 	testRenameBackslashName(suite)
 }
 
+func (suite *libfuseTestSuite) TestRenameAttrError() {
+	testRenameAttrError(suite)
+}
+
+func (suite *libfuseTestSuite) TestRenameChecks() {
+	testRenameChecks(suite)
+}
+
 func (suite *libfuseTestSuite) TestBackslashNameRejected() {
 	testBackslashNameRejected(suite)
 }
