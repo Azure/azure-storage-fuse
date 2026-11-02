@@ -95,6 +95,7 @@ type AttrCache struct {
 	stopCh        chan struct{}
 	sweepWg       sync.WaitGroup
 	noCacheOnList bool
+	noChmodCache  bool
 }
 
 // AttrCacheOptions holds the configuration for the attribute cache.
@@ -104,12 +105,17 @@ type AttrCacheOptions struct {
 	NoSymlinks    bool   `config:"no-symlinks"      yaml:"no-symlinks,omitempty"`
 	MaxSizeMB     uint32 `config:"max-size-mb"      yaml:"max-size-mb,omitempty"`
 	MaxFiles      uint32 `config:"max-files"        yaml:"max-files,omitempty"`
+	NoChmodCache  bool   `config:"no-chmod-cache"   yaml:"no-chmod-cache,omitempty"`
 
 	// support v1
 	CacheOnList bool `config:"cache-on-list"`
 }
 
 const compName = "attr_cache"
+
+// chmodModeBits are the mode bits a chmod request can change: permission bits plus
+// setuid/setgid/sticky in both the raw POSIX layout (as passed by libfuse) and the Go layout.
+const chmodModeBits = os.ModePerm | 0o7000 | os.ModeSetuid | os.ModeSetgid | os.ModeSticky
 
 // Verification to check satisfaction criteria with Component Interface
 var _ internal.Component = &AttrCache{}
@@ -239,6 +245,10 @@ func (ac *AttrCache) Configure(_ bool) error {
 		ac.noSymlinks = conf.NoSymlinks
 	}
 
+	if config.IsSet(compName + ".no-chmod-cache") {
+		ac.noChmodCache = conf.NoChmodCache
+	}
+
 	// no-cache-on-list (v2) takes priority; fall back to inverted cache-on-list (v1).
 	if config.IsSet(compName + ".no-cache-on-list") {
 		ac.noCacheOnList = conf.NoCacheOnList
@@ -266,8 +276,8 @@ func (ac *AttrCache) Configure(_ bool) error {
 	}
 
 	effectiveMB := uint32(ac.maxSizeBytes / (1024 * 1024))
-	log.Crit("AttrCache::Configure : cache-timeout %v, no-symlinks %t, no-cache-on-list %t, max-size-mb %d",
-		ac.cacheTimeout, ac.noSymlinks, ac.noCacheOnList, effectiveMB)
+	log.Crit("AttrCache::Configure : cache-timeout %v, no-symlinks %t, no-cache-on-list %t, max-size-mb %d, no-chmod-cache %t",
+		ac.cacheTimeout, ac.noSymlinks, ac.noCacheOnList, effectiveMB, ac.noChmodCache)
 
 	return nil
 }
@@ -520,24 +530,59 @@ func (ac *AttrCache) FlushFile(options internal.FlushFileOptions) error {
 
 // Chmod updates the cached mode for a file or directory.
 // It puts a new immutable item so concurrent readers see a consistent snapshot.
+// Requests the cache proves cannot change storage are answered without a storage call (on HNS
+// accounts every forwarded chmod is a synchronous SetAccessControl request); see chmodFromCache.
 func (ac *AttrCache) Chmod(options internal.ChmodOptions) error {
 	log.Trace("AttrCache::Chmod : Change mode of file/directory %s", options.Name)
+
+	truncated := internal.TruncateDirName(options.Name)
+	if handled, err := ac.chmodFromCache(truncated, options.Mode); handled {
+		return err
+	}
 
 	err := ac.NextComponent().Chmod(options)
 
 	if err == nil {
-		truncated := internal.TruncateDirName(options.Name)
 		if item, ok := ac.lru.Peek(truncated); ok && item.exists && item.attr != nil {
 			newAttr := *item.attr // copy the struct so the old item stays immutable
 			newAttr.Mode = options.Mode
 			newAttr.Ctime = time.Now()
-			if !ac.lru.Put(truncated, &attrCacheItem{attr: &newAttr, exists: true, cachedAt: time.Now()}) {
+			if !ac.lru.Put(truncated, &attrCacheItem{attr: &newAttr, exists: true, cachedAt: time.Now(), chmodApplied: true}) {
 				log.Err("AttrCache::Chmod : entry too large for cache, skipping path %s", truncated)
 			}
 		}
 	}
 
 	return err
+}
+
+// chmodFromCache answers a chmod from an unexpired cache entry when forwarding it cannot change
+// storage: the path is cached as absent (storage would fail with ENOENT), or this mount already
+// applied exactly the requested mode bits through Chmod. Modes learned from storage are never
+// trusted because they may be derived from ACLs (honour-acl) or from lossy permission strings,
+// and requests carrying setuid/setgid/sticky bits are always forwarded.
+func (ac *AttrCache) chmodFromCache(path string, mode os.FileMode) (bool, error) {
+	if ac.noChmodCache {
+		return false, nil
+	}
+
+	item, ok := ac.lru.Peek(path)
+	if !ok || time.Since(item.cachedAt) >= ac.cacheTimeout {
+		return false, nil
+	}
+
+	if item.isNegativeEntry() {
+		log.Debug("AttrCache::Chmod : %s is cached as absent from storage, not forwarding", path)
+		return true, syscall.ENOENT
+	}
+
+	if item.attr != nil && item.chmodApplied && mode&(chmodModeBits&^os.ModePerm) == 0 &&
+		item.attr.Mode&chmodModeBits == mode&chmodModeBits {
+		log.Debug("AttrCache::Chmod : %s already has mode %o applied, skipping storage call", path, mode&chmodModeBits)
+		return true, nil
+	}
+
+	return false, nil
 }
 
 // Chown updates the file owner (when datalake chown is implemented).

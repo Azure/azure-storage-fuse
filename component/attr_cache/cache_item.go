@@ -49,6 +49,9 @@ type attrCacheItem struct {
 	attr     *internal.ObjAttr
 	cachedAt time.Time
 	exists   bool // true if the entry exists in storage; false marks a negative cache entry (path confirmed absent)
+	// chmodApplied is true when attr.Mode holds permission bits this mount successfully applied through
+	// Chmod. Any refresh or invalidation replaces the item, which clears the marker.
+	chmodApplied bool
 }
 
 func (value *attrCacheItem) isNegativeEntry() bool {
