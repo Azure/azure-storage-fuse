@@ -44,6 +44,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -261,14 +262,18 @@ func (suite *fileTestSuite) TestFileCreateLongName() {
 	suite.fileTestCleanup([]string{fileName})
 }
 
+// # Create a file with a backslash in name: Azure Storage treats '\' as '/', so it is rejected
 func (suite *fileTestSuite) TestFileCreateSlashName() {
 	fileName := suite.testPath + "/abcd\\efg.txt"
 
-	srcFile, err := os.OpenFile(fileName, os.O_CREATE, 0777)
-	suite.NoError(err)
-	srcFile.Close()
+	_, err := os.OpenFile(fileName, os.O_CREATE, 0777)
+	suite.ErrorIs(err, syscall.EINVAL)
 
-	suite.fileTestCleanup([]string{fileName, suite.testPath + "/abcd"})
+	// Nothing may be created under either name.
+	_, err = os.Stat(fileName)
+	suite.True(os.IsNotExist(err))
+	_, err = os.Stat(suite.testPath + "/abcd")
+	suite.True(os.IsNotExist(err))
 }
 
 func (suite *fileTestSuite) TestFileCreateLabel() {

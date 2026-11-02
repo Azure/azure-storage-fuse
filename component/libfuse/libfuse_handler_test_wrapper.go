@@ -405,6 +405,29 @@ func testFsyncNativeWrite(suite *libfuseTestSuite) {
 	suite.assert.Equal(C.int(0), libfuse_release(path, fi))
 }
 
+// testReleaseError : release frees the handle even if the next component fails
+func testReleaseError(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	collector := enableLibfuseStats(suite)
+	name := "path"
+	path := C.CString("/" + name)
+	defer C.free(unsafe.Pointer(path))
+
+	handle := handlemap.NewHandle(name)
+	suite.mock.EXPECT().OpenFile(gomock.Any()).Return(handle, nil)
+	fi := &C.fuse_file_info_t{}
+	fi.flags = C.O_RDWR
+	suite.Require().Equal(C.int(0), libfuse_open(path, fi))
+	suite.mock.EXPECT().ReleaseFile(internal.ReleaseFileOptions{Handle: handle}).Return(errors.New("upload failed"))
+
+	libfuse_release(path, fi)
+
+	_, found := handlemap.Load(handle.ID)
+	suite.assert.False(found, "handle must be removed despite ReleaseFile errors")
+	stats := collector.StopAndGetStats()
+	suite.assert.Equal(int64(0), stats[openHandles])
+}
+
 // testNativeDirtyHandOver : when two flushes of a handle take a pending native dirty mark at the same moment, neither
 // may see the handle clean, or it would return before the upload. The mark is in transit only for an instant, so the
 // two flushes are started together many times.
@@ -848,21 +871,60 @@ func testRenameInvalidPath(suite *libfuseTestSuite) {
 
 func testRenameBackslashName(suite *libfuseTestSuite) {
 	defer suite.cleanupTest()
-	src := "src"
-	dst := `..\..\etc\crontab`
-	srcPath := C.CString("/" + src)
-	dstPath := C.CString("/" + dst)
-	defer C.free(unsafe.Pointer(srcPath))
-	defer C.free(unsafe.Pointer(dstPath))
+	src := C.CString("/src")
+	dst := C.CString(`/..\..\etc\crontab`)
+	defer C.free(unsafe.Pointer(src))
+	defer C.free(unsafe.Pointer(dst))
 
-	// The backslash name must reach the next component unchanged, not as "../../etc/crontab".
-	srcAttr := &internal.ObjAttr{Name: src}
-	suite.mock.EXPECT().GetAttr(internal.GetAttrOptions{Name: src}).Return(srcAttr, nil)
-	suite.mock.EXPECT().GetAttr(internal.GetAttrOptions{Name: dst}).Return(nil, syscall.ENOENT)
-	suite.mock.EXPECT().RenameFile(internal.RenameFileOptions{Src: src, Dst: dst, SrcAttr: srcAttr}).Return(nil)
+	// Azure Storage treats '\' as '/', so this name would resolve outside the mount root.
+	// The mock fails the test if any component method is called.
+	suite.assert.Equal(C.int(-C.EINVAL), libfuse_rename(src, dst, 0))
+	suite.assert.Equal(C.int(-C.EINVAL), libfuse_rename(dst, src, 0))
+}
 
-	err := libfuse_rename(srcPath, dstPath, 0)
-	suite.assert.Equal(C.int(0), err)
+// testBackslashNameRejected verifies that no callback passes a name containing a backslash to
+// the next component. Azure Storage treats '\' as '/', so such a name would be stored under a
+// different path, possibly outside the container. The mock fails the test if any component
+// method is called.
+func testBackslashNameRejected(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	for _, name := range []string{`PRQ\STUV`, `..\container-b\file`, `dir/a\b`} {
+		path := C.CString("/" + name)
+		target := C.CString("target")
+		buf := (*C.char)(C.malloc(16))
+
+		suite.assert.Equal(C.int(-C.ENOENT), libfuse_getattr(path, &C.stat_t{}, &C.fuse_file_info_t{}), name)
+		suite.assert.Equal(C.int(-C.EINVAL), libfuse_mkdir(path, 0775), name)
+		suite.assert.Equal(C.int(-C.EINVAL), libfuse_create(path, 0775, &C.fuse_file_info_t{}), name)
+		suite.assert.Equal(C.int(-C.EINVAL), libfuse_symlink(target, path), name)
+		suite.assert.Equal(C.int(-C.EINVAL), libfuse_open(path, &C.fuse_file_info_t{}), name)
+		suite.assert.Equal(C.int(-C.EINVAL), libfuse_opendir(path, &C.fuse_file_info_t{}), name)
+		suite.assert.Equal(C.int(-C.EINVAL), libfuse_unlink(path), name)
+		suite.assert.Equal(C.int(-C.EINVAL), libfuse_rmdir(path), name)
+		suite.assert.Equal(C.int(-C.EINVAL), libfuse_truncate(path, 0, nil), name)
+		suite.assert.Equal(C.int(-C.EINVAL), libfuse_chmod(path, 0644, nil), name)
+		suite.assert.Equal(C.int(-C.EINVAL), libfuse_readlink(path, buf, 16), name)
+		suite.assert.Equal(C.int(-C.EINVAL), libfuse_fsyncdir(path, 0, nil), name)
+
+		C.free(unsafe.Pointer(buf))
+		C.free(unsafe.Pointer(target))
+		C.free(unsafe.Pointer(path))
+	}
+}
+
+// testSymlinkBackslashTarget verifies that a symlink target is stored unchanged; only the
+// link name is validated.
+func testSymlinkBackslashTarget(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	name := "link"
+	target := `..\dir\file`
+	path := C.CString("/" + name)
+	defer C.free(unsafe.Pointer(path))
+	t := C.CString(target)
+	defer C.free(unsafe.Pointer(t))
+	suite.mock.EXPECT().CreateLink(internal.CreateLinkOptions{Name: name, Target: target}).Return(nil)
+
+	suite.assert.Equal(C.int(0), libfuse_symlink(t, path))
 }
 
 func testSymlink(suite *libfuseTestSuite) {

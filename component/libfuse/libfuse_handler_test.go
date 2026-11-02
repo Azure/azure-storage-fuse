@@ -239,6 +239,10 @@ func (suite *libfuseTestSuite) TestFsyncNativeWrite() {
 	testFsyncNativeWrite(suite)
 }
 
+func (suite *libfuseTestSuite) TestReleaseError() {
+	testReleaseError(suite)
+}
+
 func (suite *libfuseTestSuite) TestNativeDirtyHandOver() {
 	testNativeDirtyHandOver(suite)
 }
@@ -343,6 +347,14 @@ func (suite *libfuseTestSuite) TestRenameInvalidPath() {
 
 func (suite *libfuseTestSuite) TestRenameBackslashName() {
 	testRenameBackslashName(suite)
+}
+
+func (suite *libfuseTestSuite) TestBackslashNameRejected() {
+	testBackslashNameRejected(suite)
+}
+
+func (suite *libfuseTestSuite) TestSymlinkBackslashTarget() {
+	testSymlinkBackslashTarget(suite)
 }
 
 func (suite *libfuseTestSuite) TestSymlink() {

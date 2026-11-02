@@ -68,10 +68,35 @@ type BaseLogger struct {
 	logFileHandle io.WriteCloser
 	procPID       int
 
+	// streamOutput is true when the log destination is the process stdout/stderr rather than a
+	// regular file. Such destinations must never be rotated or closed.
+	streamOutput bool
+
 	fileConfig LogFileConfig
 	compressWg sync.WaitGroup
 	rotateMu   sync.Mutex
 	rotationID uint64
+}
+
+// isStreamDestination reports whether the configured log destination refers to the process
+// stdout/stderr instead of a regular file. These cannot be rotated (renaming /dev/stdout replaces
+// the symlink with a regular file, which silently detaches the logs from the container runtime)
+// and must not be closed, since the file descriptors are owned by the process.
+func isStreamDestination(name string) bool {
+	switch name {
+	case "", "stdout", "stderr", "/dev/stdout", "/dev/stderr":
+		return true
+	default:
+		return false
+	}
+}
+
+// streamHandle returns the process stream matching the configured destination.
+func streamHandle(name string) io.WriteCloser {
+	if name == "stderr" || name == "/dev/stderr" {
+		return os.Stderr
+	}
+	return os.Stdout
 }
 
 func newBaseLogger(config LogFileConfig) (*BaseLogger, error) {
@@ -133,13 +158,15 @@ func (l *BaseLogger) Crit(format string, args ...any) {
 
 func (l *BaseLogger) SetLogFile(name string) error {
 	l.fileConfig.LogFile = name
+	l.streamOutput = isStreamDestination(name)
 	if l.logFileHandle != nil {
-		if name == "stdout" {
-			l.logFileHandle = os.Stdout
+		if l.streamOutput {
+			l.logFileHandle = streamHandle(name)
 		} else {
 			f, err := os.OpenFile(name, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 			if err != nil {
 				l.logFileHandle = os.Stdout
+				l.streamOutput = true
 				return err
 			}
 			l.logFileHandle = f
@@ -185,8 +212,9 @@ func (l *BaseLogger) init() error {
 		l.SetLogFileCount(common.DefaultLogFileCount)
 	}
 
-	if l.fileConfig.LogFile == "stdout" || l.fileConfig.LogFile == "" {
-		l.logFileHandle = os.Stdout
+	l.streamOutput = isStreamDestination(l.fileConfig.LogFile)
+	if l.streamOutput {
+		l.logFileHandle = streamHandle(l.fileConfig.LogFile)
 	} else {
 		fi, e := os.Stat(l.fileConfig.LogFile)
 		if e == nil {
@@ -196,6 +224,7 @@ func (l *BaseLogger) init() error {
 		l.logFileHandle, err = os.OpenFile(l.fileConfig.LogFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 		if err != nil {
 			l.logFileHandle = os.Stdout
+			l.streamOutput = true
 		}
 	}
 
@@ -216,6 +245,11 @@ func (l *BaseLogger) Destroy() error {
 
 	// wait for any in-flight async compression to finish before closing the handle
 	l.compressWg.Wait()
+
+	// Never close os.Stdout/os.Stderr; the descriptors are owned by the process.
+	if l.streamOutput {
+		return nil
+	}
 
 	if err := l.logFileHandle.Close(); err != nil {
 		return err
@@ -257,15 +291,16 @@ func (l *BaseLogger) logDumper(id int, channel <-chan string) {
 		l.logger.Println(j)
 
 		l.fileConfig.currentLogSize += (uint64)(len(j))
-		if l.fileConfig.currentLogSize > l.fileConfig.LogSize {
+		if !l.streamOutput && l.fileConfig.currentLogSize > l.fileConfig.LogSize {
 			_ = l.LogRotate()
 		}
 	}
 }
 
 func (l *BaseLogger) LogRotate() error {
-	// skip if the file is standard output
-	if l.fileConfig.LogFile == "stdout" {
+	// Skip rotation when logging to the process stdout/stderr. Renaming /dev/stdout would replace
+	// the symlink with a regular file and detach the logs from the container runtime.
+	if l.streamOutput {
 		return nil
 	}
 
@@ -300,6 +335,7 @@ func (l *BaseLogger) LogRotate() error {
 	l.logFileHandle, err = os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		l.logFileHandle = os.Stdout
+		l.streamOutput = true
 	}
 
 	l.logger.SetOutput(l.logFileHandle)

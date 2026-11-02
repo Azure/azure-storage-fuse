@@ -10,6 +10,10 @@ Mounts all azure blob container for a given account as a filesystem
 blobfuse2 mount all [path] <flags> [flags]
 ```
 
+Each container is mounted in a separate subdirectory of `[path]`.
+`mount all` isn't supported with distributed cache; mount each container
+separately.
+
 ### Options
 
 ```

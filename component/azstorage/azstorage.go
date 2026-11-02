@@ -248,15 +248,23 @@ func formatListDirName(path string) string {
 
 func (az *AzStorage) IsDirEmpty(options internal.IsDirEmptyOptions) bool {
 	log.Trace("AzStorage::IsDirEmpty : %s", options.Name)
-	list, _, err := az.storage.List(formatListDirName(options.Name), nil, 1)
-	if err != nil {
-		log.Err("AzStorage::IsDirEmpty : error listing [%s]", err)
-		return false
+	path := formatListDirName(options.Name)
+	var marker *string
+	for {
+		list, nextMarker, err := az.storage.List(path, marker, 1)
+		if err != nil {
+			log.Err("AzStorage::IsDirEmpty : error listing [%s]", err)
+			return false
+		}
+		if len(list) != 0 {
+			return false
+		}
+		// An empty page is not the end of the listing if it has a continuation token.
+		if nextMarker == nil || *nextMarker == "" {
+			return true
+		}
+		marker = nextMarker
 	}
-	if len(list) == 0 {
-		return true
-	}
-	return false
 }
 
 func (az *AzStorage) ReadDir(options internal.ReadDirOptions) ([]*internal.ObjAttr, error) {
@@ -483,8 +491,7 @@ func (az *AzStorage) ReadInBuffer(options *internal.ReadInBufferOptions) (length
 		return 0, nil
 	}
 
-	length = int(dataLen)
-	err = az.storage.ReadInBuffer(path, options.Offset, dataLen, options.Data, options.Etag)
+	length, err = az.storage.ReadInBuffer(path, options.Offset, dataLen, options.Data, options.Etag)
 	if err != nil {
 		log.Err("AzStorage::ReadInBuffer : Failed to read %s [%s]", path, err.Error())
 		length = 0

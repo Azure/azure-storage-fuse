@@ -39,7 +39,9 @@ import (
 	"testing"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -407,6 +409,39 @@ func (suite *ConfigTestSuite) TestFlagShadowedConfigReader() {
 	assert.NoError(err)
 	assert.Equal(metaOptsTruth, metaOpts)
 
+}
+
+func (suite *ConfigTestSuite) TestIsSetWithParsedFlags() {
+	defer suite.cleanupTest()
+	t := suite.T()
+	ResetConfig()
+
+	path := AddStringFlag("cache-path", "", "")
+	BindPFlag("cache.disk.path", path)
+	enabled := AddBoolFlag("cache-enabled", true, "")
+	BindPFlag("cache.enabled", enabled)
+	other := AddStringFlag("other-path", "", "")
+	BindPFlag("other.path", other)
+	flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
+	AttachToFlagSet(flags)
+
+	for _, key := range []string{"cache", "cache.disk", "cache.disk.path", "cache.enabled", "other", "missing"} {
+		assert.False(t, IsSet(key), key)
+	}
+	require.NoError(t, flags.Parse([]string{"--cache-path=/tmp/cache", "--cache-enabled=false"}))
+	for _, key := range []string{"cache", "cache.disk", "cache.disk.path", "cache.enabled"} {
+		assert.True(t, IsSet(key), key)
+	}
+	for _, key := range []string{"other", "other.path", "cache.missing", "missing"} {
+		assert.False(t, IsSet(key), key)
+	}
+
+	// A node can have both its own unchanged flag and a changed descendant.
+	BindPFlag("cache.disk", other)
+	assert.True(t, IsSet("cache.disk"))
+	Set("yaml.path", "/tmp/yaml")
+	assert.True(t, IsSet("yaml"))
+	assert.True(t, IsSet("yaml.path"))
 }
 
 func (suite *ConfigTestSuite) TestAddFlags() {

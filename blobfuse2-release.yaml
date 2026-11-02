@@ -1884,7 +1884,10 @@ stages:
       condition: succeeded('ReleaseArtifacts')
       jobs:
         - job: PublishArtifacts
-          timeoutInMinutes: 120
+          # Adding the packages to, then publishing, each repository in setup/packages.csv runs one
+          # repository at a time and took about 2h15m for 2.5.6. Use the Microsoft-hosted maximum so a
+          # slow run, or a rerun of this job, doesn't time out partway through publishing.
+          timeoutInMinutes: 360
           pool:
             vmImage: 'ubuntu-22.04'
           variables:

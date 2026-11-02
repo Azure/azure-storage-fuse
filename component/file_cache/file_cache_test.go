@@ -1774,6 +1774,25 @@ func (suite *fileCacheTestSuite) TestFlushFileUploadFailureKeepsDirty() {
 	suite.assert.False(handle.Dirty())
 }
 
+// TestReleaseFileUploadFailureFreesHandle: don't leak the handle on failed upload
+func (suite *fileCacheTestSuite) TestReleaseFileUploadFailureFreesHandle() {
+	defer suite.cleanupTest()
+	mockCtrl := gomock.NewController(suite.T())
+	defer mockCtrl.Finish()
+
+	fc, mockComponent, _, cleanup := suite.setupMockFileCacheForFlush(mockCtrl)
+	defer cleanup()
+
+	name := "release_upload_failure.mp3"
+	handle := suite.createFileForFlush(fc, name)
+	mockComponent.EXPECT().CopyFromFile(gomock.Any()).Return(syscall.EIO)
+
+	err := fc.ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
+	suite.assert.Equal(syscall.EIO, err)
+	suite.assert.ErrorIs(handle.GetFileObject().Close(), os.ErrClosed, "local file must be closed")
+	suite.assert.Zero(fc.fileLocks.Get(name).Count())
+}
+
 func (suite *fileCacheTestSuite) TestGetAttrCase1() {
 	defer suite.cleanupTest()
 	// Setup
@@ -1948,7 +1967,8 @@ func (suite *fileCacheTestSuite) TestRenameFileInCache() {
 }
 
 // TestValidateObjectName exercises the containment guard directly, covering
-// names that stay within the cache root and names that escape it.
+// names that stay within the cache root, names that escape it, and names
+// containing a backslash.
 func (suite *fileCacheTestSuite) TestValidateObjectName() {
 	defer suite.cleanupTest()
 
@@ -1961,14 +1981,13 @@ func (suite *fileCacheTestSuite) TestValidateObjectName() {
 		"a/./b",
 		"a..b",
 		"..file",
-		`..\..\etc\crontab`,
-		`dir\file`,
 	}
 	for _, name := range validNames {
 		suite.assert.NoError(suite.fileCache.validateObjectName(name), "expected %q to be valid", name)
 	}
 
-	// Names that escape or leave and re-enter the cache root are invalid.
+	// Names that escape or leave and re-enter the cache root are invalid. So are names with a
+	// backslash, which Azure Storage treats as '/'.
 	invalidNames := []string{
 		"..",
 		"../file",
@@ -1978,6 +1997,8 @@ func (suite *fileCacheTestSuite) TestValidateObjectName() {
 		"../" + filepath.Base(suite.cache_path) + "/file",
 		"/etc/crontab",
 		`../dir\file`,
+		`..\..\etc\crontab`,
+		`dir\file`,
 	}
 	for _, name := range invalidNames {
 		suite.assert.Equal(syscall.EINVAL, suite.fileCache.validateObjectName(name), "expected %q to be rejected", name)
@@ -1985,7 +2006,7 @@ func (suite *fileCacheTestSuite) TestValidateObjectName() {
 }
 
 // TestRenameFilePathTraversal verifies that a rename cannot overwrite a file
-// outside the cache, while a literal backslash name remains valid.
+// outside the cache, whether the destination uses "/" or "\" separators.
 func (suite *fileCacheTestSuite) TestRenameFilePathTraversal() {
 	defer suite.cleanupTest()
 
@@ -2010,11 +2031,12 @@ func (suite *fileCacheTestSuite) TestRenameFilePathTraversal() {
 	suite.assert.Error(err)
 	suite.assert.Equal(syscall.EINVAL, err)
 
-	literal := `..\` + filepath.Base(victim)
-	err = suite.fileCache.RenameFile(internal.RenameFileOptions{Src: src, Dst: literal})
-	suite.assert.NoError(err)
-	_, err = os.Stat(filepath.Join(suite.fake_storage_path, literal))
-	suite.assert.NoError(err)
+	// Azure Storage treats '\' as '/', so a backslash name is rejected and never reaches storage.
+	backslash := `..\` + filepath.Base(victim)
+	err = suite.fileCache.RenameFile(internal.RenameFileOptions{Src: src, Dst: backslash})
+	suite.assert.Equal(syscall.EINVAL, err)
+	_, err = os.Stat(filepath.Join(suite.fake_storage_path, backslash))
+	suite.assert.True(os.IsNotExist(err))
 
 	// The victim file must remain untouched.
 	data, err := os.ReadFile(victim)

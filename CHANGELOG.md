@@ -1,5 +1,20 @@
-## 2.5.6 (Unreleased)
+## 2.5.7 (Unreleased)
+**Breaking Changes**
+
 **Features**
+
+**Bug Fixes**
+- Follow listing continuation tokens when checking whether a directory is empty. An empty page with more results must not allow removal of a non-empty directory, especially on ADLS accounts where directory deletion is recursive. ([PR #2440](https://github.com/Azure/azure-storage-fuse/pull/2440))
+- Free file handle on close even when upload fails, to prevent a memory leak, avoid pinning files in file_cache, and free pool buffers in block_cache. ([PR #2427](https://github.com/Azure/azure-storage-fuse/pull/2427))
+
+**Other Changes**
+
+## 2.5.6 (2026-10-23)
+**Breaking Changes**
+- File and directory names that contain a backslash (`\`) are now rejected with `EINVAL`. Azure Storage treats `\` as `/`, so earlier versions created a different path than the one requested: for example, `touch 'a\b'` created a directory `a` containing a file `b`. ([PR #2395](https://github.com/Azure/azure-storage-fuse/pull/2395))
+
+**Features**
+- **Preview:** Add a `distributed_cache` component that shares a read cache across nodes through [DACS](https://github.com/Azure/dacs) (Distributed Accelerator for Cloud Storage) cache servers. Cache hits are served from the cache servers; misses are read from Azure Storage and added to the shared cache in the background. Configure it in the `distributed_cache` section of the config file or with the `--distributed-cache-*` mount options. It works only with read-only mounts and isn't supported with `mount all`. If no cache servers are found, the mount still succeeds and reads go to Azure Storage. Configuration and behavior may change while the feature is in preview. ([PR #2398](https://github.com/Azure/azure-storage-fuse/pull/2398))
 
 **Bug Fixes**
 - On HNS accounts, attempt an ETag-conditional rollback if setting permissions after file creation fails, without deleting a pre-existing or concurrently replaced blob. Return `EINVAL` for DFS `InvalidUri` or `OutOfRangeInput` during file creation instead of `EIO`; no client-side name limit is imposed. ([PR #2369](https://github.com/Azure/azure-storage-fuse/pull/2369))
@@ -9,13 +24,16 @@
 - Fix `close()` failing with `EIO`, and the file not being uploaded, when an fsynced file is renamed and its name is reused right away. The first file's delayed release no longer deletes the new file's local copy. ([PR #2383](https://github.com/Azure/azure-storage-fuse/pull/2383))
 - Fix file-cache eviction after a single expiry pass stops at `max-eviction` (5,000 files by default), which can happen with a nonzero file-cache timeout. The files left in the LRU list could lose their links, so recently used files could be evicted early, older files could stop being evicted, and `policy-trace` could loop forever while printing the list. ([PR #2384](https://github.com/Azure/azure-storage-fuse/pull/2384))
 - Health monitor: count successful file creations in the `CreateFile` operation counter of the `libfuse` and `azstorage` aggregate statistics. Before, they were reported only as individual events. ([Issue #2330](https://github.com/Azure/azure-storage-fuse/issues/2330))
-- Preserve backslashes in Linux filenames and reject unsafe names before constructing local file-cache paths. ([PR #2354](https://github.com/Azure/azure-storage-fuse/pull/2354))
 - Fix `fsync()` with `sync-to-flush` returning success without uploading the file's latest writes when file-cache serves its reads and writes natively (`offload-io: false`, the default). ([PR #2387](https://github.com/Azure/azure-storage-fuse/pull/2387))
 - Fix file-cache committing a stale copy of a file, while `close()` reports success, when the file is flushed while the application is still writing to it. This can happen when a process with the file open starts a child process, such as an encoder, or duplicates the file descriptor. The blob could be truncated or, for a file sized up front, keep its full size but contain zeros from the middle to the end. Changes made while the file is being uploaded, such as writes or `ftruncate()`, now trigger another upload. ([Issue #2348](https://github.com/Azure/azure-storage-fuse/issues/2348))
+- Reject file and directory names that contain a backslash (`\`) before they reach any component. Azure Storage treats `\` as `/`, so such a name could resolve to a path outside the mounted container or subdirectory. Names that would resolve outside the local file-cache directory are also rejected. ([PR #2354](https://github.com/Azure/azure-storage-fuse/pull/2354), [PR #2395](https://github.com/Azure/azure-storage-fuse/pull/2395))
+- Fix ADLS file and directory renames with azdatalake v1.7.0 by letting the SDK escape source paths once, preserving nested paths, spaces, Unicode, and literal percent characters. ([PR #2413](https://github.com/Azure/azure-storage-fuse/pull/2413))
+- Return only the bytes actually downloaded when a blob is shorter than its recorded size, such as after it was truncated or overwritten while open. Previously, reads with only `libfuse` and `azstorage` in the pipeline could return stale buffer contents past the end of the blob. A download that is cut off before the end of the response now fails instead of returning the partial data. Truncates, and writes with only `libfuse` and `azstorage` in the pipeline, now fail instead of uploading zeros in place of existing data that could not be read. ([PR #2368](https://github.com/Azure/azure-storage-fuse/pull/2368))
 
 **Other Changes**
 - Run the ADLS DFS and Blob pre-mount validation concurrently to reduce mount latency ([PR #2341](https://github.com/Azure/azure-storage-fuse/pull/2341))
-- Build release binaries with Microsoft Go 1.26.8 and `golang.org/x/crypto` 0.56.0, and verify their embedded security metadata and reachable vulnerabilities before packaging ([Issue #2350](https://github.com/Azure/azure-storage-fuse/issues/2350))
+- Verify release binaries' embedded security metadata and reachable vulnerabilities before packaging ([Issue #2350](https://github.com/Azure/azure-storage-fuse/issues/2350))
+- Build with Microsoft Go 1.26.10, `golang.org/x/crypto` 0.58.0, and `golang.org/x/net` 0.61.0 to fix vulnerabilities reported by `govulncheck` in the Go standard library (`crypto/tls`, `crypto/x509`, `html/template`, `net/http`, `net/textproto`, `os`) and in `golang.org/x/net` ([Issue #2350](https://github.com/Azure/azure-storage-fuse/issues/2350), [PR #2419](https://github.com/Azure/azure-storage-fuse/pull/2419))
 - Serve reads and writes of files created through a fuse3 mount natively in C, like files opened with `open()` and like fuse2 builds. Until now, every read and write to a newly created file went through Go, which costs more CPU and throughput. ([PR #2387](https://github.com/Azure/azure-storage-fuse/pull/2387))
 
 ## 2.5.6~preview.1 (2026-09-25)
