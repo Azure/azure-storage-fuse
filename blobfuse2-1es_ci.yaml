@@ -151,7 +151,8 @@ extends:
               fi
 
               export FAIL_ON_REGRESSION=true
-              if [[ "${ACCEPT_REGRESSION,,}" == "true" ]] || git log --format=%B "$base..HEAD" | grep -qF '[perf-regression-accepted]'; then
+              # Not grep -q: it would exit at the first match, and under pipefail the SIGPIPE of git log fails the test
+              if [[ "${ACCEPT_REGRESSION,,}" == "true" ]] || git log --format=%B "$base..HEAD" | grep -F '[perf-regression-accepted]' >/dev/null; then
                 echo "A regression is accepted for this change, reporting without failing"
                 FAIL_ON_REGRESSION=false
               fi

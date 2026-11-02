@@ -28,6 +28,8 @@ bench_files=(component/libfuse/libfuse_bench_wrapper.go component/libfuse/libfus
 repo="$(git rev-parse --show-toplevel)"
 base_tree="$(mktemp -d)/base"
 mkdir -p "$out_dir"
+# Both revisions are built from their own directory, so a relative OUT_DIR has to be made absolute
+out_dir="$(cd "$out_dir" && pwd)"
 export CGO_ENABLED=1 GOTOOLCHAIN=local
 
 cleanup() {
