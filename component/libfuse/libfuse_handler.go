@@ -144,11 +144,11 @@ func (lf *Libfuse) initFuse() error {
 		log.Trace("Libfuse::InitFuse : Extension callback retrieved")
 
 		// Get our callback table
-		my_operations := C.fuse_operations_t{}
-		C.populate_callbacks(&my_operations)
+		ourOperations := C.fuse_operations_t{}
+		C.populate_callbacks(&ourOperations)
 
 		// Send our callback table to the extension
-		errc = C.register_callback_to_extension(&my_operations)
+		errc = C.register_callback_to_extension(&ourOperations)
 		if errc != 0 {
 			C.unload_library()
 			log.Err("Libfuse::InitFuse : Failed to register callback table to extension. error code %d", errc)
@@ -162,16 +162,16 @@ func (lf *Libfuse) initFuse() error {
 	}
 
 	log.Trace("Libfuse::initFuse : Populating fuse arguments")
-	fuse_opts := lf.convertConfig()
+	opts := lf.convertConfig()
 	var args C.fuse_args_t
-
-	fuse_opts, ret := populateFuseArgs(fuse_opts, &args)
+	ret := populateFuseArgs(opts, &args)
+	// fuse_opt_add_arg copies the arguments, so the mount path is not needed anymore
+	C.free(unsafe.Pointer(opts.mount_path))
+	defer C.fuse_opt_free_args(&args)
 	if ret != 0 {
 		log.Err("Libfuse::initFuse : Failed to parse fuse arguments")
 		return errors.New("failed to parse fuse arguments")
 	}
-	// Note: C strings are allocated in the heap using malloc. Calling C.free to release the mount path since it is no longer needed.
-	C.free(unsafe.Pointer(fuse_opts.mount_path))
 
 	log.Info("Libfuse::initFuse : Mounting with fuse3 library")
 	ret = C.start_fuse(&args, &operations)
@@ -183,16 +183,11 @@ func (lf *Libfuse) initFuse() error {
 	return nil
 }
 
-// populateFuseArgs populates libfuse args before we call start_fuse
-func populateFuseArgs(opts *C.fuse_options_t, args *C.fuse_args_t) (*C.fuse_options_t, C.int) {
+// populateFuseArgs adds the libfuse arguments for start_fuse to args. It returns the error of fuse_opt_add_arg if an
+// argument cannot be added, and 0 otherwise.
+func populateFuseArgs(opts *C.fuse_options_t, args *C.fuse_args_t) C.int {
 	log.Trace("Libfuse::populateFuseArgs")
-	if args == nil {
-		return nil, 1
-	}
-	args.argc = 0
-	args.allocated = 1
 
-	arguments := make([]string, 0)
 	options := fmt.Sprintf("entry_timeout=%d,attr_timeout=%d,negative_timeout=%d",
 		opts.entry_expiry,
 		opts.attr_expiry,
@@ -223,10 +218,10 @@ func populateFuseArgs(opts *C.fuse_options_t, args *C.fuse_args_t) (*C.fuse_opti
 	// Why we pass -f
 	// CGo is not very good with handling forks - so if the user wants to run blobfuse in the
 	// background we fork on mount in GO (mount.go) and we just always force libfuse to mount in foreground
-	arguments = append(arguments, "blobfuse2",
+	arguments := []string{"blobfuse2",
 		C.GoString(opts.mount_path),
 		"-o", options,
-		"-f", "-ofsname=blobfuse2") // "-omax_read=4194304"
+		"-f", "-ofsname=blobfuse2"}
 
 	if opts.trace_enable {
 		arguments = append(arguments, "-d")
@@ -235,14 +230,14 @@ func populateFuseArgs(opts *C.fuse_options_t, args *C.fuse_args_t) (*C.fuse_opti
 	for _, a := range arguments {
 		log.Debug("Libfuse::populateFuseArgs : opts : %s", a)
 		arg := C.CString(a)
-		defer C.free(unsafe.Pointer(arg))
 		err := C.fuse_opt_add_arg(args, arg)
+		C.free(unsafe.Pointer(arg))
 		if err != 0 {
-			return nil, err
+			return err
 		}
 	}
 
-	return opts, 0
+	return 0
 }
 
 // destroyFuse is a no-op
