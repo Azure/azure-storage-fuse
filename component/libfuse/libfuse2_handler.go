@@ -973,8 +973,7 @@ func libfuse_unlink(path *C.char) C.int {
 
 // libfuse2_rename renames a file or directory
 // https://man7.org/linux/man-pages/man2/rename.2.html
-// errors handled: EISDIR, ENOENT, ENOTDIR, ENOTEMPTY, EEXIST
-// TODO: handle EACCESS, EINVAL?
+// errors handled: EISDIR, ENOENT, ENOTDIR, ENOTEMPTY, and EACCES and EINVAL from reading the attributes
 //
 //export libfuse2_rename
 func libfuse2_rename(src *C.char, dst *C.char) C.int {
@@ -997,35 +996,40 @@ func libfuse2_rename(src *C.char, dst *C.char) C.int {
 		return -C.EINVAL
 	}
 
-	srcAttr, srcErr := fuseFS.NextComponent().GetAttr(internal.GetAttrOptions{Name: srcPath})
-	if errors.Is(srcErr, fs.ErrNotExist) {
-		log.Err("Libfuse::libfuse2_rename : Failed to get attributes of %s [%s]", srcPath, srcErr.Error())
-		return -C.ENOENT
+	// The attributes of src are needed to rename it, report the error if they cannot be read
+	srcAttr, err := fuseFS.NextComponent().GetAttr(internal.GetAttrOptions{Name: srcPath})
+	if err != nil || srcAttr == nil {
+		log.Err("Libfuse::libfuse2_rename : Failed to get attributes of %s [%v]", srcPath, err)
+		return -C.int(errnoOf(err, syscall.ENOENT, syscall.EACCES, syscall.EINVAL))
 	}
-	dstAttr, dstErr := fuseFS.NextComponent().GetAttr(internal.GetAttrOptions{Name: dstPath})
+
+	// Whether dst exists decides which checks apply, so do not rename if that is unknown
+	dstAttr, err := fuseFS.NextComponent().GetAttr(internal.GetAttrOptions{Name: dstPath})
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		log.Err("Libfuse::libfuse2_rename : Failed to get attributes of %s [%s]", dstPath, err.Error())
+		return -C.int(errnoOf(err, syscall.EACCES, syscall.EINVAL))
+	}
+	dstExists := err == nil && dstAttr != nil
 
 	// EISDIR
-	if (dstErr == nil || errors.Is(dstErr, fs.ErrExist)) && dstAttr.IsDir() && !srcAttr.IsDir() {
+	if dstExists && dstAttr.IsDir() && !srcAttr.IsDir() {
 		log.Err("Libfuse::libfuse2_rename : dst [%s] is an existing directory but src [%s] is not a directory", dstPath, srcPath)
 		return -C.EISDIR
 	}
 
 	// ENOTDIR
-	if (dstErr == nil || errors.Is(dstErr, fs.ErrExist)) && !dstAttr.IsDir() && srcAttr.IsDir() {
+	if dstExists && !dstAttr.IsDir() && srcAttr.IsDir() {
 		log.Err("Libfuse::libfuse2_rename : dst [%s] is an existing file but src [%s] is a directory", dstPath, srcPath)
 		return -C.ENOTDIR
 	}
 
 	if srcAttr.IsDir() {
 		// ENOTEMPTY
-		if dstErr == nil || errors.Is(dstErr, fs.ErrExist) {
-			empty := fuseFS.NextComponent().IsDirEmpty(internal.IsDirEmptyOptions{Name: dstPath})
-			if !empty {
-				return -C.ENOTEMPTY
-			}
+		if dstExists && !fuseFS.NextComponent().IsDirEmpty(internal.IsDirEmptyOptions{Name: dstPath}) {
+			return -C.ENOTEMPTY
 		}
 
-		err := fuseFS.NextComponent().RenameDir(internal.RenameDirOptions{Src: srcPath, Dst: dstPath})
+		err = fuseFS.NextComponent().RenameDir(internal.RenameDirOptions{Src: srcPath, Dst: dstPath})
 		if err != nil {
 			log.Err("Libfuse::libfuse2_rename : error renaming directory %s -> %s [%s]", srcPath, dstPath, err.Error())
 			return -C.int(errnoOf(err, syscall.ENAMETOOLONG))
@@ -1033,9 +1037,8 @@ func libfuse2_rename(src *C.char, dst *C.char) C.int {
 
 		libfuseStatsCollector.PushEvents(renameDir, srcPath, map[string]any{source: srcPath, dest: dstPath})
 		libfuseStatsCollector.UpdateStats(stats_manager.Increment, renameDir, (int64)(1))
-
 	} else {
-		err := fuseFS.NextComponent().RenameFile(internal.RenameFileOptions{
+		err = fuseFS.NextComponent().RenameFile(internal.RenameFileOptions{
 			Src:     srcPath,
 			Dst:     dstPath,
 			SrcAttr: srcAttr,
@@ -1048,7 +1051,6 @@ func libfuse2_rename(src *C.char, dst *C.char) C.int {
 
 		libfuseStatsCollector.PushEvents(renameFile, srcPath, map[string]any{source: srcPath, dest: dstPath})
 		libfuseStatsCollector.UpdateStats(stats_manager.Increment, renameFile, (int64)(1))
-
 	}
 
 	return 0
