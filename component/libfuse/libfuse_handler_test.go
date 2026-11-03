@@ -301,9 +301,11 @@ func (suite *libfuseTestSuite) TestOpenError() {
 	testOpenError(suite)
 }
 
-// read
+// read, write
 
-// write
+func (suite *libfuseTestSuite) TestPipelineReadWrite() {
+	testPipelineReadWrite(suite)
+}
 
 // flush
 
