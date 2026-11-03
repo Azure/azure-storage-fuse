@@ -935,6 +935,87 @@ func testRenameBackslashName(suite *libfuseTestSuite) {
 	suite.assert.Equal(C.int(-C.EINVAL), libfuse_rename(dst, src, 0))
 }
 
+// testRenameAttrError : rename reports an error reading the attributes of src, or of dst other than that it does not
+// exist, rather than going on to rename without them. The mock fails the test if the rename is attempted.
+func testRenameAttrError(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	src := C.CString("/src")
+	dst := C.CString("/dst")
+	defer C.free(unsafe.Pointer(src))
+	defer C.free(unsafe.Pointer(dst))
+	srcOptions := internal.GetAttrOptions{Name: "src"}
+	dstOptions := internal.GetAttrOptions{Name: "dst"}
+
+	for _, tc := range []struct {
+		err  error
+		want C.int
+	}{
+		{syscall.ENOENT, -C.ENOENT},
+		{syscall.EACCES, -C.EACCES},
+		{errors.New("failed to get attributes"), -C.EIO},
+	} {
+		suite.mock.EXPECT().GetAttr(srcOptions).Return(nil, tc.err)
+		suite.assert.Equal(tc.want, libfuse_rename(src, dst, 0))
+	}
+
+	for _, tc := range []struct {
+		err  error
+		want C.int
+	}{
+		{syscall.EACCES, -C.EACCES},
+		{errors.New("failed to get attributes"), -C.EIO},
+	} {
+		suite.mock.EXPECT().GetAttr(srcOptions).Return(&internal.ObjAttr{Name: "src"}, nil)
+		suite.mock.EXPECT().GetAttr(dstOptions).Return(nil, tc.err)
+		suite.assert.Equal(tc.want, libfuse_rename(src, dst, 0))
+	}
+}
+
+// testRenameChecks : rename only replaces dst where rename(2) allows it
+func testRenameChecks(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	src := C.CString("/src")
+	dst := C.CString("/dst")
+	defer C.free(unsafe.Pointer(src))
+	defer C.free(unsafe.Pointer(dst))
+	srcOptions := internal.GetAttrOptions{Name: "src"}
+	dstOptions := internal.GetAttrOptions{Name: "dst"}
+	file := &internal.ObjAttr{Name: "file"}
+	dir := &internal.ObjAttr{Name: "dir"}
+	dir.Flags.Set(internal.PropFlagIsDir)
+
+	// The mock fails the test if the rename is attempted
+	for _, tc := range []struct {
+		src, dst *internal.ObjAttr
+		flags    C.uint
+		want     C.int
+	}{
+		{file, dir, 0, -C.EISDIR},
+		{dir, file, 0, -C.ENOTDIR},
+		{file, file, C.RENAME_NOREPLACE, -C.EEXIST},
+	} {
+		suite.mock.EXPECT().GetAttr(srcOptions).Return(tc.src, nil)
+		suite.mock.EXPECT().GetAttr(dstOptions).Return(tc.dst, nil)
+		suite.assert.Equal(tc.want, libfuse_rename(src, dst, tc.flags))
+	}
+
+	suite.mock.EXPECT().GetAttr(srcOptions).Return(dir, nil)
+	suite.mock.EXPECT().GetAttr(dstOptions).Return(dir, nil)
+	suite.mock.EXPECT().IsDirEmpty(internal.IsDirEmptyOptions{Name: "dst"}).Return(false)
+	suite.assert.Equal(C.int(-C.ENOTEMPTY), libfuse_rename(src, dst, 0))
+
+	suite.mock.EXPECT().GetAttr(srcOptions).Return(dir, nil)
+	suite.mock.EXPECT().GetAttr(dstOptions).Return(dir, nil)
+	suite.mock.EXPECT().IsDirEmpty(internal.IsDirEmptyOptions{Name: "dst"}).Return(true)
+	suite.mock.EXPECT().RenameDir(internal.RenameDirOptions{Src: "src", Dst: "dst"}).Return(nil)
+	suite.assert.Equal(C.int(0), libfuse_rename(src, dst, 0))
+
+	suite.mock.EXPECT().GetAttr(srcOptions).Return(file, nil)
+	suite.mock.EXPECT().GetAttr(dstOptions).Return(nil, syscall.ENOENT)
+	suite.mock.EXPECT().RenameFile(internal.RenameFileOptions{Src: "src", Dst: "dst", SrcAttr: file}).Return(nil)
+	suite.assert.Equal(C.int(0), libfuse_rename(src, dst, 0))
+}
+
 // testBackslashNameRejected verifies that no callback passes a name containing a backslash to
 // the next component. Azure Storage treats '\' as '/', so such a name would be stored under a
 // different path, possibly outside the container. The mock fails the test if any component
