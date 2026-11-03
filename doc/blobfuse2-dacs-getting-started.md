@@ -276,9 +276,13 @@ fi
 
 declare -p MOUNT_IDENTITY_CLIENT_ID MOUNT_IDENTITY_OBJECT_ID CONTAINER_SCOPE \
   ROLE_CREATED >> "$DEMO_DIR/settings.env"
-) && source "$DEMO_DIR/settings.env"
-
-kubectl create namespace blob-dacs-demo
+)
+if [ "$?" -eq 0 ]; then
+  source "$DEMO_DIR/settings.env"
+  kubectl create namespace blob-dacs-demo
+else
+  echo 'ERROR: mount identity setup failed; do not continue.' >&2
+fi
 ```
 
 **Checkpoint:** `Storage Blob Data Reader` is assigned on the container scope
@@ -457,7 +461,7 @@ dacs_count() (   # usage: dacs_count <Download|Upload> <Success|InvalidTransitio
   [[ $(wc -w <<< "$pods") == 2 ]] || { echo "ERROR: expected two CacheServer pods." >&2; exit 1; }
   for pod in $pods; do
     kubectl exec -n "$DACS_NAMESPACE" "$pod" -c cacheserver -- \
-      curl --fail --silent --show-error --max-time 10 http://localhost:9096/metrics
+      curl --fail --silent --show-error --max-time 10 http://localhost:9096/metrics || exit 1
   done | awk -v type="$1" -v status="$2" '
     /^cache_server_request_counter\{/ &&
       index($0, "request_type=\"" type "\"") && index($0, "status=\"" status "\"") { n += $2 }
@@ -476,6 +480,10 @@ read computes the file's checksum, which pulls every byte through the mount:
 
 ```bash
 UPLOADS_BEFORE=$(dacs_count Upload Success)
+if [ "$?" -ne 0 ]; then
+  echo 'ERROR: could not read the DACS upload baseline; fix metrics access before retrying.' >&2
+  exit 1
+fi
 
 kubectl exec -n blob-dacs-demo blob-dacs-reader -- \
   sh -c 'set -eu; sha256sum "$1"' sh "$MODEL_PATH" \
