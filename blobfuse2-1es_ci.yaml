@@ -130,9 +130,10 @@ extends:
             workingDirectory: $(WORK_DIR)
 
           # Compare the libfuse read/write callback benchmarks with the base of the change, and fail if they got
-          # slower by more than 15%, see test/scripts/libfuse_bench_compare.sh. Runs only for changes to libfuse or
+          # slower by more than 10%, see test/scripts/libfuse_bench_compare.sh. Runs only for changes to libfuse or
           # its dependencies. A change that accepts a measured regression on purpose says so with
-          # [perf-regression-accepted] in a commit message, or a run sets LIBFUSE_BENCH_ACCEPT_REGRESSION to true.
+          # [perf-regression-accepted] on a line of its own in a commit message, or a run sets
+          # LIBFUSE_BENCH_ACCEPT_REGRESSION to true.
           - script: |
               set -euo pipefail
               target="${TARGET_BRANCH#refs/heads/}"
@@ -153,7 +154,7 @@ extends:
 
               export FAIL_ON_REGRESSION=true
               # Not grep -q: it would exit at the first match, and under pipefail the SIGPIPE of git log fails the test
-              if [[ "${ACCEPT_REGRESSION,,}" == "true" ]] || git log --format=%B "$base..HEAD" | grep -F '[perf-regression-accepted]' >/dev/null; then
+              if [[ "${ACCEPT_REGRESSION,,}" == "true" ]] || git log --format=%B "$base..HEAD" | grep -Ex '[[:space:]]*\[perf-regression-accepted\][[:space:]]*' >/dev/null; then
                 echo "A regression is accepted for this change, reporting without failing"
                 FAIL_ON_REGRESSION=false
               fi

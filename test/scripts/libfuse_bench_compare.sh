@@ -7,7 +7,7 @@
 # Environment:
 #   ROUNDS              rounds to run, each runs both revisions (default 5)
 #   COUNT               runs of every benchmark per revision and round (default 2), so ROUNDS*COUNT samples
-#   THRESHOLD           regression in percent that fails the comparison (default 15)
+#   THRESHOLD           regression in percent that fails the comparison (default 10)
 #   FAIL_ON_REGRESSION  "false" to only report a regression (default true)
 #   OUT_DIR             where to put the results (default: a temporary directory)
 #
@@ -20,7 +20,7 @@ set -euo pipefail
 base_ref="${1:?usage: $0 <base-ref>}"
 rounds="${ROUNDS:-5}"
 count="${COUNT:-2}"
-threshold="${THRESHOLD:-15}"
+threshold="${THRESHOLD:-10}"
 fail_on_regression="${FAIL_ON_REGRESSION:-true}"
 out_dir="${OUT_DIR:-$(mktemp -d)}"
 bench_files=(component/libfuse/libfuse_bench_wrapper.go component/libfuse/libfuse_bench_test.go)
