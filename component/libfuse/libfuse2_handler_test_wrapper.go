@@ -47,9 +47,34 @@ package libfuse
 // {
 //     __atomic_store_n(&handle_obj->dirty, 1, __ATOMIC_RELEASE);
 // }
+//
+// // test_dir_buf : the entries that test_filler takes from readdir, which fit up to max of them
+// typedef struct {
+//     char  names[8][16];
+//     off_t offsets[8];
+//     int   count;
+//     int   max;
+// } test_dir_buf;
+//
+// // test_filler : a libfuse filler that collects the entries of readdir into a test_dir_buf
+// static int test_filler(void *buf, const char *name, const struct stat *stbuf, off_t off)
+// {
+//     test_dir_buf *dir = (test_dir_buf *)buf;
+//     if (dir->count == dir->max)
+//         return 1;
+//     snprintf(dir->names[dir->count], sizeof(dir->names[0]), "%s", name);
+//     dir->offsets[dir->count++] = off;
+//     return 0;
+// }
+//
+// static fuse_fill_dir_t get_test_filler()
+// {
+//     return test_filler;
+// }
 import "C"
 import (
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"math"
@@ -157,7 +182,100 @@ func testMkDirError(suite *libfuseTestSuite) {
 	suite.assert.Equal(C.int(-C.EIO), err)
 }
 
-// TODO: ReadDir test
+// readdirEntries calls libfuse2_readdir from offset with room for maxEntries entries in the reply. It returns the
+// result of readdir, and the names of the entries with the offsets that came with them.
+func readdirEntries(fi *C.fuse_file_info_t, offset int64, maxEntries int) (C.int, []string, []int64) {
+	dir := (*C.test_dir_buf)(C.calloc(1, C.sizeof_test_dir_buf))
+	defer C.free(unsafe.Pointer(dir))
+	dir.max = C.int(maxEntries)
+
+	ret := libfuse2_readdir(nil, unsafe.Pointer(dir), C.get_test_filler(), C.off_t(offset), fi)
+
+	var names []string
+	var offsets []int64
+	for i := range int(dir.count) {
+		names = append(names, C.GoString(&dir.names[i][0]))
+		offsets = append(offsets, int64(dir.offsets[i]))
+	}
+	return ret, names, offsets
+}
+
+func dirEntries(names ...string) []*internal.ObjAttr {
+	entries := make([]*internal.ObjAttr, 0, len(names))
+	for _, name := range names {
+		entries = append(entries, &internal.ObjAttr{Name: name, Path: "dir/" + name})
+	}
+	return entries
+}
+
+// testReaddir : readdir serves a directory that is listed in blocks, starting with "." and "..", gives every entry the
+// offset to continue at, and lists the directory from its start again on a rewinddir() before the listing is complete
+func testReaddir(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	path := C.CString("/dir")
+	defer C.free(unsafe.Pointer(path))
+	fi := &C.fuse_file_info_t{}
+	suite.Require().Equal(C.int(0), libfuse_opendir(path, fi))
+
+	first := internal.StreamDirOptions{Name: "dir/", Offset: 0, Token: "", Count: common.MaxDirListCount}
+	second := internal.StreamDirOptions{Name: "dir/", Offset: 5, Token: "second", Count: common.MaxDirListCount}
+
+	// The reply has room for three entries, so serving the first block takes two readdirs
+	suite.mock.EXPECT().StreamDir(first).Return(dirEntries("a", "b", "c"), "second", nil)
+	ret, names, offsets := readdirEntries(fi, 0, 3)
+	suite.assert.Equal(C.int(0), ret)
+	suite.assert.Equal([]string{".", "..", "a"}, names)
+	suite.assert.Equal([]int64{1, 2, 3}, offsets)
+
+	// rewinddir()
+	suite.mock.EXPECT().StreamDir(first).Return(dirEntries("a", "b", "c"), "second", nil)
+	_, names, _ = readdirEntries(fi, 0, 3)
+	suite.assert.Equal([]string{".", "..", "a"}, names)
+
+	_, names, offsets = readdirEntries(fi, 3, 8)
+	suite.assert.Equal([]string{"b", "c"}, names)
+	suite.assert.Equal([]int64{4, 5}, offsets)
+
+	suite.mock.EXPECT().StreamDir(second).Return(dirEntries("d"), "", nil)
+	_, names, offsets = readdirEntries(fi, 5, 8)
+	suite.assert.Equal([]string{"d"}, names)
+	suite.assert.Equal([]int64{6}, offsets)
+
+	// The listing is complete
+	ret, names, _ = readdirEntries(fi, 6, 8)
+	suite.assert.Equal(C.int(0), ret)
+	suite.assert.Empty(names)
+
+	suite.assert.Equal(C.int(0), libfuse_releasedir(path, fi))
+	ret, _, _ = readdirEntries(fi, 0, 8)
+	suite.assert.Equal(C.int(-C.EBADF), ret)
+	suite.assert.Equal(C.int(-C.EBADF), libfuse_releasedir(path, fi))
+}
+
+// testReaddirError : readdir reports why the directory cannot be listed
+func testReaddirError(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	path := C.CString("/dir")
+	defer C.free(unsafe.Pointer(path))
+	fi := &C.fuse_file_info_t{}
+	suite.Require().Equal(C.int(0), libfuse_opendir(path, fi))
+
+	for _, tc := range []struct {
+		err  error
+		want C.int
+	}{
+		{syscall.ENOENT, -C.ENOENT},
+		{fmt.Errorf("listing failed: %w", syscall.EACCES), -C.EACCES},
+		{errors.New("listing failed"), -C.EIO},
+	} {
+		suite.mock.EXPECT().StreamDir(gomock.Any()).Return(nil, "", tc.err)
+		ret, names, _ := readdirEntries(fi, 0, 8)
+		suite.assert.Equal(tc.want, ret)
+		suite.assert.Empty(names)
+	}
+
+	suite.assert.Equal(C.int(0), libfuse_releasedir(path, fi))
+}
 
 func testRmDir(suite *libfuseTestSuite) {
 	defer suite.cleanupTest()
