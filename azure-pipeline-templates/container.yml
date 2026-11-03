@@ -42,6 +42,7 @@ steps:
         az storage container create --name $(containerName) \
         --account-name ${{ parameters.account_name }} \
         --account-key ${{ parameters.account_key }} \
+        --blob-endpoint "https://${{ parameters.account_name }}.blob.preprod.core.windows.net" \
         --fail-on-exist
       displayName: 'Creating ${{ parameters.account_type }} Container'
       condition: eq(variables['distro'], 'ubuntu')

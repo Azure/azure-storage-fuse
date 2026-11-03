@@ -407,6 +407,10 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 		handle.SetValue("ETAG", attr.ETag)
 	}
 
+	if attr.Layout != nil {
+		handle.Layout = attr.Layout
+	}
+
 	log.Debug("BlockCache::OpenFile : Size of file handle.Size %v", handle.Size)
 	bc.prepareHandleForBlockCache(handle)
 
@@ -1059,6 +1063,7 @@ func (bc *BlockCache) download(item *workItem) {
 		Offset: int64(item.block.offset),
 		Data:   item.block.data,
 		Etag:   &etag,
+		Layout: item.handle.Layout,
 	})
 
 	if item.failCnt > MAX_FAIL_CNT {
@@ -1480,6 +1485,12 @@ func (bc *BlockCache) waitAndFreeUploadedBlocks(handle *handlemap.Handle, cnt in
 // upload : Method to stage the given amount of data
 func (bc *BlockCache) upload(item *workItem) {
 	fileName := fmt.Sprintf("%s::%v", item.handle.Path, item.block.id)
+
+	// invalidate the layout of the blob before doing any updates to the blob.
+	layout := item.handle.Layout
+	if layout != nil {
+		layout.Invalidate()
+	}
 
 	// filename_blockindex is the key for the lock
 	// this ensure that at a given time a block from a file is downloaded only once across all open handles

@@ -144,16 +144,16 @@ steps:
     parameters:
       create_container: true
       account_type: "block"
-      account_name: $(BF2_BLK_ACC_NAME)
-      account_key: $(BF2_BLK_ACC_KEY)
+      account_name: $(BF2_BLK_ACC_NAME_PRE_PROD)
+      account_key: $(BF2_BLK_ACC_KEY_PRE_PROD)
 
   # Create a Container in the adls storage account
   - template: 'container.yml'
     parameters:
       create_container: true
       account_type: "adls"
-      account_name: $(BF2_ADLS_ACC_NAME)
-      account_key: $(BF2_ADLS_ACC_KEY)
+      account_name: $(BF2_ADLS_ACC_NAME_PRE_PROD)
+      account_key: $(BF2_ADLS_ACC_KEY_PRE_PROD)
 
   #-----------------------------------------------------------
   # Generate SAS for created container in ADLS with all the permissions.
@@ -162,8 +162,8 @@ steps:
     parameters:
       generate_adls_sas: true
       account_type: "adls"
-      account_name: $(BF2_ADLS_ACC_NAME)
-      account_key: $(BF2_ADLS_ACC_KEY)
+      account_name: $(BF2_ADLS_ACC_NAME_PRE_PROD)
+      account_key: $(BF2_ADLS_ACC_KEY_PRE_PROD)
 
   - script: |
       cnfFile=$HOME/azuretest.json

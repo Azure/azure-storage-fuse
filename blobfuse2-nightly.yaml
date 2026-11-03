@@ -754,9 +754,10 @@ stages:
               config_file: $(BLOBFUSE2_CFG)
               idstring: BLOCK
               cache_mode: file_cache
-              account_name: $(BF2_BLK_ACC_NAME)
-              account_key: $(BF2_BLK_ACC_KEY)
+              account_name: $(BF2_BLK_ACC_NAME_PRE_PROD)
+              account_key: $(BF2_BLK_ACC_KEY_PRE_PROD)
               account_type: block
+              endpoint: 'https://$(BF2_BLK_ACC_NAME_PRE_PROD).blob.preprod.core.windows.net'
               verbose_log: ${{ parameters.verbose_log }}
 
           - template: 'azure-pipeline-templates/cleanup.yml'
@@ -818,9 +819,10 @@ stages:
               config_file: $(BLOBFUSE2_CFG)
               idstring: ADLS
               cache_mode: file_cache
-              account_name: $(BF2_ADLS_ACC_NAME)
-              account_key: $(BF2_ADLS_ACC_KEY)
+              account_name: $(BF2_ADLS_ACC_NAME_PRE_PROD)
+              account_key: $(BF2_ADLS_ACC_KEY_PRE_PROD)
               account_type: adls
+              endpoint: 'https://$(BF2_ADLS_ACC_NAME_PRE_PROD).dfs.preprod.core.windows.net'
               verbose_log: ${{ parameters.verbose_log }}
 
           - template: 'azure-pipeline-templates/cleanup.yml'
@@ -884,8 +886,9 @@ stages:
               config_file: $(BLOBFUSE2_CFG)
               idstring: BLOCK
               cache_mode: block_cache
-              account_name: $(BF2_BLK_ACC_NAME)
-              account_key: $(BF2_BLK_ACC_KEY)
+              account_name: $(BF2_BLK_ACC_NAME_PRE_PROD)
+              account_key: $(BF2_BLK_ACC_KEY_PRE_PROD)
+              endpoint: 'https://$(BF2_BLK_ACC_NAME_PRE_PROD).blob.preprod.core.windows.net'
               account_type: block
               verbose_log: ${{ parameters.verbose_log }}
 
@@ -948,8 +951,9 @@ stages:
               config_file: $(BLOBFUSE2_CFG)
               idstring: ADLS
               cache_mode: block_cache
-              account_name: $(BF2_ADLS_ACC_NAME)
-              account_key: $(BF2_ADLS_ACC_KEY)
+              account_name: $(BF2_ADLS_ACC_NAME_PRE_PROD)
+              account_key: $(BF2_ADLS_ACC_KEY_PRE_PROD)
+              endpoint: 'https://$(BF2_ADLS_ACC_NAME_PRE_PROD).dfs.preprod.core.windows.net'
               account_type: adls
               verbose_log: ${{ parameters.verbose_log }}
 

@@ -197,6 +197,7 @@ type AzStorageOptions struct {
 	UserAssertion           string `config:"user-assertion" yaml:"user-assertions"`
 	CapMbpsRead             int64  `config:"cap-mbps-read" yaml:"cap-mbps-read"`
 	CapIOps                 int64  `config:"cap-iops" yaml:"cap-iops"`
+	BlobLayoutAwareRouting  bool   `config:"blob-layout-aware-routing" yaml:"blob-layout-aware-routing"`
 
 	// v1 support
 	UseAdls        bool   `config:"use-adls" yaml:"-"`
@@ -525,6 +526,8 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	}
 
 	az.stConfig.preserveACL = opt.PreserveACL
+	az.stConfig.isBlobLayoutAwareRoutingEnabled = opt.BlobLayoutAwareRouting
+
 	if opt.Filter != "" {
 		err = configureBlobFilter(az, opt)
 		if err != nil {
@@ -539,8 +542,8 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	log.Crit("ParseAndValidateConfig : Retry Config: retry-count %d, max-timeout %d, backoff-time %d, max-delay %d, preserve-acl: %v",
 		az.stConfig.maxRetries, az.stConfig.maxTimeout, az.stConfig.backoffTime, az.stConfig.maxRetryDelay, az.stConfig.preserveACL)
 
-	log.Crit("ParseAndValidateConfig : Telemetry : %s, honour-ACL %v, cap-mbps-read %d, cap-iops %d",
-		az.stConfig.telemetry, az.stConfig.honourACL, az.stConfig.capMbpsRead, az.stConfig.capIOps)
+	log.Crit("ParseAndValidateConfig : Telemetry : %s, honour-ACL %v, cap-mbps-read %d, cap-iops %d, blob-layout-aware-routing %t",
+		az.stConfig.telemetry, az.stConfig.honourACL, az.stConfig.capMbpsRead, az.stConfig.capIOps, az.stConfig.isBlobLayoutAwareRoutingEnabled)
 
 	return nil
 }
