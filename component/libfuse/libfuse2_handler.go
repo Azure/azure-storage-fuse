@@ -70,14 +70,7 @@ on it. C memory must not hold Go pointers, so these file handles refer to the ha
   - fi.fh of a file points to a native object that holds the handlemap.HandleID of its handle, see newFileHandle
 */
 
-const (
-	C_ENOENT = int(-C.ENOENT)
-	C_EIO    = int(-C.EIO)
-	C_EACCES = int(-C.EACCES)
-)
-
-// Note: libfuse prepends "/" to the path.
-// trimFusePath trims the first character from the path provided by libfuse
+// trimFusePath trims the leading "/" that libfuse prepends to every path
 func trimFusePath(path *C.char) string {
 	if path == nil {
 		return ""
@@ -90,27 +83,25 @@ func trimFusePath(path *C.char) string {
 	return str
 }
 
-var fuse_opts C.fuse_options_t // nolint
-
 // convertConfig converts the config options from Go to C
 func (lf *Libfuse) convertConfig() *C.fuse_options_t {
-	fuse_opts := &C.fuse_options_t{}
+	opts := &C.fuse_options_t{}
 
 	// Note: C strings are allocated in the heap using malloc. Call C.free when string is no longer needed.
-	fuse_opts.mount_path = C.CString(lf.mountPath)
-	fuse_opts.uid = C.uid_t(lf.ownerUID)
-	fuse_opts.gid = C.gid_t(lf.ownerGID)
-	fuse_opts.permissions = C.uint(lf.filePermission)
-	fuse_opts.entry_expiry = C.int(lf.entryExpiration)
-	fuse_opts.attr_expiry = C.int(lf.attributeExpiration)
-	fuse_opts.negative_expiry = C.int(lf.negativeTimeout)
-	fuse_opts.readonly = C.bool(lf.readOnly)
-	fuse_opts.allow_other = C.bool(lf.allowOther)
-	fuse_opts.allow_root = C.bool(lf.allowRoot)
-	fuse_opts.trace_enable = C.bool(lf.traceEnable)
-	fuse_opts.non_empty = C.bool(lf.nonEmptyMount)
-	fuse_opts.umask = C.int(lf.umask)
-	return fuse_opts
+	opts.mount_path = C.CString(lf.mountPath)
+	opts.uid = C.uid_t(lf.ownerUID)
+	opts.gid = C.gid_t(lf.ownerGID)
+	opts.permissions = C.uint(lf.filePermission)
+	opts.entry_expiry = C.int(lf.entryExpiration)
+	opts.attr_expiry = C.int(lf.attributeExpiration)
+	opts.negative_expiry = C.int(lf.negativeTimeout)
+	opts.readonly = C.bool(lf.readOnly)
+	opts.allow_other = C.bool(lf.allowOther)
+	opts.allow_root = C.bool(lf.allowRoot)
+	opts.trace_enable = C.bool(lf.traceEnable)
+	opts.non_empty = C.bool(lf.nonEmptyMount)
+	opts.umask = C.int(lf.umask)
+	return opts
 }
 
 // initFuse initializes the fuse library by registering callbacks, parsing arguments and mounting the directory
@@ -313,42 +304,43 @@ func libfuse_destroy(data unsafe.Pointer) {
 	log.Trace("Libfuse::libfuse2_destroy : destroy")
 }
 
+// fillStat fills stbuf with the attributes of a file or directory
 func (lf *Libfuse) fillStat(attr *internal.ObjAttr, stbuf *C.stat_t) {
-	(*stbuf).st_uid = C.uint(lf.ownerUID)
-	(*stbuf).st_gid = C.uint(lf.ownerGID)
-	(*stbuf).st_nlink = 1
-	(*stbuf).st_size = C.off_t(attr.Size)
+	stbuf.st_uid = C.uint(lf.ownerUID)
+	stbuf.st_gid = C.uint(lf.ownerGID)
+	stbuf.st_nlink = 1
+	stbuf.st_size = C.off_t(attr.Size)
 
 	// Populate mode
 	// Backing storage implementation has support for mode.
 	if !attr.IsModeDefault() {
-		(*stbuf).st_mode = C.uint(attr.Mode) & 0xffffffff
+		stbuf.st_mode = C.uint(attr.Mode)
 	} else {
 		if attr.IsDir() {
-			(*stbuf).st_mode = C.uint(lf.dirPermission) & 0xffffffff
+			stbuf.st_mode = C.uint(lf.dirPermission)
 		} else {
-			(*stbuf).st_mode = C.uint(lf.filePermission) & 0xffffffff
+			stbuf.st_mode = C.uint(lf.filePermission)
 		}
 	}
 
 	if attr.IsDir() {
-		(*stbuf).st_nlink = 2
-		(*stbuf).st_size = 4096
-		(*stbuf).st_mode |= C.S_IFDIR
+		stbuf.st_nlink = 2
+		stbuf.st_size = 4096
+		stbuf.st_mode |= C.S_IFDIR
 	} else if attr.IsSymlink() {
-		(*stbuf).st_mode |= C.S_IFLNK
+		stbuf.st_mode |= C.S_IFLNK
 	} else {
-		(*stbuf).st_mode |= C.S_IFREG
+		stbuf.st_mode |= C.S_IFREG
 	}
 
-	(*stbuf).st_atim.tv_sec = C.long(attr.Atime.Unix())
-	(*stbuf).st_atim.tv_nsec = 0
+	stbuf.st_atim.tv_sec = C.long(attr.Atime.Unix())
+	stbuf.st_atim.tv_nsec = 0
 
-	(*stbuf).st_ctim.tv_sec = C.long(attr.Ctime.Unix())
-	(*stbuf).st_ctim.tv_nsec = 0
+	stbuf.st_ctim.tv_sec = C.long(attr.Ctime.Unix())
+	stbuf.st_ctim.tv_nsec = 0
 
-	(*stbuf).st_mtim.tv_sec = C.long(attr.Mtime.Unix())
-	(*stbuf).st_mtim.tv_nsec = 0
+	stbuf.st_mtim.tv_sec = C.long(attr.Mtime.Unix())
+	stbuf.st_mtim.tv_nsec = 0
 }
 
 // File System Operations
@@ -374,9 +366,8 @@ func libfuse2_getattr(path *C.char, stbuf *C.stat_t) C.int {
 		return -C.ENOENT
 	}
 
-	// TODO: How does this work if we trim the path?
-	// Check if the file is meant to be ignored
-	if ignore, found := ignoreFiles[name]; found && ignore {
+	// Desktop environments look for these files in the root of every mount, report them missing without a lookup
+	if ignoreFiles[name] {
 		return -C.ENOENT
 	}
 
@@ -406,14 +397,14 @@ func libfuse_statfs(path *C.char, buf *C.statvfs_t) C.int {
 
 	// if populated then we need to overwrite root attributes
 	if populated {
-		(*buf).f_bsize = C.ulong(attr.Bsize)
-		(*buf).f_frsize = C.ulong(attr.Frsize)
-		(*buf).f_blocks = C.__fsblkcnt64_t(attr.Blocks)
-		(*buf).f_bavail = C.__fsblkcnt64_t(attr.Bavail)
-		(*buf).f_bfree = C.__fsblkcnt64_t(attr.Bfree)
-		(*buf).f_files = C.__fsblkcnt64_t(attr.Files)
-		(*buf).f_ffree = C.__fsblkcnt64_t(attr.Ffree)
-		(*buf).f_flag = C.ulong(attr.Flags)
+		buf.f_bsize = C.ulong(attr.Bsize)
+		buf.f_frsize = C.ulong(attr.Frsize)
+		buf.f_blocks = C.fsblkcnt_t(attr.Blocks)
+		buf.f_bavail = C.fsblkcnt_t(attr.Bavail)
+		buf.f_bfree = C.fsblkcnt_t(attr.Bfree)
+		buf.f_files = C.fsfilcnt_t(attr.Files)
+		buf.f_ffree = C.fsfilcnt_t(attr.Ffree)
+		buf.f_flag = C.ulong(attr.Flags)
 		return 0
 	}
 
@@ -436,19 +427,19 @@ func libfuse_mkdir(path *C.char, mode C.mode_t) C.int {
 		return -C.EINVAL
 	}
 
-	err := fuseFS.NextComponent().CreateDir(internal.CreateDirOptions{Name: name, Mode: fs.FileMode(uint32(mode) & 0xffffffff)})
+	err := fuseFS.NextComponent().CreateDir(internal.CreateDirOptions{Name: name, Mode: fs.FileMode(mode)})
 	if err != nil {
 		log.Err("Libfuse::libfuse2_mkdir : Failed to create %s [%s]", name, err.Error())
 		return -C.int(errnoOf(err, syscall.EACCES, syscall.EEXIST, syscall.ENAMETOOLONG))
 	}
 
-	libfuseStatsCollector.PushEvents(createDir, name, map[string]any{md: fs.FileMode(uint32(mode) & 0xffffffff)})
+	libfuseStatsCollector.PushEvents(createDir, name, map[string]any{md: fs.FileMode(mode)})
 	libfuseStatsCollector.UpdateStats(stats_manager.Increment, createDir, (int64)(1))
 
 	return 0
 }
 
-// libfuse_opendir opens handle to given directory
+// libfuse_opendir opens a handle to the given directory
 //
 //export libfuse_opendir
 func libfuse_opendir(path *C.char, fi *C.fuse_file_info_t) C.int {
@@ -631,7 +622,7 @@ func libfuse_create(path *C.char, mode C.mode_t, fi *C.fuse_file_info_t) C.int {
 		return -C.EINVAL
 	}
 
-	handle, err := fuseFS.NextComponent().CreateFile(internal.CreateFileOptions{Name: name, Mode: fs.FileMode(uint32(mode) & 0xffffffff)})
+	handle, err := fuseFS.NextComponent().CreateFile(internal.CreateFileOptions{Name: name, Mode: fs.FileMode(mode)})
 	if err != nil {
 		log.Err("Libfuse::libfuse2_create : Failed to create %s [%s]", name, err.Error())
 		return -C.int(errnoOf(err, syscall.EEXIST, syscall.EACCES, syscall.EINVAL))
@@ -645,7 +636,7 @@ func libfuse_create(path *C.char, mode C.mode_t, fi *C.fuse_file_info_t) C.int {
 	}
 	log.Trace("Libfuse::libfuse2_create : %s, handle %d", name, handle.ID)
 
-	libfuseStatsCollector.PushEvents(createFile, name, map[string]any{md: fs.FileMode(uint32(mode) & 0xffffffff)})
+	libfuseStatsCollector.PushEvents(createFile, name, map[string]any{md: fs.FileMode(mode)})
 	libfuseStatsCollector.UpdateStats(stats_manager.Increment, createFile, (int64)(1))
 
 	// increment open file handles count
@@ -669,7 +660,7 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 	if fi.flags&C.O_SYNC != 0 || fi.flags&C.__O_DIRECT != 0 {
 		log.Info("Libfuse::libfuse2_open : Reset flags for open %s, fi.flags %X", name, fi.flags)
 		// Blobfuse2 does not support the SYNC or DIRECT flag. If a user application passes this flag on to blobfuse2
-		// and we open the file with this flag, subsequent write operations wlil fail with "Invalid argument" error.
+		// and we open the file with this flag, subsequent write operations will fail with "Invalid argument" error.
 		// Mask them out here in the open call so that write works.
 		// Oracle RMAN is one such application that sends these flags during backup
 		fi.flags = fi.flags &^ C.O_SYNC
@@ -712,21 +703,20 @@ func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, handleI
 		return -C.EBADF
 	}
 
-	offset := uint64(off)
-	data := (*[1 << 30]byte)(unsafe.Pointer(buf))
+	data := unsafe.Slice((*byte)(unsafe.Pointer(buf)), size)
 
 	var err error
 	var bytesRead int
 
 	if handle.Cached() {
 		// A locally cached file is only read here if its descriptor is 0, which native IO takes as not served natively
-		bytesRead, err = syscall.Pread(handle.FD(), data[:size], int64(offset))
+		bytesRead, err = syscall.Pread(handle.FD(), data, int64(off))
 	} else {
 		bytesRead, err = fuseFS.NextComponent().ReadInBuffer(
 			&internal.ReadInBufferOptions{
 				Handle: handle,
-				Offset: int64(offset),
-				Data:   data[:size],
+				Offset: int64(off),
+				Data:   data,
 			})
 	}
 
@@ -751,14 +741,11 @@ func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, handle
 		return -C.EBADF
 	}
 
-	offset := uint64(off)
-	data := (*[1 << 30]byte)(unsafe.Pointer(buf))
 	bytesWritten, err := fuseFS.NextComponent().WriteFile(
 		&internal.WriteFileOptions{
-			Handle:   handle,
-			Offset:   int64(offset),
-			Data:     data[:size],
-			Metadata: nil,
+			Handle: handle,
+			Offset: int64(off),
+			Data:   unsafe.Slice((*byte)(unsafe.Pointer(buf)), size),
 		})
 
 	if err != nil {
@@ -1150,14 +1137,14 @@ func libfuse2_chmod(path *C.char, mode C.mode_t) C.int {
 	err := fuseFS.NextComponent().Chmod(
 		internal.ChmodOptions{
 			Name: name,
-			Mode: fs.FileMode(uint32(mode) & 0xffffffff),
+			Mode: fs.FileMode(mode),
 		})
 	if err != nil {
 		log.Err("Libfuse::libfuse2_chmod : error in chmod of %s [%s]", name, err.Error())
 		return -C.int(errnoOf(err, syscall.ENOENT, syscall.EACCES))
 	}
 
-	libfuseStatsCollector.PushEvents(chmod, name, map[string]any{md: fs.FileMode(uint32(mode) & 0xffffffff)})
+	libfuseStatsCollector.PushEvents(chmod, name, map[string]any{md: fs.FileMode(mode)})
 	libfuseStatsCollector.UpdateStats(stats_manager.Increment, chmod, (int64)(1))
 
 	return 0
