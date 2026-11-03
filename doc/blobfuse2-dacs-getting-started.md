@@ -516,6 +516,10 @@ Record the current download count, then read the same blob from the second node:
 
 ```bash
 DOWNLOADS_BEFORE=$(dacs_count Download Success)
+if [ "$?" -ne 0 ]; then
+  echo 'ERROR: could not read the DACS download baseline; fix metrics access before retrying.' >&2
+  exit 1
+fi
 
 kubectl exec -n blob-dacs-demo blob-dacs-reader-warm -- \
   sh -c 'set -eu; sha256sum "$1"' sh "$MODEL_PATH" \
