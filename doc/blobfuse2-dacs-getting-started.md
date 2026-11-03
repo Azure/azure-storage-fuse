@@ -173,7 +173,8 @@ kubectl get daemonset csi-blob-node -n kube-system \
 
 On **each reader node's host** (not a workstation or container, which don't
 verify the binary the proxy uses), run the following using your approved
-node-access method in the [CSI debugging guide](./csi-debug.md):
+node-access method in the
+[CSI debugging guide](https://github.com/kubernetes-sigs/blob-csi-driver/blob/master/docs/csi-debug.md):
 
 ```bash
 blobfuse2 -v
@@ -554,7 +555,7 @@ file is resident.
 | --- | --- |
 | Pod stays Pending | Inspect pod events, PVC binding, hostname/pool labels, taints, and available node resources. |
 | Mount fails | Check host BlobFuse2 version, `fuse2`, read-only settings, and storage network access. |
-| Mount fails with authorization errors (managed identity) | Confirm the role assignment on the container scope and that `MOUNT_IDENTITY_CLIENT_ID` belongs to an identity assigned to the reader nodes. Allow time for role propagation. The [managed identity example](../deploy/example/blobfuse-mi/README.md) uses **Storage Blob Data Contributor**; try it if Reader isn't sufficient. |
+| Mount fails with authorization errors (managed identity) | Confirm the role assignment on the container scope and that `MOUNT_IDENTITY_CLIENT_ID` belongs to an identity assigned to the reader nodes. Allow time for role propagation. The [managed identity example](https://github.com/kubernetes-sigs/blob-csi-driver/blob/master/deploy/example/blobfuse-mi/README.md) uses **Storage Blob Data Contributor**; try it if Reader isn't sufficient. |
 | Mount fails (account-key fallback) | Check the Secret namespace and name, and the shared-key policy. |
 | Discovery fails | Verify the discovery service and its endpoints, cluster DNS IP/domain, port 9065, and node-to-cache connectivity. |
 | Helper cannot read metrics | Check that both CacheServers are Ready, `pods/exec` permissions, container `curl`, metrics port 9096, and the reported error. |
@@ -601,7 +602,8 @@ journalctl -u blobfuse-proxy --since "15 minutes ago" --no-pager
 
 Also check `/var/log/blobfuse2.log` if that is the configured BlobFuse2 log
 path, and `/var/log/syslog` for syslog-based logging. Log routing depends on
-your installation; see the [CSI debugging guide](./csi-debug.md).
+your installation; see the
+[CSI debugging guide](https://github.com/kubernetes-sigs/blob-csi-driver/blob/master/docs/csi-debug.md).
 
 ### Recover from an inconclusive result
 
@@ -694,10 +696,11 @@ Then clean up what remains, as applicable:
 
 Use a cluster where the managed Blob CSI add-on is **not enabled**, and never
 install this Helm release alongside the managed add-on. Review the
-[open-source driver's identity prerequisites](./install-driver-on-aks.md)
-and [Helm installation guidance](../charts/README.md) first. If an
-open-source driver already exists, verify its version and configuration
-instead of installing a second release.
+[open-source driver's identity prerequisites](https://github.com/kubernetes-sigs/blob-csi-driver/blob/master/docs/install-driver-on-aks.md)
+and
+[Helm installation guidance](https://github.com/kubernetes-sigs/blob-csi-driver/blob/master/charts/README.md)
+first. If an open-source driver already exists, verify its version and
+configuration instead of installing a second release.
 
 Install driver **1.27.11**, explicitly enabling installation of BlobFuse2
 **2.5.6** on the nodes:
@@ -779,5 +782,5 @@ Step 8 deletes the Secret; there is no role assignment to clean up.
 - [DACS AKS quickstart](https://github.com/Azure/dacs/blob/main/docs/quickstart.md)
 - [DACS deployment user guide](https://github.com/Azure/dacs/blob/main/user-guide.md)
 - [BlobFuse2 2.5.6 release notes](https://github.com/Azure/azure-storage-fuse/releases/tag/blobfuse2-2.5.6)
-- [Blob CSI driver parameters](./driver-parameters.md)
+- [Blob CSI driver parameters](https://github.com/kubernetes-sigs/blob-csi-driver/blob/master/docs/driver-parameters.md)
 - [Microsoft Phi-1.5 model](https://huggingface.co/microsoft/phi-1_5)
