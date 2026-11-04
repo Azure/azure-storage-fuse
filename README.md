@@ -16,6 +16,8 @@ You can install BlobFuse from Microsoft repositories for Linux by using simple c
 ## Mount BlobFuse
 You can mount a container by using the `mount` command. You can either include your desired configuration settings as command line parameters or provide a configuration file that contains your settings. Refer the [page](https://learn.microsoft.com/azure/storage/blobs/blobfuse2-install) for details.
 
+For long-running mounts whose trusted certificate authorities can rotate, see [Hot-reload the TLS trust store](doc/tls-trust-store-hot-reload.md).
+
 ## BlobFuse Logging
 By default, BlobFuse logs warnings to the system log. However, you can route logs to a local directory, change which types of information appear in logs, or disable logs entirely by changing the default configuration. Refer the [page](https://learn.microsoft.com/azure/storage/blobs/blobfuse2-enable-logs) for details.
 
@@ -47,5 +49,4 @@ bot. You will only need to do this once across all repos using our CLA.
 This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/).
 For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or
 contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
-
 

@@ -65,6 +65,7 @@ type AzStorageConfig struct {
 	backoffTime           int32
 	maxRetryDelay         int32
 	proxyAddress          string
+	tlsTrustStorePath     string
 	ignoreAccessModifiers bool
 	mountAllContainers    bool
 

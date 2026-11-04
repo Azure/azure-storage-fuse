@@ -197,28 +197,41 @@ func newBlobfuse2HttpClient(conf *AzStorageConfig) (*http.Client, error) {
 		ProxyURL = http.ProxyURL(u)
 	}
 
-	return &http.Client{
-		Transport: &http.Transport{
-			Proxy: ProxyURL,
-			// We use Dial instead of DialContext as DialContext has been reported to cause slower performance.
-			Dial /*Context*/ : (&net.Dialer{
-				Timeout:   Timeout,
-				KeepAlive: KeepAlive,
-				DualStack: DualStack,
-			}).Dial, /*Context*/
-			MaxIdleConns:          MaxIdleConns, // No limit
-			MaxIdleConnsPerHost:   MaxIdleConnsPerHost,
-			MaxConnsPerHost:       MaxConnsPerHost,
-			IdleConnTimeout:       IdleConnTimeout,
-			TLSHandshakeTimeout:   TLSHandshakeTimeout,
-			ExpectContinueTimeout: ExpectContinueTimeout,
-			DisableKeepAlives:     DisableKeepAlives,
-			// if content-encoding is set in blob then having transport layer compression will
-			// make things ugly and hence user needs to disable this feature through config
-			DisableCompression:     conf.disableCompression,
-			MaxResponseHeaderBytes: MaxResponseHeaderBytes,
-		},
-	}, nil
+	transport := &http.Transport{
+		Proxy: ProxyURL,
+		// We use Dial instead of DialContext as DialContext has been reported to cause slower performance.
+		Dial /*Context*/ : (&net.Dialer{
+			Timeout:   Timeout,
+			KeepAlive: KeepAlive,
+			DualStack: DualStack,
+		}).Dial, /*Context*/
+		MaxIdleConns:          MaxIdleConns, // No limit
+		MaxIdleConnsPerHost:   MaxIdleConnsPerHost,
+		MaxConnsPerHost:       MaxConnsPerHost,
+		IdleConnTimeout:       IdleConnTimeout,
+		TLSHandshakeTimeout:   TLSHandshakeTimeout,
+		ExpectContinueTimeout: ExpectContinueTimeout,
+		DisableKeepAlives:     DisableKeepAlives,
+		// if content-encoding is set in blob then having transport layer compression will
+		// make things ugly and hence user needs to disable this feature through config
+		DisableCompression:     conf.disableCompression,
+		MaxResponseHeaderBytes: MaxResponseHeaderBytes,
+	}
+
+	var roundTripper http.RoundTripper = transport
+	if conf.tlsTrustStorePath != "" {
+		tlsTransport, err := newTLSHotReloadTransport(
+			transport,
+			conf.tlsTrustStorePath,
+			time.Second*time.Duration(conf.backoffTime),
+		)
+		if err != nil {
+			return nil, err
+		}
+		roundTripper = tlsTransport
+	}
+
+	return &http.Client{Transport: roundTripper}, nil
 }
 
 // getCloudConfiguration : returns cloud configuration type on the basis of endpoint
