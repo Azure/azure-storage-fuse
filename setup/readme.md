@@ -9,3 +9,43 @@ systemd service file for blobfuse2
 6. Start service: `systemctl start blobfuse2.service`
 7. Make the service starting with system: `systemctl enable blobfuse2.service`
 8. Please Note that the example has the User AzureUser, please create a user called AzureUser or replace this with an existing user.
+
+## One-off 2.5.6 publication to Azure Linux 4
+
+This release recovery branch is now AZL4-only. Do not merge it into main.
+The [release pipeline](../blobfuse2-release.yaml) downloads the original signed
+2.5.6 RPMs, without rebuilding, re-signing, changing GitHub releases, publishing
+containers, or touching the earlier SUSE, Rocky, or Azure Linux 3 feeds.
+
+1. Use the existing Azure DevOps release pipeline definition and choose branch
+   `release/2.5.6-publish-remaining`. Do not create a new pipeline definition:
+   artifact downloads use the current definition's ID.
+2. Set `signed_artifacts_run_id` to the `buildId` of the original 2.5.6 release
+   run that produced `blobfuse2-signed`, not the later recovery run. The original
+   run may have failed during publishing; its signing artifacts are still used.
+3. First run with `publish_artifacts: false`. This now downloads and checks the
+   artifacts rather than skipping the pipeline. Inspect the two AZL4 production
+   targets and SHA256 output.
+4. Both RPMs must come from `blobfuse2-signed/mariner/`, not the root directory.
+   The x86_64 checksum is pinned to the signature-checked, mount-tested RPM:
+   `979c26454a2b58e84e2cc813cfa4d9083b67038402390581433d7ef116803a1b`.
+   Before publishing, verify the ARM64 RPM's signatures with the approved Azure
+   Linux signing key, install and mount-test it on AZL4 ARM64, and obtain its
+   checksum with `sha256sum`. Supply that value as `aarch64_sha256`.
+   The pipeline checks hashes; it does not itself run ARM64 mounts or verify RPM
+   signatures. Supplying the checksum is not a substitute for those checks.
+5. Rerun with the same original build ID, the validated `aarch64_sha256`, and
+   `publish_artifacts: true`. Authorize the existing `BlobFuse/Blobfuse` package
+   feed and `WIF_MI_ESRP_V5` service connection if prompted.
+6. Only these PMC repositories will be updated and published:
+   - `azurelinux-4.0-prod-microsoft-x86_64-yum`
+   - `azurelinux-4.0-prod-microsoft-aarch64-yum`
+   Coordinate with the owners: repository publication may expose other pending
+   changes, and publication across the two architectures is not atomic.
+   If a command fails, inspect PMC state before retrying.
+7. After replication, verify both production repositories on clean AZL4 machines
+   using `dnf5 --refresh list --available blobfuse2`, install
+   `blobfuse2-2.5.6`, and repeat signature and mount/read/write/unmount checks.
+
+Production URLs use `azurelinux/4/prod/microsoft/`, while beta uses
+`azurelinux/4.0/beta/microsoft/`. No beta repository is targeted by this pipeline.
