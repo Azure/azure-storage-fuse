@@ -43,6 +43,12 @@ containers, or touching the earlier SUSE, Rocky, or Azure Linux 3 feeds.
 5. Rerun with the same original build ID, the validated `aarch64_sha256`, and
    `publish_artifacts: true`. Authorize the existing `BlobFuse/Blobfuse` package
    feed and `WIF_MI_ESRP_V5` service connection if prompted.
+   PMC is installed into a job-local Python user base under
+   `$(Agent.TempDirectory)/azl4-pmc`. Both installation and publication use that
+   same Python user base, and publication invokes the absolute `bin/pmc` path
+   rather than depending on PATH changes persisting between tasks. Installation
+   ignores globally installed packages so the executable is always created in
+   the job-local directory; both tasks check `pmc --version` before proceeding.
 6. Only these PMC repositories will be updated and published:
    - `azurelinux-4.0-prod-microsoft-x86_64-yum`
    - `azurelinux-4.0-prod-microsoft-aarch64-yum`

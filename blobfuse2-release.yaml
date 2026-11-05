@@ -139,8 +139,11 @@ extends:
 
                   - bash: |
                       set -euo pipefail
-                      python3 -m pip install pmc-cli
+                      python3 -m pip install --user --ignore-installed pmc-cli
+                      "$PYTHONUSERBASE/bin/pmc" --version
                     displayName: 'Install pmc-cli'
+                    env:
+                      PYTHONUSERBASE: $(Agent.TempDirectory)/azl4-pmc
 
                   - task: AzureCLI@2
                     displayName: 'Publish BOTH 2.5.6 RPMs to AZL4 production only'
@@ -151,6 +154,11 @@ extends:
                       scriptLocation: inlineScript
                       inlineScript: |
                         set -euo pipefail
+                        if [[ ! -x "$PMC_BIN" ]]; then
+                          echo "##vso[task.logissue type=error]PMC CLI executable is missing: $PMC_BIN"
+                          exit 1
+                        fi
+                        "$PMC_BIN" --version
                         pmc_args=(
                           --auth-type wif
                           --base-url https://pmc-ingest.trafficmanager.net/api/v4
@@ -158,7 +166,7 @@ extends:
 
                         declare -A package_ids
                         for arch in x86_64 aarch64; do
-                          package_ids["$arch"]=$(pmc "${pmc_args[@]}" --id-only package upload \
+                          package_ids["$arch"]=$("$PMC_BIN" "${pmc_args[@]}" --id-only package upload \
                             "$RPM_DIR/blobfuse2-2.5.6-fuse3.$arch.rpm")
                           if [[ -z ${package_ids[$arch]} ]]; then
                             echo "##vso[task.logissue type=error]PMC returned no package ID for $arch."
@@ -167,13 +175,15 @@ extends:
                           echo "$arch package ID: ${package_ids[$arch]}"
                         done
                         for arch in x86_64 aarch64; do
-                          pmc "${pmc_args[@]}" repo package update \
+                          "$PMC_BIN" "${pmc_args[@]}" repo package update \
                             --add-packages "${package_ids[$arch]}" \
                             "azurelinux-4.0-prod-microsoft-$arch-yum"
                         done
                         for arch in x86_64 aarch64; do
-                          pmc "${pmc_args[@]}" repo publish \
+                          "$PMC_BIN" "${pmc_args[@]}" repo publish \
                             "azurelinux-4.0-prod-microsoft-$arch-yum"
                         done
                     env:
+                      PYTHONUSERBASE: $(Agent.TempDirectory)/azl4-pmc
+                      PMC_BIN: $(Agent.TempDirectory)/azl4-pmc/bin/pmc
                       RPM_DIR: $(Build.ArtifactStagingDirectory)/blobfuse2-signed/mariner
