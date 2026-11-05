@@ -99,9 +99,9 @@ extends:
                   ))
                   expected = [
                       ["AzureLinux-4.0-x86_64", "marinerFuse3AmdRpm",
-                       "azurelinux-4.0-prod-microsoft-x86_64-yum", ""],
+                       "azurelinux-4-prod-microsoft-x86_64-yum", ""],
                       ["AzureLinux-4.0-aarch64", "marinerFuse3AarchRpm",
-                       "azurelinux-4.0-prod-microsoft-aarch64-yum", ""],
+                       "azurelinux-4-prod-microsoft-aarch64-yum", ""],
                   ]
                   if rows != expected:
                       raise SystemExit("ERROR: Manifest must contain exactly the two AZL4 production destinations.")
@@ -146,7 +146,7 @@ extends:
                       PYTHONUSERBASE: $(Agent.TempDirectory)/azl4-pmc
 
                   - task: AzureCLI@2
-                    displayName: 'Publish BOTH 2.5.6 RPMs to AZL4 production only'
+                    displayName: 'Publish existing 2.5.6 package IDs to AZL4 production only'
                     inputs:
                       addSpnToEnvironment: true
                       azureSubscription: 'WIF_MI_ESRP_V5'
@@ -164,26 +164,21 @@ extends:
                           --base-url https://pmc-ingest.trafficmanager.net/api/v4
                         )
 
-                        declare -A package_ids
+                        # Reuse the original Mariner-signed RPMs already uploaded successfully.
+                        declare -Ar package_ids=(
+                          [x86_64]='content-rpm-packages-01a16a3a-9537-7739-9bcd-82f0b786d330'
+                          [aarch64]='content-rpm-packages-01a16a3a-98de-7976-9304-f4d1b146a686'
+                        )
                         for arch in x86_64 aarch64; do
-                          package_ids["$arch"]=$("$PMC_BIN" "${pmc_args[@]}" --id-only package upload \
-                            "$RPM_DIR/blobfuse2-2.5.6-fuse3.$arch.rpm")
-                          if [[ -z ${package_ids[$arch]} ]]; then
-                            echo "##vso[task.logissue type=error]PMC returned no package ID for $arch."
-                            exit 1
-                          fi
-                          echo "$arch package ID: ${package_ids[$arch]}"
-                        done
-                        for arch in x86_64 aarch64; do
+                          echo "$arch existing package ID: ${package_ids[$arch]}"
                           "$PMC_BIN" "${pmc_args[@]}" repo package update \
                             --add-packages "${package_ids[$arch]}" \
-                            "azurelinux-4.0-prod-microsoft-$arch-yum"
+                            "azurelinux-4-prod-microsoft-$arch-yum"
                         done
                         for arch in x86_64 aarch64; do
                           "$PMC_BIN" "${pmc_args[@]}" repo publish \
-                            "azurelinux-4.0-prod-microsoft-$arch-yum"
+                            "azurelinux-4-prod-microsoft-$arch-yum"
                         done
                     env:
                       PYTHONUSERBASE: $(Agent.TempDirectory)/azl4-pmc
                       PMC_BIN: $(Agent.TempDirectory)/azl4-pmc/bin/pmc
-                      RPM_DIR: $(Build.ArtifactStagingDirectory)/blobfuse2-signed/mariner

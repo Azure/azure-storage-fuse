@@ -50,8 +50,12 @@ containers, or touching the earlier SUSE, Rocky, or Azure Linux 3 feeds.
    ignores globally installed packages so the executable is always created in
    the job-local directory; both tasks check `pmc --version` before proceeding.
 6. Only these PMC repositories will be updated and published:
-   - `azurelinux-4.0-prod-microsoft-x86_64-yum`
-   - `azurelinux-4.0-prod-microsoft-aarch64-yum`
+   - `azurelinux-4-prod-microsoft-x86_64-yum`
+   - `azurelinux-4-prod-microsoft-aarch64-yum`
+   These `4` names replace the rejected `4.0` names and still require PMC
+   confirmation. Both repository updates must succeed before either repository
+   is published. If either name is unresolved, the pipeline fails without
+   reaching publication; an earlier successful repository update may remain.
    Coordinate with the owners: repository publication may expose other pending
    changes, and publication across the two architectures is not atomic.
    If a command fails, inspect PMC state before retrying.
@@ -61,3 +65,13 @@ containers, or touching the earlier SUSE, Rocky, or Azure Linux 3 feeds.
 
 Production URLs use `azurelinux/4/prod/microsoft/`, while beta uses
 `azurelinux/4.0/beta/microsoft/`. No beta repository is targeted by this pipeline.
+
+The prior attempt uploaded both RPMs successfully before its first repository
+update failed. Subsequent runs reuse these existing PMC package IDs and do not
+upload again:
+
+- x86_64: `content-rpm-packages-01a16a3a-9537-7739-9bcd-82f0b786d330`
+- aarch64: `content-rpm-packages-01a16a3a-98de-7976-9304-f4d1b146a686`
+
+Keep using the same original artifact run and validated checksums: the pipeline
+still downloads and verifies those RPMs before associating the existing IDs.
