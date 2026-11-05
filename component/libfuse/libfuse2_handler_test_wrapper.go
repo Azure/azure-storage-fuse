@@ -74,6 +74,26 @@ type libfuseTestSuite struct {
 	mock     *internal.MockComponent
 }
 
+func testTelemetryNativeBoundary(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	C.telemetry_enable(1)
+	defer C.telemetry_enable(0)
+	beforeRead := uint64(C.telemetry_count(7, C.EBADF))
+	beforeWrite := uint64(C.telemetry_count(8, C.EBADF))
+	fobj := C.allocate_native_file_object(^C.uint64_t(0), 0)
+	defer C.free(unsafe.Pointer(fobj))
+	info := C.fuse_file_info_t{fh: C.uint64_t(uintptr(unsafe.Pointer(fobj)))}
+	buf := C.malloc(1)
+	defer C.free(buf)
+	suite.assert.Equal(-int(C.EBADF), int(C.tracked_read(nil, (*C.char)(buf), 1, 0, &info)))
+	suite.assert.Equal(-int(C.EBADF), int(C.tracked_write(nil, (*C.char)(buf), 1, 0, &info)))
+	suite.assert.Equal(beforeRead+1, uint64(C.telemetry_count(7, C.EBADF)))
+	suite.assert.Equal(beforeWrite+1, uint64(C.telemetry_count(8, C.EBADF)))
+	C.telemetry_enable(0)
+	C.tracked_read(nil, (*C.char)(buf), 1, 0, &info)
+	suite.assert.Equal(beforeRead+1, uint64(C.telemetry_count(7, C.EBADF)))
+}
+
 type fileHandle struct {
 	fd  uint64
 	obj uint64

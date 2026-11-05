@@ -4,6 +4,17 @@ logging:
   level: log_off|log_crit|log_err|log_warning|log_info|log_trace|log_debug <log level. Default - log_warning> <log_debug will also enable sdk-trace logs>
   file-path: <path where log files shall be stored. Default - '$HOME/.blobfuse2/blobfuse2.log'>
 
+# Optional Microsoft lifecycle/error telemetry, separate from diagnostic logs.
+# No destination is embedded; collection stays inactive until one is supplied.
+# Any explicit disable in config, --disable-telemetry or
+# BLOBFUSE_DISABLE_TELEMETRY=true wins and deletes retained telemetry state.
+# See doc/microsoft-telemetry.md for privacy, limits and recovery semantics.
+# microsoft-telemetry:
+#   disabled: false
+#   connection-string: "InstrumentationKey=<key>;IngestionEndpoint=https://<ingestion-host>/"
+#   snapshot-interval-sec: 300
+#   state-directory: /persistent/blobfuse/microsoft-telemetry
+
 # Pipeline configuration. Choose components to be engaged. The order below is the priority order that needs to be followed.
 components:
   - libfuse

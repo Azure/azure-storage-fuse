@@ -56,6 +56,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/telemetry"
 
 	"github.com/sevlyar/go-daemon"
 	"github.com/spf13/cobra"
@@ -139,6 +140,7 @@ func (opt *mountOptions) validate(skipNonEmptyMount bool) error {
 			}
 		}
 	} else if !skipNonEmptyMount && !common.IsDirectoryEmpty(opt.MountPath) {
+		telemetry.Failure("mount_directory_not_empty")
 		return fmt.Errorf("mount directory is not empty")
 	}
 
@@ -191,6 +193,7 @@ func (opt *mountOptions) validate(skipNonEmptyMount bool) error {
 }
 
 func OnConfigChange() {
+	disableTelemetryOnConfigChange()
 	newLogOptions := &LogOptions{}
 	err := config.UnmarshalKey("logging", newLogOptions)
 	if err != nil {
@@ -266,7 +269,7 @@ var mountCmd = &cobra.Command{
 	Long:       "Mounts the azure container as a filesystem",
 	SuggestFor: []string{"mnt", "mout"},
 	Args:       cobra.ExactArgs(1),
-	RunE: func(_ *cobra.Command, args []string) error {
+	RunE: func(_ *cobra.Command, args []string) (mountErr error) {
 		options.inputMountPath = args[0]
 		options.MountPath = common.ExpandPath(args[0])
 		common.MountPath = options.MountPath
@@ -294,6 +297,9 @@ var mountCmd = &cobra.Command{
 			}
 		}
 
+		mountTelemetry := beginMountTelemetry()
+		defer func() { mountTelemetry.Close(mountErr) }()
+
 		err := config.Unmarshal(&options)
 		if err != nil {
 			return fmt.Errorf("failed to unmarshal config [%s]", err.Error())
@@ -310,6 +316,7 @@ var mountCmd = &cobra.Command{
 		// tuning knobs onto block_cache. Runs before synthesis so it sees the
 		// user's original components list.
 		if err = normalizeDistCacheConfig(options.Components); err != nil {
+			telemetry.Failure("pipeline_config_conflict")
 			return err
 		}
 
@@ -347,6 +354,7 @@ var mountCmd = &cobra.Command{
 		}
 
 		if err = common.ValidatePipeline(options.Components); err != nil {
+			telemetry.Failure("pipeline_config_conflict")
 			// file-cache, block-cache and xload are mutually exclusive
 			log.Err("mount: invalid pipeline components [%s]", err.Error())
 			return fmt.Errorf("invalid pipeline components [%s]", err.Error())
@@ -441,6 +449,7 @@ var mountCmd = &cobra.Command{
 			options.Logging.LogLevel = "LOG_WARNING"
 		}
 
+		telemetry.Stage("mount_path_validation")
 		err = options.validate(options.NonEmpty)
 		if err != nil {
 			return err
@@ -478,6 +487,7 @@ var mountCmd = &cobra.Command{
 		// It's best to destroy the logger before we return to the caller, as caller may abruptly exit on error and we
 		// might lose some logs in the channel which are not yet flushed to the file in case of not destroying the logger
 		defer func() {
+			mountTelemetry.Close(mountErr)
 			_ = log.Destroy()
 		}()
 
@@ -542,6 +552,8 @@ var mountCmd = &cobra.Command{
 
 		common.ForegroundMount = options.Foreground
 
+		telemetry.Stage("pipeline_initialization")
+		telemetryPipeline(options.Components)
 		pipeline, err = internal.NewPipeline(options.Components, !daemon.WasReborn())
 		if err != nil {
 			log.Err("mount : failed to initialize new pipeline [%v]", err)
@@ -550,6 +562,15 @@ var mountCmd = &cobra.Command{
 
 		log.Info("mount: Mounting blobfuse2 on %s", options.MountPath)
 		if !options.Foreground {
+			telemetry.Stage("daemonization")
+			if mountTelemetry != nil && !daemon.WasReborn() {
+				session, attempt, started := mountTelemetry.IDs()
+				if err := os.Setenv(telemetryHandoff, strings.Join([]string{session, attempt,
+					started.Format(time.RFC3339Nano), strconv.FormatInt(mountTelemetry.StartMonotonic(), 10)}, ",")); err != nil {
+					log.Warn("Microsoft telemetry: cannot transfer daemon session identity")
+				}
+				mountTelemetry.Detach()
+			}
 			pidFile := strings.ReplaceAll(options.MountPath, "/", "_") + ".pid"
 			pidFileName := filepath.Join(os.ExpandEnv(common.DefaultWorkDir), pidFile)
 
@@ -590,6 +611,7 @@ var mountCmd = &cobra.Command{
 				rmErr := os.Remove(pidFileName)
 				if rmErr != nil {
 					log.Err("mount : auto cleanup failed [%v]", rmErr.Error())
+					mountTelemetry.HandoffFailed(err)
 					return fmt.Errorf("failed to daemonize application [%s]", err.Error())
 				}
 				goto retry
@@ -613,6 +635,7 @@ var mountCmd = &cobra.Command{
 				// In case of failure stderr will have the error emitted by child and parent will read
 				// those logs from the file set in daemon context
 				err = runPipeline(pipeline, ctx)
+				mountErr = err
 
 				defer func() {
 					// if there is any error while initializing the components, we shouldn't delete this temp file.
@@ -626,6 +649,9 @@ var mountCmd = &cobra.Command{
 				}()
 
 			} else { // execute in parent only
+				if err := os.Unsetenv(telemetryHandoff); err != nil {
+					log.Warn("Microsoft telemetry: cannot clear daemon handoff")
+				}
 
 				childDone := make(chan struct{})
 
@@ -696,7 +722,7 @@ var mountCmd = &cobra.Command{
 				}
 			}
 		}
-		return nil
+		return mountErr
 	},
 	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return nil, cobra.ShellCompDirectiveDefault

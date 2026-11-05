@@ -43,6 +43,10 @@ import (
 )
 
 // Tests the default configuration of libfuse
+func (suite *libfuseTestSuite) TestTelemetryNativeBoundary() {
+	testTelemetryNativeBoundary(suite)
+}
+
 func (suite *libfuseTestSuite) TestDefault() {
 	defer suite.cleanupTest()
 	suite.assert.Equal("libfuse", suite.libfuse.Name())

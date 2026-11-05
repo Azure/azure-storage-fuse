@@ -60,6 +60,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
+	"github.com/Azure/azure-storage-fuse/v2/internal/telemetry"
 )
 
 /* --- IMPORTANT NOTE ---
@@ -120,6 +121,10 @@ func (lf *Libfuse) convertConfig() *C.fuse_options_t {
 // initFuse initializes the fuse library by registering callbacks, parsing arguments and mounting the directory
 func (lf *Libfuse) initFuse() error {
 	log.Trace("Libfuse::initFuse : Initializing FUSE")
+	C.telemetry_enable(0)
+	if s := telemetry.Current(); s != nil {
+		s.NativeHooks(func() { C.telemetry_enable(1) }, func() { C.telemetry_enable(0) })
+	}
 
 	operations := C.fuse_operations_t{}
 
@@ -314,6 +319,8 @@ func libfuse2_init(conn *C.fuse_conn_info_t) (res unsafe.Pointer) {
 	log.Info("Libfuse::libfuse2_init : want: 0x%x, max_readahead: %d, max_background: %d",
 		conn.want, conn.max_readahead, conn.max_background)
 
+	fuseTelemetryReady(2, C.GoString(C.telemetry_libfuse_version()), int(conn.proto_major), int(conn.proto_minor),
+		func(op, outcome int) uint64 { return uint64(C.telemetry_count(C.int(op), C.int(outcome))) })
 	return nil
 }
 
