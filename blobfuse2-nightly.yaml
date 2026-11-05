@@ -652,7 +652,7 @@ stages:
                   containerName: "test-cnt-mari-2"
                   Description: "Azure Linux 4"
                   AgentName: "blobfuse-azurelinux4"
-                  fuselib: 'libfuse3-dev'
+                  fuselib: 'fuse3-devel'
                   tags: 'fuse3'
             pool:
               name: $(poolName)

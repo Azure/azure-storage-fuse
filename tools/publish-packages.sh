@@ -1,4 +1,7 @@
 #!/bin/bash
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License. See LICENSE in the project root.
+
 set -euo pipefail
 
 if [[ $# -ne 3 ]]; then
@@ -9,6 +12,7 @@ fi
 manifest=$1
 artifact_dir=$2
 scope=$3
+pmc_bin=${PMC_BIN:-pmc}
 if [[ $scope != all && $scope != azurelinux4 ]]; then
     echo "Unsupported publish scope: $scope" >&2
     exit 1
@@ -30,6 +34,7 @@ distros=()
 types=()
 repos=()
 releases=()
+skipped_preview=false
 shopt -s nullglob
 
 # Validate every selected destination and artifact before making any PMC changes.
@@ -54,12 +59,13 @@ while IFS=, read -r distro package_type repo release || [[ -n $distro ]]; do
         echo "Expected exactly one signed artifact for $distro: $artifact_dir/$pattern" >&2
         exit 1
     fi
-    package_files["$package_type"]=${files[0]}
     package_name=${files[0]##*/}
     if [[ $distro == AzureLinux-4.0-* && $repo == *-prod-* && $package_name == *preview* ]]; then
-        echo "Refusing to publish a preview package to Azure Linux 4.0 production: $package_name -> $repo" >&2
-        exit 1
+        echo "Skipping Azure Linux 4.0 production for preview package: $package_name -> $repo"
+        skipped_preview=true
+        continue
     fi
+    package_files["$package_type"]=${files[0]}
     if [[ $distro == Mariner-* && $package_name == *preview* ]]; then
         repo=${repo/prod/preview}
     fi
@@ -70,6 +76,10 @@ while IFS=, read -r distro package_type repo release || [[ -n $distro ]]; do
 done < "$manifest"
 
 if [[ ${#distros[@]} -eq 0 ]]; then
+    if [[ $skipped_preview == true ]]; then
+        echo "No repositories to publish: all selected Azure Linux 4.0 production targets were skipped for preview packages."
+        exit 0
+    fi
     echo "No repositories selected for scope: $scope" >&2
     exit 1
 fi
@@ -85,7 +95,7 @@ pmc_args=(--auth-type wif --base-url https://pmc-ingest.trafficmanager.net/api/v
 for ((i = 0; i < ${#distros[@]}; i++)); do
     package_type=${types[$i]}
     if [[ -z ${package_ids[$package_type]:-} ]]; then
-        package_ids["$package_type"]=$(pmc "${pmc_args[@]}" --id-only package upload "${package_files[$package_type]}")
+        package_ids["$package_type"]=$("$pmc_bin" "${pmc_args[@]}" --id-only package upload "${package_files[$package_type]}")
         if [[ -z ${package_ids[$package_type]} ]]; then
             echo "PMC returned no package ID for $package_type" >&2
             exit 1
@@ -93,13 +103,13 @@ for ((i = 0; i < ${#distros[@]}; i++)); do
     fi
     args=(repo package update --add-packages "${package_ids[$package_type]}" "${repos[$i]}")
     [[ -n ${releases[$i]} ]] && args+=("${releases[$i]}")
-    pmc "${pmc_args[@]}" "${args[@]}"
+    "$pmc_bin" "${pmc_args[@]}" "${args[@]}"
 done
 
 # Architectures may share a repository (APT) or have separate repositories (Azure Linux).
 for repo in "${repos[@]}"; do
     if [[ -z ${published[$repo]:-} ]]; then
-        pmc "${pmc_args[@]}" repo publish "$repo"
+        "$pmc_bin" "${pmc_args[@]}" repo publish "$repo"
         published["$repo"]=1
     fi
 done

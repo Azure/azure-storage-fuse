@@ -11,8 +11,8 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "tools/publish-packages.sh"
 MANIFEST = ROOT / "setup/packages.csv"
 AZURE_LINUX_4_REPOS = [
-    "azurelinux-4.0-prod-microsoft-x86_64-yum",
-    "azurelinux-4.0-prod-microsoft-aarch64-yum",
+    "azurelinux-4-prod-microsoft-x86_64-yum",
+    "azurelinux-4-prod-microsoft-aarch64-yum",
 ]
 
 
@@ -42,6 +42,7 @@ class PublishPackagesTests(unittest.TestCase):
             "PATH": str(self.directory) + os.pathsep + os.environ["PATH"],
             "PMC_LOG": str(self.log),
         }
+        self.env.pop("PMC_BIN", None)
         self.rows = list(csv.reader(
             line for line in MANIFEST.read_text().splitlines()
             if line and not line.startswith("#")
@@ -180,12 +181,7 @@ class PublishPackagesTests(unittest.TestCase):
 
     def test_preview_routing_for_azurelinux3_is_preserved(self):
         self.all_artifacts("2.5.7~preview.1")
-        manifest = self.directory / "azurelinux3.csv"
-        with manifest.open("w", newline="") as file:
-            csv.writer(file, lineterminator="\n").writerows(
-                row for row in self.rows if not row[0].startswith("AzureLinux-4.0-")
-            )
-        result = self.run_publish("all", manifest=manifest)
+        result = self.run_publish("all")
         self.assertEqual(result.returncode, 0, result.stderr)
         published = [call[-1] for call in self.calls() if "publish" in call]
         self.assertIn("azurelinux-3.0-preview-ms-oss-x86_64-yum", published)
@@ -193,14 +189,42 @@ class PublishPackagesTests(unittest.TestCase):
         self.assertNotIn("azurelinux-3.0-prod-ms-oss-x86_64-yum", published)
         self.assertTrue(all(repo not in published for repo in AZURE_LINUX_4_REPOS))
 
-    def test_preview_is_blocked_from_azurelinux4_production(self):
+    def test_preview_skips_only_azurelinux4_production(self):
         self.all_artifacts("2.5.7~preview.1")
-        for scope in ("all", "azurelinux4"):
-            with self.subTest(scope=scope):
-                result = self.run_publish(scope)
-                self.assertNotEqual(result.returncode, 0)
-                self.assertIn("Refusing to publish a preview package", result.stderr)
-                self.assertEqual(self.calls(), [])
+        result = self.run_publish("all")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.count("Skipping Azure Linux 4.0 production"), 2)
+        updates = [call for call in self.calls() if "update" in call]
+        self.assertEqual(len(updates), len(self.rows) - 2)
+        for call in self.calls():
+            self.assertTrue(all(repo not in call for repo in AZURE_LINUX_4_REPOS))
+
+    def test_azurelinux4_only_preview_logs_noop_without_uploads(self):
+        self.azure_artifacts("2.5.7~preview.1")
+        result = self.run_publish()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("all selected Azure Linux 4.0 production targets were skipped", result.stdout)
+        self.assertEqual(self.calls(), [])
+
+    def test_explicit_pmc_executable_does_not_require_path_lookup(self):
+        self.azure_artifacts()
+        directory = self.directory / "cli with spaces"
+        directory.mkdir()
+        cli = directory / "pmc"
+        (self.directory / "pmc").rename(cli)
+        self.env["PMC_BIN"] = str(cli)
+        result = self.run_publish()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len(self.calls()), 6)
+
+    def test_future_stable_release_uses_current_artifacts(self):
+        self.all_artifacts("2.6.0")
+        result = self.run_publish("all")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        uploads = [call[-1] for call in self.calls() if "upload" in call]
+        self.assertTrue(all("2.6.0" in path for path in uploads))
+        published = [call[-1] for call in self.calls() if "publish" in call]
+        self.assertTrue(all(repo in published for repo in AZURE_LINUX_4_REPOS))
 
     def test_empty_selection_fails(self):
         manifest = self.directory / "empty.csv"
@@ -234,3 +258,5 @@ class PublishPackagesTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License. See LICENSE in the project root.

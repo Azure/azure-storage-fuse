@@ -110,6 +110,11 @@ extends:
               skip_azcli: "false"
               skip_ut: "false"
 
+          - script: |
+              python3 -B -m unittest discover -s tools -p 'test_publish_packages.py' -v
+            displayName: 'Package publishing regression tests'
+            workingDirectory: $(WORK_DIR)
+
           # One run of the close/rename stress test catches the original file-cache deadlock only about
           # half the time, so repeat it. Unlike the unit-test step above, a failure here fails the job.
           - script: |

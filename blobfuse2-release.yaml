@@ -1625,7 +1625,7 @@ stages:
               agentName: "blobfuse-azurelinux4"
               DistroVer: "AzureLinux4"
               Description: "Azure Linux 4"
-              fuselib: 'libfuse3-dev'
+              fuselib: 'fuse3-devel'
               fuse-version: 'fuse3'
               tags: 'fuse3'
               container: "test-cnt-mari-2"
@@ -1914,8 +1914,12 @@ stages:
               displayName: 'Connect to PMC artifact'
 
             - script: |
-                pip install pmc-cli
+                set -euo pipefail
+                python3 -m pip install --user --ignore-installed pmc-cli
+                "$PYTHONUSERBASE/bin/pmc" --version
               displayName: 'Install pmc-cli'
+              env:
+                PYTHONUSERBASE: $(Agent.TempDirectory)/blobfuse-pmc
 
             - task: AzureCLI@2
               displayName: 'Test PMC installation'
@@ -1925,11 +1929,12 @@ stages:
                 scriptType: bash
                 scriptLocation: inlineScript
                 inlineScript: |
-                  pmc --version
-                  pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo list --limit 1
-                  if [ $? -ne 0 ]; then
-                    exit 1
-                  fi
+                  set -euo pipefail
+                  "$PMC_BIN" --version
+                  "$PMC_BIN" --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo list --limit 1
+              env:
+                PYTHONUSERBASE: $(Agent.TempDirectory)/blobfuse-pmc
+                PMC_BIN: $(Agent.TempDirectory)/blobfuse-pmc/bin/pmc
 
             # download artifacts that need to be published
             - task: DownloadBuildArtifacts@0
@@ -1956,3 +1961,5 @@ stages:
                     "$PUBLISH_SCOPE"
               env:
                 PUBLISH_SCOPE: ${{ parameters.publish_scope }}
+                PYTHONUSERBASE: $(Agent.TempDirectory)/blobfuse-pmc
+                PMC_BIN: $(Agent.TempDirectory)/blobfuse-pmc/bin/pmc
