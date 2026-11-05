@@ -1774,6 +1774,25 @@ func (suite *fileCacheTestSuite) TestFlushFileUploadFailureKeepsDirty() {
 	suite.assert.False(handle.Dirty())
 }
 
+// TestReleaseFileUploadFailureFreesHandle: don't leak the handle on failed upload
+func (suite *fileCacheTestSuite) TestReleaseFileUploadFailureFreesHandle() {
+	defer suite.cleanupTest()
+	mockCtrl := gomock.NewController(suite.T())
+	defer mockCtrl.Finish()
+
+	fc, mockComponent, _, cleanup := suite.setupMockFileCacheForFlush(mockCtrl)
+	defer cleanup()
+
+	name := "release_upload_failure.mp3"
+	handle := suite.createFileForFlush(fc, name)
+	mockComponent.EXPECT().CopyFromFile(gomock.Any()).Return(syscall.EIO)
+
+	err := fc.ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
+	suite.assert.Equal(syscall.EIO, err)
+	suite.assert.ErrorIs(handle.GetFileObject().Close(), os.ErrClosed, "local file must be closed")
+	suite.assert.Zero(fc.fileLocks.Get(name).Count())
+}
+
 func (suite *fileCacheTestSuite) TestGetAttrCase1() {
 	defer suite.cleanupTest()
 	// Setup

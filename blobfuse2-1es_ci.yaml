@@ -5,12 +5,13 @@ trigger:
       - pr-mirror/*
       - feature/tachyon
 
-# Execute this for every PR on main
+# Execute this for every PR on main, and for stacked PRs targeting syeleti/* branches
 pr:
   branches:
     include:
     - main
     - feature/tachyon
+    - syeleti/*
   paths:
     exclude:
     - README.md
@@ -127,6 +128,46 @@ extends:
               go test -v -timeout=15m ./test/loopback_e2e -args -blobfuse2=$(WORK_DIR)/blobfuse2
             displayName: 'File cache loopback mount E2E'
             workingDirectory: $(WORK_DIR)
+
+          # Compare the libfuse read/write callback benchmarks with the base of the change, and fail if they got
+          # slower by more than 10%, see test/scripts/libfuse_bench_compare.sh. Runs only for changes to libfuse or
+          # its dependencies. A change that accepts a measured regression on purpose says so with
+          # [perf-regression-accepted] on a line of its own in a commit message, or a run sets
+          # LIBFUSE_BENCH_ACCEPT_REGRESSION to true.
+          - script: |
+              set -euo pipefail
+              target="${TARGET_BRANCH#refs/heads/}"
+              if [[ "$target" == *'$('* || -z "$target" ]]; then
+                target=main
+              fi
+              if [[ "$(git rev-parse --is-shallow-repository)" == "true" ]]; then
+                git fetch --quiet --no-tags --unshallow origin
+              fi
+              git fetch --quiet --no-tags origin "+refs/heads/$target:refs/remotes/origin/$target"
+              base="$(git merge-base HEAD "origin/$target")"
+
+              changed="$(git diff --name-only "$base" HEAD -- component/libfuse internal/handlemap go.mod go.sum test/scripts/libfuse_bench_compare.sh)"
+              if [[ -z "$changed" ]]; then
+                echo "No changes to libfuse or its dependencies since $target, skipping the comparison"
+                exit 0
+              fi
+
+              export FAIL_ON_REGRESSION=true
+              # Not grep -q: it would exit at the first match, and under pipefail the SIGPIPE of git log fails the test
+              if [[ "${ACCEPT_REGRESSION,,}" == "true" ]] || git log --format=%B "$base..HEAD" | grep -Ex '[[:space:]]*\[perf-regression-accepted\][[:space:]]*' >/dev/null; then
+                echo "A regression is accepted for this change, reporting without failing"
+                FAIL_ON_REGRESSION=false
+              fi
+
+              go install golang.org/x/perf/cmd/benchstat@v0.0.0-20261009192801-be2c69fb417e
+              export PATH="$PATH:$(go env GOPATH)/bin"
+              OUT_DIR="$(Agent.TempDirectory)/libfuse-bench" test/scripts/libfuse_bench_compare.sh "$base"
+            displayName: 'libfuse callback benchmarks vs base'
+            condition: and(succeeded(), eq(variables['distro_version'], 'ubuntu_22_x86'))
+            workingDirectory: $(WORK_DIR)
+            env:
+              TARGET_BRANCH: $(System.PullRequest.TargetBranch)
+              ACCEPT_REGRESSION: $(LIBFUSE_BENCH_ACCEPT_REGRESSION)
 
           # Code lint checks (Static-analysis)
           - script: |

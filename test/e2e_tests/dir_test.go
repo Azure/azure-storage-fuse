@@ -241,17 +241,18 @@ func (suite *dirTestSuite) TestDirDeleteEmpty() {
 func (suite *dirTestSuite) TestDirDeleteNonEmpty() {
 	dir3Name := suite.testPath + "/test3NE"
 	err := os.Mkdir(dir3Name, 0777)
-	suite.NoError(err)
+	suite.Require().NoError(err)
+	defer suite.dirTestCleanup([]string{dir3Name})
 
 	err = os.Mkdir(dir3Name+"/abcdTest", 0777)
-	suite.NoError(err)
+	suite.Require().NoError(err)
 
 	err = os.Remove(dir3Name)
-	suite.Error(err)
-	suite.Contains(err.Error(), "directory not empty")
+	suite.ErrorIs(err, syscall.ENOTEMPTY)
 
-	// cleanup
-	suite.dirTestCleanup([]string{dir3Name})
+	info, err := os.Stat(dir3Name + "/abcdTest")
+	suite.Require().NoError(err)
+	suite.True(info.IsDir())
 }
 
 // // # Delete non-empty directory recursively

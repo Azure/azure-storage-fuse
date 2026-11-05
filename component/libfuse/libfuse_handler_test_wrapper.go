@@ -405,6 +405,29 @@ func testFsyncNativeWrite(suite *libfuseTestSuite) {
 	suite.assert.Equal(C.int(0), libfuse_release(path, fi))
 }
 
+// testReleaseError : release frees the handle even if the next component fails
+func testReleaseError(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	collector := enableLibfuseStats(suite)
+	name := "path"
+	path := C.CString("/" + name)
+	defer C.free(unsafe.Pointer(path))
+
+	handle := handlemap.NewHandle(name)
+	suite.mock.EXPECT().OpenFile(gomock.Any()).Return(handle, nil)
+	fi := &C.fuse_file_info_t{}
+	fi.flags = C.O_RDWR
+	suite.Require().Equal(C.int(0), libfuse_open(path, fi))
+	suite.mock.EXPECT().ReleaseFile(internal.ReleaseFileOptions{Handle: handle}).Return(errors.New("upload failed"))
+
+	libfuse_release(path, fi)
+
+	_, found := handlemap.Load(handle.ID)
+	suite.assert.False(found, "handle must be removed despite ReleaseFile errors")
+	stats := collector.StopAndGetStats()
+	suite.assert.Equal(int64(0), stats[openHandles])
+}
+
 // testNativeDirtyHandOver : when two flushes of a handle take a pending native dirty mark at the same moment, neither
 // may see the handle clean, or it would return before the upload. The mark is in transit only for an instant, so the
 // two flushes are started together many times.
