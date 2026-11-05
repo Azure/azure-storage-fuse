@@ -20,141 +20,160 @@ parameters:
 trigger: none
 pr: none
 
-stages:
-  - stage: PublishArtifacts
-    jobs:
-      - job: PublishArtifacts
-        timeoutInMinutes: 360
-        pool:
-          vmImage: 'ubuntu-22.04'
-        steps:
-          - checkout: self
+resources:
+  repositories:
+    - repository: 1esPipelines
+      type: git
+      name: 1ESPipelineTemplates/1ESPipelineTemplates
+      ref: refs/tags/release
 
-          - bash: |
-              set -euo pipefail
-              if [[ ! "$RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
-                echo "##vso[task.logissue type=error]Provide the original 2.5.6 release buildId from this pipeline definition, not the recovery run."
-                exit 1
-              fi
-              if [[ -n "$ARM_SHA256" && ! "$ARM_SHA256" =~ ^[[:xdigit:]]{64}$ ]]; then
-                echo "##vso[task.logissue type=error]aarch64_sha256 must be a 64-character hexadecimal SHA256."
-                exit 1
-              fi
-              if [[ "${PUBLISH,,}" == true && -z "$ARM_SHA256" ]]; then
-                echo "##vso[task.logissue type=error]Before publishing, signature-check and mount-test the mariner ARM64 RPM on AZL4, then supply its SHA256."
-                exit 1
-              fi
-              echo "Using original signed artifacts from build $RUN_ID."
-            displayName: 'Validate release inputs'
-            env:
-              RUN_ID: ${{ parameters.signed_artifacts_run_id }}
-              ARM_SHA256: ${{ parameters.aarch64_sha256 }}
-              PUBLISH: '${{ parameters.publish_artifacts }}'
+extends:
+  template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
+  parameters:
+    sdl:
+      sourceAnalysisPool:
+        name: blobfuse2-pool
+        image: windows2022-1espt
+        os: windows
 
-          - task: DownloadBuildArtifacts@0
-            displayName: 'Download only the original Mariner-signed 2.5.6 RPMs'
-            inputs:
-              buildType: 'specific'
-              project: '$(System.TeamProjectId)'
-              pipeline: '$(System.DefinitionId)'
-              buildVersionToDownload: 'specific'
-              buildId: '${{ parameters.signed_artifacts_run_id }}'
-              downloadType: 'single'
-              artifactName: 'blobfuse2-signed'
-              itemPattern: |
-                blobfuse2-signed/mariner/blobfuse2-2.5.6-fuse3.x86_64.rpm
-                blobfuse2-signed/mariner/blobfuse2-2.5.6-fuse3.aarch64.rpm
-              downloadPath: $(Build.ArtifactStagingDirectory)
-
-          - bash: |
-              set -euo pipefail
-              python3 - <<'PY'
-              import csv
-              import os
-              from pathlib import Path
-
-              manifest = Path(os.environ["MANIFEST"])
-              rows = list(csv.reader(
-                  line for line in manifest.read_text().splitlines()
-                  if line and not line.startswith("#")
-              ))
-              expected = [
-                  ["AzureLinux-4.0-x86_64", "marinerFuse3AmdRpm",
-                   "azurelinux-4.0-prod-microsoft-x86_64-yum", ""],
-                  ["AzureLinux-4.0-aarch64", "marinerFuse3AarchRpm",
-                   "azurelinux-4.0-prod-microsoft-aarch64-yum", ""],
-              ]
-              if rows != expected:
-                  raise SystemExit("ERROR: Manifest must contain exactly the two AZL4 production destinations.")
-              for distro, _, repo, _ in rows:
-                  print(f"Publish target: {distro} -> {repo}")
-              PY
-
-              for arch in x86_64 aarch64; do
-                test -f "$RPM_DIR/blobfuse2-2.5.6-fuse3.$arch.rpm" || {
-                  echo "##vso[task.logissue type=error]Missing original mariner/ 2.5.6 RPM for $arch."
-                  exit 1
-                }
-                sha256sum "$RPM_DIR/blobfuse2-2.5.6-fuse3.$arch.rpm"
-              done
-              printf '%s  %s\n' \
-                '979c26454a2b58e84e2cc813cfa4d9083b67038402390581433d7ef116803a1b' \
-                "$RPM_DIR/blobfuse2-2.5.6-fuse3.x86_64.rpm" | sha256sum --check
-              if [[ -n "$ARM_SHA256" ]]; then
-                printf '%s  %s\n' "${ARM_SHA256,,}" \
-                  "$RPM_DIR/blobfuse2-2.5.6-fuse3.aarch64.rpm" | sha256sum --check
-              else
-                echo "##vso[task.logissue type=warning]Inspection only: ARM64 has no validated checksum. No packages will be published."
-              fi
-            displayName: 'Verify exact AZL4 targets and validated RPM checksums'
-            env:
-              MANIFEST: $(Build.SourcesDirectory)/setup/packages.csv
-              RPM_DIR: $(Build.ArtifactStagingDirectory)/blobfuse2-signed/mariner
-              ARM_SHA256: ${{ parameters.aarch64_sha256 }}
-
-          - ${{ if eq(parameters.publish_artifacts, true) }}:
-              - task: PipAuthenticate@1
-                inputs:
-                  artifactFeeds: 'BlobFuse/Blobfuse'
-                displayName: 'Connect to PMC artifact'
+    stages:
+      - stage: PublishArtifacts
+        jobs:
+          - job: PublishArtifacts
+            timeoutInMinutes: 360
+            pool:
+              name: blobfuse2-pool
+              os: linux
+              demands:
+                - ImageOverride -equals ubuntu22-1espt
+            steps:
+              - checkout: self
 
               - bash: |
                   set -euo pipefail
-                  python3 -m pip install pmc-cli
-                displayName: 'Install pmc-cli'
-
-              - task: AzureCLI@2
-                displayName: 'Publish BOTH 2.5.6 RPMs to AZL4 production only'
-                inputs:
-                  addSpnToEnvironment: true
-                  azureSubscription: 'WIF_MI_ESRP_V5'
-                  scriptType: bash
-                  scriptLocation: inlineScript
-                  inlineScript: |
-                    set -euo pipefail
-                    pmc_args=(
-                      --auth-type wif
-                      --base-url https://pmc-ingest.trafficmanager.net/api/v4
-                    )
-
-                    declare -A package_ids
-                    for arch in x86_64 aarch64; do
-                      package_ids["$arch"]=$(pmc "${pmc_args[@]}" --id-only package upload \
-                        "$RPM_DIR/blobfuse2-2.5.6-fuse3.$arch.rpm")
-                      if [[ -z ${package_ids[$arch]} ]]; then
-                        echo "##vso[task.logissue type=error]PMC returned no package ID for $arch."
-                        exit 1
-                      fi
-                      echo "$arch package ID: ${package_ids[$arch]}"
-                    done
-                    for arch in x86_64 aarch64; do
-                      pmc "${pmc_args[@]}" repo package update \
-                        --add-packages "${package_ids[$arch]}" \
-                        "azurelinux-4.0-prod-microsoft-$arch-yum"
-                    done
-                    for arch in x86_64 aarch64; do
-                      pmc "${pmc_args[@]}" repo publish \
-                        "azurelinux-4.0-prod-microsoft-$arch-yum"
-                    done
+                  if [[ ! "$RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
+                    echo "##vso[task.logissue type=error]Provide the original 2.5.6 release buildId from this pipeline definition, not the recovery run."
+                    exit 1
+                  fi
+                  if [[ -n "$ARM_SHA256" && ! "$ARM_SHA256" =~ ^[[:xdigit:]]{64}$ ]]; then
+                    echo "##vso[task.logissue type=error]aarch64_sha256 must be a 64-character hexadecimal SHA256."
+                    exit 1
+                  fi
+                  if [[ "${PUBLISH,,}" == true && -z "$ARM_SHA256" ]]; then
+                    echo "##vso[task.logissue type=error]Before publishing, signature-check and mount-test the mariner ARM64 RPM on AZL4, then supply its SHA256."
+                    exit 1
+                  fi
+                  echo "Using original signed artifacts from build $RUN_ID."
+                displayName: 'Validate release inputs'
                 env:
+                  RUN_ID: ${{ parameters.signed_artifacts_run_id }}
+                  ARM_SHA256: ${{ parameters.aarch64_sha256 }}
+                  PUBLISH: '${{ parameters.publish_artifacts }}'
+
+              - task: DownloadBuildArtifacts@0
+                displayName: 'Download only the original Mariner-signed 2.5.6 RPMs'
+                inputs:
+                  buildType: 'specific'
+                  project: '$(System.TeamProjectId)'
+                  pipeline: '$(System.DefinitionId)'
+                  buildVersionToDownload: 'specific'
+                  buildId: '${{ parameters.signed_artifacts_run_id }}'
+                  downloadType: 'single'
+                  artifactName: 'blobfuse2-signed'
+                  itemPattern: |
+                    blobfuse2-signed/mariner/blobfuse2-2.5.6-fuse3.x86_64.rpm
+                    blobfuse2-signed/mariner/blobfuse2-2.5.6-fuse3.aarch64.rpm
+                  downloadPath: $(Build.ArtifactStagingDirectory)
+
+              - bash: |
+                  set -euo pipefail
+                  python3 - <<'PY'
+                  import csv
+                  import os
+                  from pathlib import Path
+
+                  manifest = Path(os.environ["MANIFEST"])
+                  rows = list(csv.reader(
+                      line for line in manifest.read_text().splitlines()
+                      if line and not line.startswith("#")
+                  ))
+                  expected = [
+                      ["AzureLinux-4.0-x86_64", "marinerFuse3AmdRpm",
+                       "azurelinux-4.0-prod-microsoft-x86_64-yum", ""],
+                      ["AzureLinux-4.0-aarch64", "marinerFuse3AarchRpm",
+                       "azurelinux-4.0-prod-microsoft-aarch64-yum", ""],
+                  ]
+                  if rows != expected:
+                      raise SystemExit("ERROR: Manifest must contain exactly the two AZL4 production destinations.")
+                  for distro, _, repo, _ in rows:
+                      print(f"Publish target: {distro} -> {repo}")
+                  PY
+
+                  for arch in x86_64 aarch64; do
+                    test -f "$RPM_DIR/blobfuse2-2.5.6-fuse3.$arch.rpm" || {
+                      echo "##vso[task.logissue type=error]Missing original mariner/ 2.5.6 RPM for $arch."
+                      exit 1
+                    }
+                    sha256sum "$RPM_DIR/blobfuse2-2.5.6-fuse3.$arch.rpm"
+                  done
+                  printf '%s  %s\n' \
+                    '979c26454a2b58e84e2cc813cfa4d9083b67038402390581433d7ef116803a1b' \
+                    "$RPM_DIR/blobfuse2-2.5.6-fuse3.x86_64.rpm" | sha256sum --check
+                  if [[ -n "$ARM_SHA256" ]]; then
+                    printf '%s  %s\n' "${ARM_SHA256,,}" \
+                      "$RPM_DIR/blobfuse2-2.5.6-fuse3.aarch64.rpm" | sha256sum --check
+                  else
+                    echo "##vso[task.logissue type=warning]Inspection only: ARM64 has no validated checksum. No packages will be published."
+                  fi
+                displayName: 'Verify exact AZL4 targets and validated RPM checksums'
+                env:
+                  MANIFEST: $(Build.SourcesDirectory)/setup/packages.csv
                   RPM_DIR: $(Build.ArtifactStagingDirectory)/blobfuse2-signed/mariner
+                  ARM_SHA256: ${{ parameters.aarch64_sha256 }}
+
+              - ${{ if eq(parameters.publish_artifacts, true) }}:
+                  - task: PipAuthenticate@1
+                    inputs:
+                      artifactFeeds: 'BlobFuse/Blobfuse'
+                    displayName: 'Connect to PMC artifact'
+
+                  - bash: |
+                      set -euo pipefail
+                      python3 -m pip install pmc-cli
+                    displayName: 'Install pmc-cli'
+
+                  - task: AzureCLI@2
+                    displayName: 'Publish BOTH 2.5.6 RPMs to AZL4 production only'
+                    inputs:
+                      addSpnToEnvironment: true
+                      azureSubscription: 'WIF_MI_ESRP_V5'
+                      scriptType: bash
+                      scriptLocation: inlineScript
+                      inlineScript: |
+                        set -euo pipefail
+                        pmc_args=(
+                          --auth-type wif
+                          --base-url https://pmc-ingest.trafficmanager.net/api/v4
+                        )
+
+                        declare -A package_ids
+                        for arch in x86_64 aarch64; do
+                          package_ids["$arch"]=$(pmc "${pmc_args[@]}" --id-only package upload \
+                            "$RPM_DIR/blobfuse2-2.5.6-fuse3.$arch.rpm")
+                          if [[ -z ${package_ids[$arch]} ]]; then
+                            echo "##vso[task.logissue type=error]PMC returned no package ID for $arch."
+                            exit 1
+                          fi
+                          echo "$arch package ID: ${package_ids[$arch]}"
+                        done
+                        for arch in x86_64 aarch64; do
+                          pmc "${pmc_args[@]}" repo package update \
+                            --add-packages "${package_ids[$arch]}" \
+                            "azurelinux-4.0-prod-microsoft-$arch-yum"
+                        done
+                        for arch in x86_64 aarch64; do
+                          pmc "${pmc_args[@]}" repo publish \
+                            "azurelinux-4.0-prod-microsoft-$arch-yum"
+                        done
+                    env:
+                      RPM_DIR: $(Build.ArtifactStagingDirectory)/blobfuse2-signed/mariner

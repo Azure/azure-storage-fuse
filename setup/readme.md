@@ -20,6 +20,12 @@ containers, or touching the earlier SUSE, Rocky, or Azure Linux 3 feeds.
 1. Use the existing Azure DevOps release pipeline definition and choose branch
    `release/2.5.6-publish-remaining`. Do not create a new pipeline definition:
    artifact downloads use the current definition's ID.
+   The pipeline extends the official 1ES template required by the organization,
+   using `blobfuse2-pool` / `ubuntu22-1espt` for publication and
+   `windows2022-1espt` for SDL source analysis, matching the existing CI setup.
+   If prompted, authorize the pipeline to read
+   `1ESPipelineTemplates/1ESPipelineTemplates` and use the agent pool.
+   Keep the required 1ES checks enabled; breakglass is not needed for this change.
 2. Set `signed_artifacts_run_id` to the `buildId` of the original 2.5.6 release
    run that produced `blobfuse2-signed`, not the later recovery run. The original
    run may have failed during publishing; its signing artifacts are still used.
