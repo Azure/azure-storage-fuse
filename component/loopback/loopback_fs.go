@@ -5,12 +5,20 @@ package loopback
 
 import (
 	"context"
+	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
+	"slices"
+	"sort"
 	"strings"
+	"sync/atomic"
 	"syscall"
+	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
@@ -19,468 +27,1354 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 )
 
-//LoopbackFS component Config specifications:
-//
-//	loopbackfs:
-//		path: <valid-path>
-//
-
 const compName = "loopbackfs"
 
+// LoopbackFS is a storage component that emulates Azure Storage on a local directory. See the package documentation.
 type LoopbackFS struct {
 	internal.BaseComponent
 
-	path        string
-	consistency bool
+	path         string
+	listPageSize atomic.Int32
+	contentMD5   atomic.Bool
+
+	locks    objectLocks
+	versions versions
 }
 
 var _ internal.Component = &LoopbackFS{}
 
+// LoopbackFSOptions are the options of the component, in the loopbackfs section of the configuration.
 type LoopbackFSOptions struct {
-	Path string `config:"path"`
+	// Path is the backing directory that holds the objects of the emulated container. It is created if it is missing.
+	Path string `config:"path" yaml:"path,omitempty"`
+	// ListPageSize is the most entries a StreamDir call returns. The default is 5000, the most entries a List Blobs
+	// call returns.
+	ListPageSize uint32 `config:"list-page-size" yaml:"list-page-size,omitempty"`
+	// ContentMD5 reports the MD5 of the content of files in GetAttr and in listings.
+	ContentMD5 bool `config:"content-md5" yaml:"content-md5,omitempty"`
 }
 
-func (lfs *LoopbackFS) Configure(_ bool) error {
-	conf := LoopbackFSOptions{}
-	err := config.UnmarshalKey(compName, &conf)
-	if err != nil {
-		log.Err("LoopbackFS: config error [invalid config attributes]")
-		return fmt.Errorf("config error in %s [%s]", lfs.Name(), err)
-	}
-	if _, err := os.Stat(conf.Path); os.IsNotExist(err) {
-		err = os.MkdirAll(conf.Path, os.FileMode(0777))
-		if err != nil {
-			log.Err("LoopbackFS: config error [%s]", err)
-			return fmt.Errorf("config error in %s [%s]", lfs.Name(), err)
-		}
-		lfs.path = conf.Path
-	} else {
-		lfs.path = conf.Path
-	}
-	return nil
-}
-
-func (lfs *LoopbackFS) SetConsistency(consistency bool) {
-	lfs.consistency = consistency
-}
-
+// Name returns the name of the component.
 func (lfs *LoopbackFS) Name() string {
 	return compName
 }
 
-func (lfs *LoopbackFS) Start(ctx context.Context) error {
-	log.Info("Started Loopback FS")
-	return nil
-}
-
+// Priority returns the priority of the component, which is at the end of the pipeline like azstorage.
 func (lfs *LoopbackFS) Priority() internal.ComponentPriority {
 	return internal.EComponentPriority.Consumer()
 }
 
-func (lfs *LoopbackFS) CreateDir(options internal.CreateDirOptions) error {
-	log.Trace("LoopbackFS::CreateDir : name=%s", options.Name)
-	dirPath := filepath.Join(lfs.path, options.Name)
-	return os.Mkdir(dirPath, options.Mode)
+// Configure reads the options of the component and creates the backing directory.
+func (lfs *LoopbackFS) Configure(_ bool) error {
+	log.Trace("LoopbackFS::Configure : %s", lfs.Name())
+
+	conf := LoopbackFSOptions{}
+	if err := config.UnmarshalKey(lfs.Name(), &conf); err != nil {
+		log.Err("LoopbackFS::Configure : config error [invalid config attributes]")
+		return fmt.Errorf("config error in %s [%s]", lfs.Name(), err.Error())
+	}
+
+	backingPath := common.ExpandPath(conf.Path)
+	if backingPath == "" {
+		log.Err("LoopbackFS::Configure : config error [path not set]")
+		return fmt.Errorf("config error in %s [path not set]", lfs.Name())
+	}
+
+	var mountPath string
+	if err := config.UnmarshalKey("mount-path", &mountPath); err == nil && mountPath != "" && isWithin(backingPath, mountPath) {
+		log.Err("LoopbackFS::Configure : config error [path %s is within the mount path %s]", backingPath, mountPath)
+		return fmt.Errorf("config error in %s [path %s is within the mount path %s]", lfs.Name(), backingPath, mountPath)
+	}
+
+	if err := os.MkdirAll(backingPath, 0o777); err != nil {
+		log.Err("LoopbackFS::Configure : config error [failed to create %s: %v]", backingPath, err)
+		return fmt.Errorf("config error in %s [%s]", lfs.Name(), err.Error())
+	}
+
+	if err := lfs.applyOptions(conf); err != nil {
+		log.Err("LoopbackFS::Configure : config error [%v]", err)
+		return fmt.Errorf("config error in %s [%s]", lfs.Name(), err.Error())
+	}
+
+	lfs.path = backingPath
+	lfs.logOptions("LoopbackFS::Configure")
+
+	return nil
 }
 
+// OnConfigChange applies the options that can change while the component runs, which are all but path.
+func (lfs *LoopbackFS) OnConfigChange() {
+	log.Trace("LoopbackFS::OnConfigChange : %s", lfs.Name())
+
+	conf := LoopbackFSOptions{}
+	if err := config.UnmarshalKey(lfs.Name(), &conf); err != nil {
+		log.Err("LoopbackFS::OnConfigChange : config error [invalid config attributes]")
+		return
+	}
+
+	if err := lfs.applyOptions(conf); err != nil {
+		log.Err("LoopbackFS::OnConfigChange : config error [%v], keeping the previous options", err)
+		return
+	}
+
+	lfs.logOptions("LoopbackFS::OnConfigChange")
+}
+
+// applyOptions validates and applies the options that can change while the component runs.
+func (lfs *LoopbackFS) applyOptions(conf LoopbackFSOptions) error {
+	pageSize := int32(common.MaxDirListCount)
+	if conf.ListPageSize != 0 {
+		if conf.ListPageSize > common.MaxDirListCount {
+			return fmt.Errorf("list-page-size %d exceeds %d, the most entries Azure Storage lists at once",
+				conf.ListPageSize, common.MaxDirListCount)
+		}
+		pageSize = int32(conf.ListPageSize)
+	}
+
+	lfs.listPageSize.Store(pageSize)
+	lfs.contentMD5.Store(conf.ContentMD5)
+
+	return nil
+}
+
+func (lfs *LoopbackFS) logOptions(caller string) {
+	log.Crit("%s : path %s, list-page-size %d, content-md5 %t", caller, lfs.path, lfs.listPageSize.Load(),
+		lfs.contentMD5.Load())
+}
+
+// isWithin reports whether the path p is the directory dir or is inside it.
+func isWithin(p, dir string) bool {
+	rel, err := filepath.Rel(filepath.Clean(dir), filepath.Clean(p))
+	return err == nil && filepath.IsLocal(rel)
+}
+
+// SetConsistency sets whether GetAttr and listings report the MD5 of the content of files, like the content-md5
+// option.
+func (lfs *LoopbackFS) SetConsistency(consistency bool) {
+	lfs.contentMD5.Store(consistency)
+}
+
+// Start starts the component. A component that was not configured starts, so that pipelines that never reach it can
+// be tested, but all of its operations fail.
+func (lfs *LoopbackFS) Start(_ context.Context) error {
+	log.Trace("LoopbackFS::Start : Starting component %s", lfs.Name())
+
+	if lfs.path == "" {
+		log.Warn("LoopbackFS::Start : %v, all operations will fail", errNotConfigured)
+		return nil
+	}
+
+	log.Info("LoopbackFS::Start : emulating Azure Storage in %s", lfs.path)
+	return nil
+}
+
+// Stop stops the component. It holds no resources between operations, so there is nothing to release.
+func (lfs *LoopbackFS) Stop() error {
+	log.Trace("LoopbackFS::Stop : Stopping component %s", lfs.Name())
+	return nil
+}
+
+// openRoot opens the backing directory. Every access to the objects goes through it, so that no name and no
+// symbolic link can lead outside of the backing directory.
+func (lfs *LoopbackFS) openRoot() (*os.Root, error) {
+	if lfs.path == "" {
+		return nil, errNotConfigured
+	}
+
+	root, err := os.OpenRoot(lfs.path)
+	if err != nil {
+		log.Err("LoopbackFS::openRoot : failed to open %s [%v]", lfs.path, err)
+		return nil, storageError(err)
+	}
+
+	return root, nil
+}
+
+// changed records a change of the object name.
+func (lfs *LoopbackFS) changed(root *os.Root, name string) {
+	if info, err := root.Lstat(name); err == nil {
+		lfs.versions.changed(info)
+	}
+}
+
+// attr returns the attributes of the object name, whose file has the file info info, the way azstorage returns the
+// properties of a blob: all times are the last modification time, and the mode is marked as default because block
+// blobs have no permissions.
+func (lfs *LoopbackFS) attr(root *os.Root, name string, info fs.FileInfo) *internal.ObjAttr {
+	attr := &internal.ObjAttr{
+		Path:  objectPath(name),
+		Size:  info.Size(),
+		Mode:  info.Mode(),
+		Mtime: info.ModTime(),
+		ETag:  lfs.versions.etag(info),
+	}
+
+	if attr.Path != "" {
+		attr.Name = path.Base(attr.Path)
+	}
+
+	attr.Atime = attr.Mtime
+	attr.Ctime = attr.Mtime
+	attr.Crtime = attr.Mtime
+
+	attr.Flags.Set(internal.PropFlagModeDefault)
+	switch {
+	case isSymlink(info):
+		attr.Flags.Set(internal.PropFlagSymlink)
+	case info.IsDir():
+		attr.Flags.Set(internal.PropFlagIsDir)
+	case lfs.contentMD5.Load():
+		attr.MD5 = md5Of(root, name)
+	}
+
+	return attr
+}
+
+// ------------------------- Directory operations -------------------------
+
+// CreateDir creates the directory options.Name and its missing parents. Like a hierarchical namespace account, it fails
+// with EEXIST if the directory exists.
+func (lfs *LoopbackFS) CreateDir(options internal.CreateDirOptions) error {
+	log.Trace("LoopbackFS::CreateDir : name=%s, mode=%v", options.Name, options.Mode)
+
+	name, err := objectName(options.Name)
+	if err != nil {
+		return err
+	}
+
+	if name == "." {
+		return syscall.EEXIST
+	}
+
+	root, err := lfs.openRoot()
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+
+	if err := makeParent(root, name); err != nil {
+		log.Err("LoopbackFS::CreateDir : failed to create the parents of %s [%v]", name, err)
+		return err
+	}
+
+	if err := root.Mkdir(name, dirPerm(options.Mode)); err != nil {
+		log.Err("LoopbackFS::CreateDir : failed to create %s [%v]", name, err)
+		return storageError(err)
+	}
+
+	lfs.changed(root, name)
+	return nil
+}
+
+// DeleteDir deletes the directory options.Name, which must be empty.
 func (lfs *LoopbackFS) DeleteDir(options internal.DeleteDirOptions) error {
 	log.Trace("LoopbackFS::DeleteDir : name=%s", options.Name)
-	dirPath := filepath.Join(lfs.path, options.Name)
-	return os.Remove(dirPath)
+
+	name, err := objectName(options.Name)
+	if err != nil {
+		return err
+	}
+
+	if name == "." {
+		return syscall.EBUSY
+	}
+
+	root, err := lfs.openRoot()
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+
+	info, err := root.Lstat(name)
+	if err != nil {
+		return lookupError(err)
+	}
+
+	if !info.IsDir() {
+		return syscall.ENOTDIR
+	}
+
+	if err := root.Remove(name); err != nil {
+		log.Err("LoopbackFS::DeleteDir : failed to delete %s [%v]", name, err)
+		return storageError(err)
+	}
+
+	lfs.versions.removed(info)
+	return nil
 }
 
+// IsDirEmpty reports whether nothing is listed under the directory options.Name. Like a listing of Azure Storage, it
+// reports true for a directory that does not exist, and false if the directory cannot be listed.
 func (lfs *LoopbackFS) IsDirEmpty(options internal.IsDirEmptyOptions) bool {
 	log.Trace("LoopbackFS::IsDirEmpty : name=%s", options.Name)
-	path := filepath.Join(lfs.path, options.Name)
-	f, err := os.Open(path)
+
+	name, err := objectName(options.Name)
 	if err != nil {
-		log.Err("LoopbackFS::IsDirEmpty : error opening path [%s]", err)
+		log.Err("LoopbackFS::IsDirEmpty : %s [%v]", options.Name, err)
 		return false
 	}
-	_, err = f.Readdirnames(1)
-	return err == io.EOF
-}
 
-func (lfs *LoopbackFS) ReadDir(options internal.ReadDirOptions) ([]*internal.ObjAttr, error) {
-	log.Trace("LoopbackFS::ReadDir : name=%s", options.Name)
-	attrList := make([]*internal.ObjAttr, 0)
-	path := filepath.Join(lfs.path, options.Name)
-
-	log.Debug("LoopbackFS::ReadDir : requested for %s", path)
-	files, err := os.ReadDir(path)
+	root, err := lfs.openRoot()
 	if err != nil {
-		log.Err("LoopbackFS::ReadDir : error[%s]", err)
-		return nil, err
+		return false
 	}
-	log.Debug("LoopbackFS::ReadDir : on %s returned %d items", path, len(files))
+	defer root.Close()
 
-	for _, file := range files {
-		info, _ := file.Info()
-
-		attr := &internal.ObjAttr{
-			Path:  filepath.Join(options.Name, file.Name()),
-			Name:  file.Name(),
-			Size:  info.Size(),
-			Mode:  info.Mode(),
-			Mtime: info.ModTime(),
-		}
-		attr.Flags.Set(internal.PropFlagModeDefault)
-
-		if file.IsDir() {
-			attr.Flags.Set(internal.PropFlagIsDir)
-		}
-
-		attrList = append(attrList, attr)
-	}
-	return attrList, nil
-}
-
-// TODO: we can make it more intricate by generating a token and splitting streamed dir mimicking storage
-func (lfs *LoopbackFS) StreamDir(options internal.StreamDirOptions) ([]*internal.ObjAttr, string, error) {
-	if options.Token == "na" {
-		return nil, "", nil
-	}
-	log.Trace("LoopbackFS::StreamDir : name=%s", options.Name)
-	attrList := make([]*internal.ObjAttr, 0)
-	path := filepath.Join(lfs.path, options.Name)
-
-	log.Debug("LoopbackFS::StreamDir : requested for %s", path)
-	files, err := os.ReadDir(path)
+	info, err := root.Lstat(name)
 	if err != nil {
-		log.Err("LoopbackFS::StreamDir : error[%s]", err)
-		return nil, "", err
+		return lookupError(err) == syscall.ENOENT
 	}
-	log.Debug("LoopbackFS::StreamDir : on %s returned %d items", path, len(files))
 
-	for _, file := range files {
-		info, _ := file.Info()
-		var md5 []byte
-		if lfs.consistency && !file.IsDir() {
-			md5, err = computeMD5(filepath.Join(path, file.Name()))
-			if err != nil {
-				log.Err("LoopbackFS::StreamDir : failed to compute md5sum [%s]", err)
+	if !info.IsDir() {
+		return true
+	}
+
+	dir, err := root.Open(name)
+	if err != nil {
+		log.Err("LoopbackFS::IsDirEmpty : failed to open %s [%v]", name, err)
+		return false
+	}
+	defer dir.Close()
+
+	for {
+		names, err := dir.Readdirnames(16)
+		for _, entry := range names {
+			if name != "." || entry != stateDir {
+				return false
 			}
 		}
-		attr := &internal.ObjAttr{
-			Path:  filepath.Join(options.Name, file.Name()),
-			Name:  file.Name(),
-			Size:  info.Size(),
-			Mode:  info.Mode(),
-			Mtime: info.ModTime(),
-			MD5:   md5,
-		}
-		attr.Flags.Set(internal.PropFlagModeDefault)
 
-		if file.IsDir() {
-			attr.Flags.Set(internal.PropFlagIsDir)
+		if err == io.EOF {
+			return true
 		}
 
-		attrList = append(attrList, attr)
+		if err != nil {
+			log.Err("LoopbackFS::IsDirEmpty : failed to list %s [%v]", name, err)
+			return false
+		}
 	}
-	return attrList, "", nil
 }
 
-func computeMD5(path string) ([]byte, error) {
-	fh, err := os.Open(path)
+// listEntry is an entry of a directory listing, with the key that orders the listing. Azure Storage lists blobs and
+// blob prefixes in the order of their names, and the names of prefixes end with a slash.
+type listEntry struct {
+	name string
+	key  string
+}
+
+// list returns the entries of the directory dir, in the order Azure Storage lists them. It only reads the directory,
+// so that a page of a large listing costs no more than the attributes of the entries in the page.
+func list(root *os.Root, dir string) ([]listEntry, error) {
+	f, err := root.Open(dir)
 	if err != nil {
-		log.Err("LoopbackFS::computeMD5 : failed to compute md5sum [%s]", err)
+		return nil, lookupError(err)
+	}
+	defer f.Close()
+
+	dirEntries, err := f.ReadDir(-1)
+	if err != nil {
+		// Nothing is listed under a file either.
+		return nil, lookupError(err)
+	}
+
+	entries := make([]listEntry, 0, len(dirEntries))
+	for _, entry := range dirEntries {
+		if dir == "." && entry.Name() == stateDir {
+			continue
+		}
+
+		key := entry.Name()
+		if entry.IsDir() {
+			key += "/"
+		}
+		entries = append(entries, listEntry{name: entry.Name(), key: key})
+	}
+
+	slices.SortFunc(entries, func(a, b listEntry) int { return strings.Compare(a.key, b.key) })
+	return entries, nil
+}
+
+// listAttrs returns the attributes of the entries of the directory dir, leaving out those removed since they were
+// listed.
+func (lfs *LoopbackFS) listAttrs(root *os.Root, dir string, entries []listEntry) ([]*internal.ObjAttr, error) {
+	dirRoot, err := root.OpenRoot(dir)
+	if err != nil {
+		return nil, lookupError(err)
+	}
+	defer dirRoot.Close()
+
+	attrs := make([]*internal.ObjAttr, 0, len(entries))
+	for _, entry := range entries {
+		info, err := dirRoot.Lstat(entry.name)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return nil, storageError(err)
+		}
+
+		name := entry.name
+		if dir != "." {
+			name = dir + "/" + entry.name
+		}
+		attrs = append(attrs, lfs.attr(root, name, info))
+	}
+
+	return attrs, nil
+}
+
+// ReadDir lists the directory options.Name. It fails with ENOENT for a directory that does not exist.
+func (lfs *LoopbackFS) ReadDir(options internal.ReadDirOptions) ([]*internal.ObjAttr, error) {
+	log.Trace("LoopbackFS::ReadDir : name=%s", options.Name)
+
+	name, err := objectName(options.Name)
+	if err != nil {
 		return nil, err
 	}
-	defer fh.Close()
 
-	return common.GetMD5(fh)
+	root, err := lfs.openRoot()
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+
+	entries, err := list(root, name)
+	if err == nil {
+		var attrs []*internal.ObjAttr
+		if attrs, err = lfs.listAttrs(root, name, entries); err == nil {
+			return attrs, nil
+		}
+	}
+
+	log.Err("LoopbackFS::ReadDir : failed to list %s [%v]", name, err)
+	return nil, err
 }
 
-// loopbackETag returns a stable per-revision ETag derived from mtime+size,
-// so downstream components (distributed_cache) can key L2 populates on a version.
-func loopbackETag(info os.FileInfo) string {
-	return fmt.Sprintf("%d-%d", info.ModTime().UnixNano(), info.Size())
+// StreamDir lists a page of the directory options.Name, like List Blobs: it returns at most options.Count entries,
+// and no more than the list-page-size option, that follow the continuation token options.Token, with the token of the
+// next page. The token is empty when the listing is complete.
+func (lfs *LoopbackFS) StreamDir(options internal.StreamDirOptions) ([]*internal.ObjAttr, string, error) {
+	log.Trace("LoopbackFS::StreamDir : name=%s, token=%s, count=%d", options.Name, options.Token, options.Count)
+
+	name, err := objectName(options.Name)
+	if err != nil {
+		return nil, "", err
+	}
+
+	var marker string
+	if options.Token != "" {
+		decoded, err := base64.RawURLEncoding.DecodeString(options.Token)
+		if err != nil {
+			log.Err("LoopbackFS::StreamDir : invalid token %s for %s", options.Token, name)
+			return nil, "", syscall.EINVAL
+		}
+		marker = string(decoded)
+	}
+
+	count := lfs.listPageSize.Load()
+	if options.Count > 0 && options.Count < count {
+		count = options.Count
+	}
+
+	root, err := lfs.openRoot()
+	if err != nil {
+		return nil, "", err
+	}
+	defer root.Close()
+
+	entries, err := list(root, name)
+	if err != nil {
+		log.Err("LoopbackFS::StreamDir : failed to list %s [%v]", name, err)
+		return nil, "", err
+	}
+
+	start := 0
+	if marker != "" {
+		start = sort.Search(len(entries), func(i int) bool { return entries[i].key > marker })
+	}
+	end := min(start+int(count), len(entries))
+
+	attrs, err := lfs.listAttrs(root, name, entries[start:end])
+	if err != nil {
+		log.Err("LoopbackFS::StreamDir : failed to list %s [%v]", name, err)
+		return nil, "", err
+	}
+
+	var token string
+	if end < len(entries) {
+		token = base64.RawURLEncoding.EncodeToString([]byte(entries[end-1].key))
+	}
+
+	return attrs, token, nil
 }
 
+// RenameDir renames the directory options.Src to options.Dst, creating the missing parents of options.Dst.
 func (lfs *LoopbackFS) RenameDir(options internal.RenameDirOptions) error {
 	log.Trace("LoopbackFS::RenameDir : %s -> %s", options.Src, options.Dst)
-	oldPath := filepath.Join(lfs.path, options.Src)
-	newPath := filepath.Join(lfs.path, options.Dst)
 
-	return os.Rename(oldPath, newPath)
+	src, err := objectName(options.Src)
+	if err != nil {
+		return err
+	}
+
+	dst, err := objectName(options.Dst)
+	if err != nil {
+		return err
+	}
+
+	if src == "." || dst == "." {
+		return syscall.EBUSY
+	}
+
+	root, err := lfs.openRoot()
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+
+	if _, err := root.Lstat(src); err != nil {
+		return lookupError(err)
+	}
+
+	if src == dst {
+		return nil
+	}
+
+	if err := makeParent(root, dst); err != nil {
+		log.Err("LoopbackFS::RenameDir : failed to create the parents of %s [%v]", dst, err)
+		return err
+	}
+
+	if err := root.Rename(src, dst); err != nil {
+		log.Err("LoopbackFS::RenameDir : failed to rename %s to %s [%v]", src, dst, err)
+		return storageError(err)
+	}
+
+	lfs.changed(root, dst)
+	return nil
 }
 
+// ------------------------- File operations -------------------------
+
+// CreateFile creates the empty object options.Name, replacing an object of the same name like an upload of a block blob
+// does, and creates its missing parents. The handle it returns holds no resources: callers can drop it, as file_cache
+// and block_cache do.
 func (lfs *LoopbackFS) CreateFile(options internal.CreateFileOptions) (*handlemap.Handle, error) {
-	log.Trace("LoopbackFS::CreateFile : name=%s", options.Name)
+	log.Trace("LoopbackFS::CreateFile : name=%s, mode=%v", options.Name, options.Mode)
 
 	if options.Name == "FailThis" {
 		return nil, fmt.Errorf("LoopbackFS::CreateFile : Failed to create file %s", options.Name)
 	}
 
-	path := filepath.Join(lfs.path, options.Name)
-
-	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, options.Mode)
+	name, err := objectName(options.Name)
 	if err != nil {
-		log.Err("LoopbackFS::CreateFile : error %s", err)
 		return nil, err
 	}
-	handle := handlemap.NewHandle(options.Name)
-	handle.SetFileObject(f)
 
-	return handle, nil
-}
+	if name == "." {
+		return nil, syscall.EISDIR
+	}
 
-func (lfs *LoopbackFS) CreateLink(options internal.CreateLinkOptions) error {
-	log.Trace("LoopbackFS::CreateLink : name=%s", options.Name)
-	path := filepath.Join(lfs.path, options.Name)
+	unlock := lfs.locks.lock(name)
+	defer unlock()
 
-	err := os.Symlink(options.Target, path)
-
-	return err
-}
-
-func (lfs *LoopbackFS) DeleteFile(options internal.DeleteFileOptions) error {
-	log.Trace("LoopbackFS::DeleteFile : name=%s", options.Name)
-	path := filepath.Join(lfs.path, options.Name)
-	return os.Remove(path)
-}
-
-func (lfs *LoopbackFS) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, error) {
-	log.Trace("LoopbackFS::OpenFile : name=%s", options.Name)
-	path := filepath.Join(lfs.path, options.Name)
-	log.Debug("LoopbackFS::OpenFile : requested for %s", options.Name)
-	f, err := os.OpenFile(path, options.Flags, options.Mode)
+	root, err := lfs.openRoot()
 	if err != nil {
-		log.Err("LoopbackFS::OpenFile : error [%s]", err)
 		return nil, err
 	}
-	handle := handlemap.NewHandle(options.Name)
-	handle.SetFileObject(f)
-	return handle, nil
-}
+	defer root.Close()
 
-func (lfs *LoopbackFS) ReleaseFile(options internal.ReleaseFileOptions) error {
-	log.Trace("LoopbackFS::ReleaseFile : name=%s", options.Handle.Path)
-
-	f := options.Handle.GetFileObject()
-	if f == nil {
-		log.Err("LoopbackFS::ReleaseFile : error [file not available]")
-		return syscall.EBADF
+	if err := makeParent(root, name); err != nil {
+		log.Err("LoopbackFS::CreateFile : failed to create the parents of %s [%v]", name, err)
+		return nil, err
 	}
 
-	return f.Close()
-}
+	// An upload replaces a symlink blob, so a symbolic link is replaced instead of followed.
+	if old, err := root.Lstat(name); err == nil && isSymlink(old) {
+		if err := root.Remove(name); err != nil {
+			return nil, storageError(err)
+		}
+		lfs.forget(old)
+	}
 
-func (lfs *LoopbackFS) RenameFile(options internal.RenameFileOptions) error {
-	log.Trace("LoopbackFS::RenameFile : %s -> %s", options.Src, options.Dst)
-	oldPath := filepath.Join(lfs.path, options.Src)
-	newPath := filepath.Join(lfs.path, options.Dst)
-	return os.Rename(oldPath, newPath)
-}
-
-func (lfs *LoopbackFS) ReadFile(options internal.ReadFileOptions) ([]byte, error) {
-	log.Trace("LoopbackFS::ReadFile : name=%s", options.Handle.Path)
-	f := options.Handle.GetFileObject()
-
-	options.Handle.RLock()
-	defer options.Handle.RUnlock()
-
-	if f == nil {
-		log.Err("LoopbackFS::ReadFile : error [invalid file object]")
-		return nil, os.ErrInvalid
+	f, err := root.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, filePerm(options.Mode))
+	if err != nil {
+		log.Err("LoopbackFS::CreateFile : failed to create %s [%v]", name, err)
+		return nil, storageError(err)
 	}
 
 	info, err := f.Stat()
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
+	}
 	if err != nil {
-		log.Err("LoopbackFS::ReadFile : error [%s]", err)
-		return nil, err
+		log.Err("LoopbackFS::CreateFile : failed to create %s [%v]", name, err)
+		return nil, storageError(err)
 	}
-	data := make([]byte, info.Size())
-	n, err := f.Read(data)
-	if int64(n) != info.Size() {
-		log.Err("LoopbackFS::ReadFile : error [could not read entire file]")
-		return nil, err
-	}
-	return data, nil
+
+	lfs.versions.changed(info)
+
+	handle := handlemap.NewHandle(options.Name)
+	handle.Mtime = info.ModTime()
+
+	return handle, nil
 }
 
-func (lfs *LoopbackFS) ReadLink(options internal.ReadLinkOptions) (string, error) {
-	log.Trace("LoopbackFS::ReadLink : name=%s", options.Name)
-	path := filepath.Join(lfs.path, options.Name)
-	targetPath, err := os.Readlink(path)
+// DeleteFile deletes the object options.Name.
+func (lfs *LoopbackFS) DeleteFile(options internal.DeleteFileOptions) error {
+	log.Trace("LoopbackFS::DeleteFile : name=%s", options.Name)
+
+	name, err := objectName(options.Name)
 	if err != nil {
-		log.Err("LoopbackFS::ReadLink : error [%s]", err)
-		return "", err
+		return err
 	}
-	return strings.TrimPrefix(targetPath, lfs.path), nil
+
+	if name == "." {
+		return syscall.EISDIR
+	}
+
+	unlock := lfs.locks.lock(name)
+	defer unlock()
+
+	root, err := lfs.openRoot()
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+
+	info, err := root.Lstat(name)
+	if err != nil {
+		return lookupError(err)
+	}
+
+	if info.IsDir() {
+		return syscall.EISDIR
+	}
+
+	if err := root.Remove(name); err != nil {
+		log.Err("LoopbackFS::DeleteFile : failed to delete %s [%v]", name, err)
+		return storageError(err)
+	}
+
+	lfs.forget(info)
+
+	return nil
 }
 
-func (lfs *LoopbackFS) ReadInBuffer(options *internal.ReadInBufferOptions) (int, error) {
-	// if handle is nil, create a new handle
-	// added because after changes in xload, path and size can be passed in ReadInBufferOptions, where handle can be nil
-	if options.Handle == nil {
-		options.Handle = handlemap.NewHandle(options.Path)
-		options.Handle.Size = options.Size
-	}
-	log.Trace("LoopbackFS::ReadInBuffer : name=%s", options.Handle.Path)
-	f := options.Handle.GetFileObject()
+// OpenFile opens the object options.Name, which must exist, like azstorage: the handle holds the size and modification
+// time of the object, and no resources. Reads and writes through it address the object by name. O_TRUNC truncates the
+// object, as the kernel can ask when it opens a file. Other flags are ignored: CreateFile creates objects.
+func (lfs *LoopbackFS) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, error) {
+	log.Trace("LoopbackFS::OpenFile : name=%s, flags=%s", options.Name, common.PrettyOpenFlags(options.Flags))
 
-	if f == nil {
-		fullPath := filepath.Join(lfs.path, options.Handle.Path)
-		f1, err := os.OpenFile(fullPath, os.O_RDONLY, 0777)
+	name, err := objectName(options.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	if name == "." {
+		return nil, syscall.EISDIR
+	}
+
+	truncate := options.Flags&os.O_TRUNC != 0
+	if truncate {
+		unlock := lfs.locks.lock(name)
+		defer unlock()
+	}
+
+	root, err := lfs.openRoot()
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+
+	info, err := root.Lstat(name)
+	if err != nil {
+		return nil, lookupError(err)
+	}
+
+	if info.IsDir() {
+		return nil, syscall.EISDIR
+	}
+
+	if truncate && info.Mode().IsRegular() {
+		info, err = lfs.truncateWhole(root, name)
 		if err != nil {
-			return 0, nil
-		}
-
-		n, err := f1.ReadAt(options.Data, options.Offset)
-		if err == io.EOF {
-			err = nil
-		}
-		if err == nil && options.Etag != nil {
-			if info, statErr := f1.Stat(); statErr == nil {
-				*options.Etag = loopbackETag(info)
-			}
-		}
-		f1.Close()
-		return n, err
-	}
-
-	options.Handle.RLock()
-	defer options.Handle.RUnlock()
-
-	n, err := f.ReadAt(options.Data, options.Offset)
-	if err == io.EOF {
-		err = nil
-	}
-	if err == nil && options.Etag != nil {
-		if info, statErr := f.Stat(); statErr == nil {
-			*options.Etag = loopbackETag(info)
+			log.Err("LoopbackFS::OpenFile : failed to truncate %s [%v]", name, err)
+			return nil, err
 		}
 	}
-	return n, err
+
+	handle := handlemap.NewHandle(options.Name)
+	handle.Size = info.Size()
+	handle.Mtime = info.ModTime()
+
+	return handle, nil
 }
 
-func (lfs *LoopbackFS) WriteFile(options *internal.WriteFileOptions) (int, error) {
-	log.Trace("LoopbackFS::WriteFile : name=%s", options.Handle.Path)
-	f := options.Handle.GetFileObject()
-
-	options.Handle.Lock()
-	defer options.Handle.Unlock()
-
-	if f == nil {
-		log.Err("LoopbackFS::WriteFile : error [invalid file object]")
-		return 0, os.ErrInvalid
+// truncateWhole truncates the object name to 0 bytes, like an upload of an empty blob. The caller must hold the lock
+// of name.
+func (lfs *LoopbackFS) truncateWhole(root *os.Root, name string) (fs.FileInfo, error) {
+	f, err := root.OpenFile(name, os.O_WRONLY|os.O_TRUNC, 0)
+	if err != nil {
+		return nil, storageError(err)
 	}
-	options.Handle.Flags.Set(handlemap.HandleFlagDirty)
-	return f.WriteAt(options.Data, options.Offset)
+
+	info, err := f.Stat()
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return nil, storageError(err)
+	}
+
+	lfs.versions.changed(info)
+
+	return info, nil
 }
 
-func (lfs *LoopbackFS) TruncateFile(options internal.TruncateFileOptions) error {
-	log.Trace("LoopbackFS::TruncateFile : name=%s", options.Name)
-	fsPath := filepath.Join(lfs.path, options.Name)
-	return os.Truncate(fsPath, options.NewSize)
+// ReleaseFile releases a handle. Handles hold no resources, like the handles of azstorage.
+func (lfs *LoopbackFS) ReleaseFile(options internal.ReleaseFileOptions) error {
+	if options.Handle == nil {
+		return syscall.EINVAL
+	}
+
+	log.Trace("LoopbackFS::ReleaseFile : name=%s", options.Handle.Path)
+	return nil
 }
 
+// FlushFile flushes a handle. Writes reach the object at once, so there is nothing to flush.
 func (lfs *LoopbackFS) FlushFile(options internal.FlushFileOptions) error {
+	if options.Handle == nil {
+		return syscall.EINVAL
+	}
+
 	log.Trace("LoopbackFS::FlushFile : name=%s", options.Handle.Path)
-	f := options.Handle.GetFileObject()
-	if f == nil {
-		log.Err("LoopbackFS::FlushFile : error [file not open]")
-		return os.ErrClosed
+	return nil
+}
+
+// RenameFile renames the object options.Src to options.Dst, replacing an object at options.Dst and creating its
+// missing parents. Like Azure Storage, which copies the blob, it gives the object a new modification time and ETag,
+// and it updates options.SrcAttr with them, as azstorage does.
+func (lfs *LoopbackFS) RenameFile(options internal.RenameFileOptions) error {
+	log.Trace("LoopbackFS::RenameFile : %s -> %s", options.Src, options.Dst)
+
+	src, err := objectName(options.Src)
+	if err != nil {
+		return err
+	}
+
+	dst, err := objectName(options.Dst)
+	if err != nil {
+		return err
+	}
+
+	if src == "." || dst == "." {
+		return syscall.EBUSY
+	}
+
+	unlock := lfs.locks.lock(src, dst)
+	defer unlock()
+
+	root, err := lfs.openRoot()
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+
+	srcInfo, err := root.Lstat(src)
+	if err != nil {
+		return lookupError(err)
+	}
+
+	if src == dst {
+		return nil
+	}
+
+	if err := makeParent(root, dst); err != nil {
+		log.Err("LoopbackFS::RenameFile : failed to create the parents of %s [%v]", dst, err)
+		return err
+	}
+
+	dstInfo, dstErr := root.Lstat(dst)
+
+	if err := root.Rename(src, dst); err != nil {
+		log.Err("LoopbackFS::RenameFile : failed to rename %s to %s [%v]", src, dst, err)
+		return storageError(err)
+	}
+
+	if dstErr == nil && !os.SameFile(srcInfo, dstInfo) {
+		lfs.forget(dstInfo)
+	}
+
+	if !isSymlink(srcInfo) {
+		now := time.Now()
+		if err := root.Chtimes(dst, now, now); err != nil {
+			log.Warn("LoopbackFS::RenameFile : failed to set the modification time of %s [%v]", dst, err)
+		}
+	}
+
+	info, err := root.Lstat(dst)
+	if err != nil {
+		return storageError(err)
+	}
+
+	lfs.versions.changed(info)
+
+	if options.SrcAttr != nil {
+		options.SrcAttr.Mtime = info.ModTime()
+		options.SrcAttr.Atime = options.SrcAttr.Mtime
+		options.SrcAttr.Ctime = options.SrcAttr.Mtime
+		options.SrcAttr.ETag = lfs.versions.etag(info)
 	}
 
 	return nil
 }
 
-func (lfs *LoopbackFS) UnlinkFile(options internal.UnlinkFileOptions) error {
-	log.Trace("LoopbackFS::UnlinkFile : name=%s", options.Name)
-	path := filepath.Join(lfs.path, options.Name)
-	_, err := os.Lstat(path)
-	if err != nil {
-		log.Err("LoopbackFS::UnlinkFile : error [%s]", err)
-		return err
+// ReadFile returns the content of the object of options.Handle.
+func (lfs *LoopbackFS) ReadFile(options internal.ReadFileOptions) ([]byte, error) {
+	if options.Handle == nil {
+		return nil, syscall.EINVAL
 	}
-	return err
+
+	log.Trace("LoopbackFS::ReadFile : name=%s", options.Handle.Path)
+
+	name, err := objectName(options.Handle.Path)
+	if err != nil {
+		return nil, err
+	}
+
+	root, err := lfs.openRoot()
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+
+	blob, err := openBlob(root, name)
+	if err != nil {
+		return nil, err
+	}
+	defer blob.Close()
+
+	data := make([]byte, blob.info.Size())
+	n, err := io.ReadFull(io.NewSectionReader(blob, 0, blob.info.Size()), data)
+	if err != nil && err != io.ErrUnexpectedEOF {
+		log.Err("LoopbackFS::ReadFile : failed to read %s [%v]", name, err)
+		return nil, storageError(err)
+	}
+
+	return data[:n], nil
 }
 
+// ReadInBuffer reads the object of options.Handle, or the object options.Path, from options.Offset into options.Data,
+// like a ranged download.
+//
+// With a handle, it reads like pread(2) the current content of the object, and returns 0 bytes at its end. Without a
+// handle, like azstorage, it reads no more than options.Size bytes in all, and fails with ERANGE when the offset is
+// past options.Size or past the end of an object that has shrunk.
+//
+// When it reads data, it sets *options.Etag to the ETag of the object.
+func (lfs *LoopbackFS) ReadInBuffer(options *internal.ReadInBufferOptions) (int, error) {
+	rawName := options.Path
+	if options.Handle != nil {
+		rawName = options.Handle.Path
+	} else if rawName == "" {
+		log.Err("LoopbackFS::ReadInBuffer : path not given")
+		return 0, syscall.EINVAL
+	}
+
+	name, err := objectName(rawName)
+	if err != nil {
+		return 0, err
+	}
+
+	if options.Offset < 0 {
+		return 0, syscall.EINVAL
+	}
+
+	data := options.Data
+	if options.Handle == nil {
+		if options.Offset > options.Size {
+			return 0, syscall.ERANGE
+		}
+		data = data[:min(int64(len(data)), options.Size-options.Offset)]
+	}
+
+	if len(data) == 0 {
+		return 0, nil
+	}
+
+	if options.Etag != nil {
+		*options.Etag = ""
+	}
+
+	root, err := lfs.openRoot()
+	if err != nil {
+		return 0, err
+	}
+	defer root.Close()
+
+	blob, err := openBlob(root, name)
+	if err != nil {
+		if err != syscall.ENOENT {
+			log.Err("LoopbackFS::ReadInBuffer : failed to open %s [%v]", name, err)
+		}
+		return 0, err
+	}
+	defer blob.Close()
+
+	n := 0
+	if options.Offset < blob.info.Size() {
+		n, err = blob.ReadAt(data, options.Offset)
+		if err != nil && err != io.EOF {
+			log.Err("LoopbackFS::ReadInBuffer : failed to read %s at offset %d [%v]", name, options.Offset, err)
+			return 0, storageError(err)
+		}
+	} else if options.Handle == nil {
+		return 0, syscall.ERANGE
+	}
+
+	if options.Etag != nil {
+		*options.Etag = lfs.versions.etag(blob.info)
+	}
+
+	return n, nil
+}
+
+// WriteFile writes options.Data at options.Offset of the object of options.Handle, extending the object as needed.
+func (lfs *LoopbackFS) WriteFile(options *internal.WriteFileOptions) (int, error) {
+	if options.Handle == nil {
+		return 0, syscall.EINVAL
+	}
+
+	name, err := objectName(options.Handle.Path)
+	if err != nil {
+		return 0, err
+	}
+
+	if options.Offset < 0 {
+		return 0, syscall.EINVAL
+	}
+
+	if len(options.Data) == 0 {
+		return 0, nil
+	}
+
+	root, err := lfs.openRoot()
+	if err != nil {
+		return 0, err
+	}
+	defer root.Close()
+
+	info, err := root.Lstat(name)
+	if err != nil {
+		return 0, lookupError(err)
+	}
+
+	if info.IsDir() {
+		return 0, syscall.EISDIR
+	}
+
+	if !info.Mode().IsRegular() {
+		return 0, syscall.EINVAL
+	}
+
+	f, err := root.OpenFile(name, os.O_WRONLY, 0)
+	if err != nil {
+		log.Err("LoopbackFS::WriteFile : failed to open %s [%v]", name, err)
+		return 0, lookupError(err)
+	}
+
+	n, err := f.WriteAt(options.Data, options.Offset)
+	if info, statErr := f.Stat(); statErr == nil {
+		lfs.versions.changed(info)
+	}
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
+	}
+
+	if err != nil {
+		log.Err("LoopbackFS::WriteFile : failed to write %s at offset %d [%v]", name, options.Offset, err)
+		return n, storageError(err)
+	}
+
+	return n, nil
+}
+
+// TruncateFile changes the size of the object options.Name to options.NewSize; the handle, if any, is not used.
+func (lfs *LoopbackFS) TruncateFile(options internal.TruncateFileOptions) error {
+	log.Trace("LoopbackFS::TruncateFile : name=%s, size=%d", options.Name, options.NewSize)
+
+	name, err := objectName(options.Name)
+	if err != nil {
+		return err
+	}
+
+	if name == "." {
+		return syscall.EISDIR
+	}
+
+	if options.NewSize < 0 {
+		return syscall.EINVAL
+	}
+
+	unlock := lfs.locks.lock(name)
+	defer unlock()
+
+	root, err := lfs.openRoot()
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+
+	info, err := root.Lstat(name)
+	if err != nil {
+		return lookupError(err)
+	}
+
+	if info.IsDir() {
+		return syscall.EISDIR
+	}
+
+	if !info.Mode().IsRegular() {
+		return syscall.EINVAL
+	}
+
+	if info.Size() == options.NewSize {
+		return nil
+	}
+
+	f, err := root.OpenFile(name, os.O_WRONLY, 0)
+	if err != nil {
+		return lookupError(err)
+	}
+
+	err = f.Truncate(options.NewSize)
+	newInfo, statErr := f.Stat()
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
+	}
+	if err == nil {
+		err = statErr
+	}
+	if err != nil {
+		log.Err("LoopbackFS::TruncateFile : failed to truncate %s [%v]", name, err)
+		return storageError(err)
+	}
+
+	lfs.versions.changed(newInfo)
+	return nil
+}
+
+// CopyToFile downloads the object options.Name into options.File from the start of the file, and truncates the file to
+// the downloaded data, like azstorage. It downloads options.Count bytes from options.Offset, or the rest of the object
+// when options.Count is 0. It fails with ERANGE for an offset past the end of the object.
 func (lfs *LoopbackFS) CopyToFile(options internal.CopyToFileOptions) error {
-	log.Trace("LoopbackFS::CopyToFile : name=%s", options.Name)
-	path := filepath.Join(lfs.path, options.Name)
-	fsrc, err := os.Open(path)
+	log.Trace("LoopbackFS::CopyToFile : name=%s, offset=%d, count=%d", options.Name, options.Offset, options.Count)
+
+	name, err := objectName(options.Name)
 	if err != nil {
-		log.Err("LoopbackFS::CopyToFile : error opening [%s]", err)
 		return err
 	}
-	_, err = io.Copy(options.File, fsrc)
+
+	if options.File == nil || options.Offset < 0 {
+		return syscall.EINVAL
+	}
+
+	root, err := lfs.openRoot()
 	if err != nil {
-		log.Err("LoopbackFS::CopyToFile : error copying [%s]", err)
 		return err
 	}
+	defer root.Close()
+
+	blob, err := openBlob(root, name)
+	if err != nil {
+		log.Err("LoopbackFS::CopyToFile : failed to open %s [%v]", name, err)
+		return err
+	}
+	defer blob.Close()
+
+	size := blob.info.Size()
+	if options.Offset > size {
+		return syscall.ERANGE
+	}
+
+	count := size - options.Offset
+	if options.Count > 0 && options.Count < count {
+		count = options.Count
+	}
+
+	n, err := copyData(io.NewOffsetWriter(options.File, 0), io.NewSectionReader(blob, options.Offset, count), count)
+	if err == nil {
+		err = options.File.Truncate(n)
+	}
+	if err != nil {
+		log.Err("LoopbackFS::CopyToFile : failed to download %s [%v]", name, err)
+		return storageError(err)
+	}
+
 	return nil
 }
 
+// CopyFromFile uploads the content of options.File, from the start of the file, as the object options.Name, creating
+// its missing parents. The object is replaced at once, as a blob is. options.Metadata is not stored.
 func (lfs *LoopbackFS) CopyFromFile(options internal.CopyFromFileOptions) error {
 	log.Trace("LoopbackFS::CopyFromFile : name=%s", options.Name)
-	path := filepath.Join(lfs.path, options.Name)
-	fdst, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, os.FileMode(0666))
+
+	name, err := objectName(options.Name)
 	if err != nil {
-		log.Err("LoopbackFS::CopyFromFile : error opening [%s]", err)
 		return err
 	}
-	_, err = io.Copy(fdst, options.File)
+
+	if name == "." {
+		return syscall.EISDIR
+	}
+
+	if options.File == nil {
+		return syscall.EINVAL
+	}
+
+	src, err := options.File.Stat()
 	if err != nil {
-		log.Err("LoopbackFS::CopyFromFile : error copying [%s]", err)
+		return storageError(err)
+	}
+
+	unlock := lfs.locks.lock(name)
+	defer unlock()
+
+	root, err := lfs.openRoot()
+	if err != nil {
 		return err
 	}
+	defer root.Close()
+
+	_, err = lfs.upload(root, name, func(f *os.File) error {
+		_, err := copyData(f, io.NewSectionReader(options.File, 0, src.Size()), src.Size())
+		return storageError(err)
+	})
+	if err != nil {
+		log.Err("LoopbackFS::CopyFromFile : failed to upload %s [%v]", name, err)
+		return err
+	}
+
 	return nil
 }
 
-func (lfs *LoopbackFS) GetAttr(options internal.GetAttrOptions) (*internal.ObjAttr, error) {
-	log.Trace("LoopbackFS::GetAttr : name=%s", options.Name)
-	path := filepath.Join(lfs.path, options.Name)
-	info, err := os.Lstat(path)
+// ------------------------- Symlink operations -------------------------
+
+// CreateLink creates the symbolic link options.Name to options.Target, replacing an object of the same name like an
+// upload of a symlink blob does, and creates its missing parents.
+func (lfs *LoopbackFS) CreateLink(options internal.CreateLinkOptions) error {
+	log.Trace("LoopbackFS::CreateLink : %s -> %s", options.Name, options.Target)
+
+	name, err := objectName(options.Name)
 	if err != nil {
-		log.Err("LoopbackFS::GetAttr : error [%s]", err)
-		return &internal.ObjAttr{}, err
+		return err
 	}
-	attr := &internal.ObjAttr{
-		Path:  options.Name,
-		Name:  info.Name(),
-		Size:  info.Size(),
-		Mode:  info.Mode(),
-		Mtime: info.ModTime(),
-		ETag:  loopbackETag(info),
-	}
-	attr.Flags.Set(internal.PropFlagModeDefault)
 
-	if info.Mode()&os.ModeSymlink != 0 {
-		_, err := os.Readlink(path)
-		if err != nil {
-			log.Err("LoopbackFS::GetAttr : could not find target of symlink %s", options.Name)
-			return attr, err
+	if name == "." {
+		return syscall.EEXIST
+	}
+
+	unlock := lfs.locks.lock(name)
+	defer unlock()
+
+	root, err := lfs.openRoot()
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+
+	old, err := root.Lstat(name)
+	switch {
+	case err == nil && old.IsDir():
+		return syscall.EEXIST
+	case errors.Is(err, fs.ErrNotExist):
+		old = nil
+	case err != nil:
+		return storageError(err)
+	}
+
+	if err := makeParent(root, name); err != nil {
+		log.Err("LoopbackFS::CreateLink : failed to create the parents of %s [%v]", name, err)
+		return err
+	}
+
+	// Create the link under a unique name and rename it into place, to replace an object of the same name at once.
+	tmp, err := newUploadName(root)
+	if err != nil {
+		return err
+	}
+
+	if err := root.Symlink(options.Target, tmp); err != nil {
+		log.Err("LoopbackFS::CreateLink : failed to create %s [%v]", name, err)
+		return storageError(err)
+	}
+
+	if err := root.Rename(tmp, name); err != nil {
+		_ = root.Remove(tmp)
+		log.Err("LoopbackFS::CreateLink : failed to create %s [%v]", name, err)
+		return storageError(err)
+	}
+
+	if old != nil {
+		lfs.forget(old)
+	}
+	lfs.changed(root, name)
+
+	return nil
+}
+
+// ReadLink returns the target of the symbolic link options.Name. Like azstorage, it reads no more than options.Size
+// bytes of the target, the size GetAttr reports, and returns an empty target when options.Size is 0.
+func (lfs *LoopbackFS) ReadLink(options internal.ReadLinkOptions) (string, error) {
+	log.Trace("LoopbackFS::ReadLink : name=%s, size=%d", options.Name, options.Size)
+
+	name, err := objectName(options.Name)
+	if err != nil {
+		return "", err
+	}
+
+	if options.Size <= 0 {
+		return "", nil
+	}
+
+	root, err := lfs.openRoot()
+	if err != nil {
+		return "", err
+	}
+	defer root.Close()
+
+	target, err := root.Readlink(name)
+	if err != nil {
+		log.Err("LoopbackFS::ReadLink : failed to read %s [%v]", name, err)
+		return "", lookupError(err)
+	}
+
+	if limit := min(options.Size, common.MaxSymlinkTargetLen); int64(len(target)) > limit {
+		target = target[:limit]
+	}
+
+	return target, nil
+}
+
+// ------------------------- Attribute operations -------------------------
+
+// GetAttr returns the attributes of the object options.Name, see attr. It fails with ENOENT for an object that does not
+// exist.
+func (lfs *LoopbackFS) GetAttr(options internal.GetAttrOptions) (*internal.ObjAttr, error) {
+	name, err := objectName(options.Name)
+	if err != nil {
+		// No object has an invalid name.
+		return nil, syscall.ENOENT
+	}
+
+	root, err := lfs.openRoot()
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+
+	info, err := root.Lstat(name)
+	if err != nil {
+		err = lookupError(err)
+		if err != syscall.ENOENT {
+			log.Err("LoopbackFS::GetAttr : failed to get the attributes of %s [%v]", name, err)
 		}
-		attr.Flags.Set(internal.PropFlagSymlink)
-	} else if info.IsDir() {
-		attr.Flags.Set(internal.PropFlagIsDir)
+		return nil, err
 	}
-	return attr, nil
+
+	return lfs.attr(root, name, info), nil
 }
 
+// Chmod changes the mode of the object options.Name. The owner keeps the right to read and write files and to search
+// directories, so that the component can still use them. Symbolic links have no mode of their own, so it does not
+// change them.
 func (lfs *LoopbackFS) Chmod(options internal.ChmodOptions) error {
-	log.Trace("LoopbackFS::Chmod : name=%s", options.Name)
-	path := filepath.Join(lfs.path, options.Name)
-	return os.Chmod(path, options.Mode)
+	log.Trace("LoopbackFS::Chmod : name=%s, mode=%v", options.Name, options.Mode)
+
+	name, err := objectName(options.Name)
+	if err != nil {
+		return err
+	}
+
+	root, err := lfs.openRoot()
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+
+	info, err := root.Lstat(name)
+	if err != nil {
+		return lookupError(err)
+	}
+
+	if isSymlink(info) {
+		return nil
+	}
+
+	mode := filePerm(options.Mode)
+	if info.IsDir() {
+		mode = dirPerm(options.Mode)
+	}
+
+	if err := root.Chmod(name, mode); err != nil {
+		log.Err("LoopbackFS::Chmod : failed to change the mode of %s [%v]", name, err)
+		return storageError(err)
+	}
+
+	lfs.changed(root, name)
+	return nil
 }
 
+// Chown changes the owner of the object options.Name. Azure Storage does not fail a change of owner, so an owner that
+// the process is not allowed to set is ignored.
 func (lfs *LoopbackFS) Chown(options internal.ChownOptions) error {
-	log.Trace("LoopbackFS::Chown : name=%s", options.Name)
-	path := filepath.Join(lfs.path, options.Name)
-	return os.Chown(path, options.Owner, options.Group)
+	log.Trace("LoopbackFS::Chown : name=%s, owner=%d, group=%d", options.Name, options.Owner, options.Group)
+
+	name, err := objectName(options.Name)
+	if err != nil {
+		return err
+	}
+
+	root, err := lfs.openRoot()
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+
+	if _, err := root.Lstat(name); err != nil {
+		return lookupError(err)
+	}
+
+	err = root.Lchown(name, options.Owner, options.Group)
+	if errors.Is(err, syscall.EPERM) {
+		log.Warn("LoopbackFS::Chown : not allowed to change the owner of %s, ignoring it", name)
+		return nil
+	}
+	if err != nil {
+		log.Err("LoopbackFS::Chown : failed to change the owner of %s [%v]", name, err)
+		return storageError(err)
+	}
+
+	lfs.changed(root, name)
+	return nil
 }
 
+// ------------------------- Block operations -------------------------
+
+// StageData stages a block of the blob options.Name in the file <name>_<id>, next to the blob.
 func (lfs *LoopbackFS) StageData(options internal.StageDataOptions) error {
 	log.Trace("LoopbackFS::StageData : name=%s, id=%s", options.Name, options.Id)
+
 	path := fmt.Sprintf("%s_%s", filepath.Join(lfs.path, options.Name), strings.ReplaceAll(options.Id, "/", "_"))
 	return os.WriteFile(path, options.Data, 0777)
 }
 
+// CommitData writes the staged blocks of options.List into the blob options.Name, block i at i times
+// options.BlockSize, and removes them. The blocks of the list that are not staged must be in the blob already.
 func (lfs *LoopbackFS) CommitData(options internal.CommitDataOptions) error {
-	log.Trace("LoopbackFS::StageData : name=%s", options.Name)
+	log.Trace("LoopbackFS::CommitData : name=%s", options.Name)
 
 	mainFilepath := filepath.Join(lfs.path, options.Name)
 
@@ -542,17 +1436,23 @@ func (lfs *LoopbackFS) CommitData(options internal.CommitDataOptions) error {
 		return err
 	}
 
+	info, err := os.Stat(mainFilepath)
+	if err != nil {
+		return err
+	}
+
+	// The blob was changed in place, so its ETag must change.
+	lfs.versions.changed(info)
 	if options.NewETag != nil {
-		info, err := os.Stat(mainFilepath)
-		if err != nil {
-			return err
-		}
-		*options.NewETag = loopbackETag(info)
+		*options.NewETag = lfs.versions.etag(info)
 	}
 	return nil
 }
 
+// GetCommittedBlockList presents the blob name as committed in blocks of 1 MB.
 func (lfs *LoopbackFS) GetCommittedBlockList(name string) (*internal.CommittedBlockList, error) {
+	log.Trace("LoopbackFS::GetCommittedBlockList : name=%s", name)
+
 	mainFilepath := filepath.Join(lfs.path, name)
 
 	info, err := os.Lstat(mainFilepath)
@@ -575,9 +1475,12 @@ func (lfs *LoopbackFS) GetCommittedBlockList(name string) (*internal.CommittedBl
 	return &list, nil
 }
 
+// NewLoopbackFSComponent returns a new loopbackfs component.
 func NewLoopbackFSComponent() internal.Component {
 	lfs := &LoopbackFS{}
 	lfs.SetName(compName)
+	lfs.listPageSize.Store(common.MaxDirListCount)
+	config.AddConfigChangeEventListener(lfs)
 	return lfs
 }
 
