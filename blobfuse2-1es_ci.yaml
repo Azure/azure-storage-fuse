@@ -121,6 +121,15 @@ extends:
             displayName: 'File cache close/rename stress'
             workingDirectory: $(WORK_DIR)
 
+          # The tests of file cache engine v2, and of the choice of engine, always run with the race detector,
+          # repeated in random order. Unlike the unit-test step above, a failure here fails the job.
+          - script: |
+              set -e
+              go test -v -race -count=3 -shuffle=on -timeout=20m -tags=unittest,$(tags) ./component/filecache/...
+              go test -v -race -count=3 -shuffle=on -timeout=20m -tags=unittest,$(tags) -run '^TestEngine' ./component/file_cache
+            displayName: 'File cache v2 tests (race)'
+            workingDirectory: $(WORK_DIR)
+
           # Mount blobfuse2 over loopbackfs with direct_io and a zero file-cache timeout, then run the
           # incident's concurrent close, fsync and rename workload. Fails if the mount stops making
           # progress or a file operation fails, and prints the hung daemon's file-cache goroutines.

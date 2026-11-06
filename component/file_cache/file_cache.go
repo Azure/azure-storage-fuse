@@ -1772,7 +1772,7 @@ func NewFileCacheComponent() internal.Component {
 
 // On init register this component to pipeline and supply your constructor
 func init() {
-	internal.AddComponent(compName, NewFileCacheComponent)
+	registerComponent()
 
 	tmpPathFlag := config.AddStringFlag("tmp-path", "", "configures the tmp location for the cache. Configure the fastest disk (SSD or ramdisk) for best performance.")
 	config.BindPFlag(compName+".path", tmpPathFlag)

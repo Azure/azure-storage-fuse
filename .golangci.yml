@@ -13,7 +13,20 @@ linters:
     - staticcheck # Set of rules from staticcheck.
     - testifylint # Checks usage of github.com/stretchr/testify.
     - unused # Checks Go code for unused constants, variables, functions and types
+    # The linters below apply only to the code named in the first exclusion rule.
+    - errorlint # Checks that errors are compared and wrapped in ways that work with wrapped errors.
+    - funlen # Limits the length of functions.
+    - gocognit # Limits the cognitive complexity of functions.
+    - nestif # Limits deeply nested if statements.
+    - revive # Checks doc comments, naming and other style rules.
   settings:
+    funlen:
+      lines: 60
+      statements: 40
+    gocognit:
+      min-complexity: 15
+    nestif:
+      min-complexity: 4
     testifylint:
       # Enable all checkers (https://github.com/Antonboom/testifylint#checkers).
       enable-all: true
@@ -26,10 +39,20 @@ linters:
   exclusions:
     generated: lax
     presets:
-      - comments
       - common-false-positives
       - legacy
       - std-error-handling
+    rules:
+      # Stricter rules for new code: file cache engine v2 and its contract tests. Other code is excluded from the
+      # stricter linters, and from the doc comment checks of staticcheck, until it is cleaned up.
+      - path-except: ^component/(filecache|file_cache/contract)/
+        linters: [errorlint, funlen, gocognit, nestif, revive]
+      - path-except: ^component/(filecache|file_cache/contract)/
+        linters: [staticcheck]
+        text: (ST1000|ST1020|ST1021|ST1022)
+      # Table-driven tests can be long.
+      - path: _test\.go$
+        linters: [funlen]
     paths:
       - third_party$
       - builtin$
