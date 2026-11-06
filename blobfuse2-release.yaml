@@ -1904,8 +1904,13 @@ stages:
               displayName: 'Connect to PMC artifact'
 
             - script: |
-                pip install pmc-cli
+                set -euo pipefail
+                python3 -m pip install --user --ignore-installed pmc-cli
+                "$PYTHONUSERBASE/bin/pmc" --version
+                echo "##vso[task.prependpath]$PYTHONUSERBASE/bin"
               displayName: 'Install pmc-cli'
+              env:
+                PYTHONUSERBASE: $(Agent.TempDirectory)/blobfuse-pmc
 
             - task: AzureCLI@2
               displayName: 'Test PMC installation'
@@ -1920,6 +1925,8 @@ stages:
                   if [ $? -ne 0 ]; then
                     exit 1
                   fi
+              env:
+                PYTHONUSERBASE: $(Agent.TempDirectory)/blobfuse-pmc
 
             # download artifacts that need to be published
             - task: DownloadBuildArtifacts@0
@@ -1934,7 +1941,7 @@ stages:
                 if [[ $blobfuseBinaryName == *"preview"* ]]; then
                   for f in ./blobfuse2-2*; do mv -v "$f" "${f/blobfuse2-/blobfuse2-preview-}" ; done
                 fi
-                ls -l 
+                ls -l
               displayName: 'Rename preview binaries'
               workingDirectory: $(Build.ArtifactStagingDirectory)/blobfuse2-signed/
 
@@ -1962,6 +1969,8 @@ stages:
                 inlineScript: |
                   pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" package upload blobfuse2-signed
                 workingDirectory: $(Build.ArtifactStagingDirectory)/
+              env:
+                PYTHONUSERBASE: $(Agent.TempDirectory)/blobfuse-pmc
 
             - script: |
                 wget https://raw.githubusercontent.com/Azure/azure-storage-fuse/`echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`/setup/packages.csv -O packages.csv
@@ -1977,6 +1986,7 @@ stages:
                 scriptType: bash
                 scriptLocation: inlineScript
                 inlineScript: |
+                  set -euo pipefail
                   fuse3AmdDeb=`pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" --id-only package upload blobfuse2*fuse3.x86_64.deb`
                   echo "Fuse3 AMD DEB ID: $fuse3AmdDeb"
 
@@ -2019,6 +2029,10 @@ stages:
                   fi
 
                   while IFS=, read -r distro fuseArchType repoName releaseName; do
+                    if [[ $distro == AzureLinux-4.0-* && $is_preview == "true" ]]; then
+                      echo "Skipping AZL4 production for preview package: $distro"
+                      continue
+                    fi
 
                     # If the package is preview, publish to mariner preview package
                     if [[ $distro == *"Mariner-"* ]]; then
@@ -2031,6 +2045,8 @@ stages:
                     pmc --auth-type wif --base-url "https://pmc-ingest.trafficmanager.net/api/v4" repo package update --add-packages ${!fuseArchType} $repoName $releaseName
                   done < <(tail -n +3 ../packages.csv)
                 workingDirectory: $(Build.ArtifactStagingDirectory)/blobfuse2-signed/
+              env:
+                PYTHONUSERBASE: $(Agent.TempDirectory)/blobfuse-pmc
 
             - task: AzureCLI@2
               displayName: 'Publish the repository'
@@ -2040,8 +2056,13 @@ stages:
                 scriptType: bash
                 scriptLocation: inlineScript
                 inlineScript: |
+                  set -euo pipefail
                   while IFS=, read -r distro fuseArchType repoName releaseName; do
-                    if [[ $fuseArchType == *"Arm"* ]]
+                    if [[ $distro == AzureLinux-4.0-* && "$(is_preview)" == "true" ]]; then
+                      echo "Skipping AZL4 production for preview package: $distro"
+                      continue
+                    fi
+                    if [[ $fuseArchType == *"Arm"* && $distro != AzureLinux-4.0-* ]]
                     then
                       echo "Skipping for ARM type on $distro"
                     else
@@ -2057,4 +2078,5 @@ stages:
                     fi
                   done < <(tail -n +3 ../packages.csv)
                 workingDirectory: $(Build.ArtifactStagingDirectory)/blobfuse2-signed/
-
+              env:
+                PYTHONUSERBASE: $(Agent.TempDirectory)/blobfuse-pmc
