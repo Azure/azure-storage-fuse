@@ -59,12 +59,17 @@ import (
 
 const compName = "loopbackfs"
 
+// defaultBlockSizeMB is the block size, in MB, of the blobs that were not written in blocks through loopbackfs, when
+// the block-size-mb option is not set.
+const defaultBlockSizeMB = 1
+
 // LoopbackFS is a storage component that emulates Azure Storage on a local directory. See the package documentation.
 type LoopbackFS struct {
 	internal.BaseComponent
 
 	path         string
 	listPageSize atomic.Int32
+	blockSize    atomic.Int64
 	contentMD5   atomic.Bool
 
 	locks    objectLocks
@@ -81,6 +86,9 @@ type LoopbackFSOptions struct {
 	// ListPageSize is the most entries a StreamDir call returns. The default is 5000, the most entries a List Blobs
 	// call returns.
 	ListPageSize uint32 `config:"list-page-size" yaml:"list-page-size,omitempty"`
+	// BlockSizeMB is the size, in MB, of the blocks of the blobs that were not written in blocks through loopbackfs.
+	// 0 presents them as blobs without blocks. The default is 1.
+	BlockSizeMB float64 `config:"block-size-mb" yaml:"block-size-mb,omitempty"`
 	// ContentMD5 reports the MD5 of the content of files in GetAttr and in listings.
 	ContentMD5 bool `config:"content-md5" yaml:"content-md5,omitempty"`
 	// Faults are the faults to inject into the operations of the component.
@@ -165,6 +173,17 @@ func (lfs *LoopbackFS) applyOptions(conf LoopbackFSOptions) error {
 		pageSize = int32(conf.ListPageSize)
 	}
 
+	blockSizeMB := float64(defaultBlockSizeMB)
+	if config.IsSet(lfs.Name() + ".block-size-mb") {
+		blockSizeMB = conf.BlockSizeMB
+	}
+
+	blockSize := int64(blockSizeMB * common.MbToBytes)
+	if blockSizeMB < 0 || blockSize > maxBlockSize || (blockSizeMB > 0 && blockSize == 0) {
+		return fmt.Errorf("block-size-mb %v must be 0, or between 1 byte and %d MB", blockSizeMB,
+			maxBlockSize/common.MbToBytes)
+	}
+
 	rules := make([]*faultRule, 0, len(conf.Faults))
 	for i, opts := range conf.Faults {
 		f, err := opts.fault()
@@ -175,6 +194,7 @@ func (lfs *LoopbackFS) applyOptions(conf LoopbackFSOptions) error {
 	}
 
 	lfs.listPageSize.Store(pageSize)
+	lfs.blockSize.Store(blockSize)
 	lfs.contentMD5.Store(conf.ContentMD5)
 	lfs.faults.setConfigured(rules)
 
@@ -186,8 +206,8 @@ func (lfs *LoopbackFS) logOptions(caller string) {
 	faults := len(lfs.faults.configured)
 	lfs.faults.mu.Unlock()
 
-	log.Crit("%s : path %s, list-page-size %d, content-md5 %t, faults %d", caller, lfs.path,
-		lfs.listPageSize.Load(), lfs.contentMD5.Load(), faults)
+	log.Crit("%s : path %s, list-page-size %d, block-size %d, content-md5 %t, faults %d", caller, lfs.path,
+		lfs.listPageSize.Load(), lfs.blockSize.Load(), lfs.contentMD5.Load(), faults)
 }
 
 // isWithin reports whether the path p is the directory dir or is inside it.
@@ -653,7 +673,7 @@ func (lfs *LoopbackFS) CreateFile(options internal.CreateFileOptions) (*handlema
 		if err := root.Remove(name); err != nil {
 			return nil, storageError(err)
 		}
-		lfs.forget(old)
+		lfs.forget(root, old)
 	}
 
 	f, err := root.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, filePerm(options.Mode))
@@ -671,6 +691,9 @@ func (lfs *LoopbackFS) CreateFile(options internal.CreateFileOptions) (*handlema
 		return nil, storageError(err)
 	}
 
+	// The file may be an existing one that was truncated.
+	removeBlockList(root, info)
+	discardStagedBlocks(root, name)
 	lfs.versions.changed(info)
 
 	handle := handlemap.NewHandle(options.Name)
@@ -679,7 +702,7 @@ func (lfs *LoopbackFS) CreateFile(options internal.CreateFileOptions) (*handlema
 	return handle, nil
 }
 
-// DeleteFile deletes the object options.Name.
+// DeleteFile deletes the object options.Name, with its uncommitted blocks.
 func (lfs *LoopbackFS) DeleteFile(options internal.DeleteFileOptions) error {
 	log.Trace("LoopbackFS::DeleteFile : name=%s", options.Name)
 
@@ -715,7 +738,8 @@ func (lfs *LoopbackFS) DeleteFile(options internal.DeleteFileOptions) error {
 		return storageError(err)
 	}
 
-	lfs.forget(info)
+	lfs.forget(root, info)
+	discardStagedBlocks(root, name)
 
 	return nil
 }
@@ -787,6 +811,8 @@ func (lfs *LoopbackFS) truncateWhole(root *os.Root, name string) (fs.FileInfo, e
 		return nil, storageError(err)
 	}
 
+	removeBlockList(root, info)
+	discardStagedBlocks(root, name)
 	lfs.versions.changed(info)
 
 	return info, nil
@@ -823,7 +849,7 @@ func (lfs *LoopbackFS) FlushFile(options internal.FlushFileOptions) error {
 
 // RenameFile renames the object options.Src to options.Dst, replacing an object at options.Dst and creating its
 // missing parents. Like Azure Storage, which copies the blob, it gives the object a new modification time and ETag,
-// and it updates options.SrcAttr with them, as azstorage does.
+// and it updates options.SrcAttr with them, as azstorage does. Uncommitted blocks of both names are discarded.
 func (lfs *LoopbackFS) RenameFile(options internal.RenameFileOptions) error {
 	log.Trace("LoopbackFS::RenameFile : %s -> %s", options.Src, options.Dst)
 
@@ -865,6 +891,7 @@ func (lfs *LoopbackFS) RenameFile(options internal.RenameFileOptions) error {
 	}
 
 	dstInfo, dstErr := root.Lstat(dst)
+	blocks, recorded := readBlockList(root, srcInfo)
 
 	if err := root.Rename(src, dst); err != nil {
 		log.Err("LoopbackFS::RenameFile : failed to rename %s to %s [%v]", src, dst, err)
@@ -872,8 +899,10 @@ func (lfs *LoopbackFS) RenameFile(options internal.RenameFileOptions) error {
 	}
 
 	if dstErr == nil && !os.SameFile(srcInfo, dstInfo) {
-		lfs.forget(dstInfo)
+		lfs.forget(root, dstInfo)
 	}
+	discardStagedBlocks(root, src)
+	discardStagedBlocks(root, dst)
 
 	if !isSymlink(srcInfo) {
 		now := time.Now()
@@ -885,6 +914,12 @@ func (lfs *LoopbackFS) RenameFile(options internal.RenameFileOptions) error {
 	info, err := root.Lstat(dst)
 	if err != nil {
 		return storageError(err)
+	}
+
+	if recorded {
+		if err := writeBlockList(root, info, blocks); err != nil {
+			log.Err("LoopbackFS::RenameFile : failed to record the block list of %s [%v]", dst, err)
+		}
 	}
 
 	lfs.versions.changed(info)
@@ -1069,7 +1104,10 @@ func (lfs *LoopbackFS) WriteFile(options *internal.WriteFileOptions) (int, error
 	return n, nil
 }
 
-// TruncateFile changes the size of the object options.Name to options.NewSize; the handle, if any, is not used.
+// TruncateFile changes the size of the object options.Name to options.NewSize; the handle, if any, is not used. When
+// azstorage would truncate the blob using blocks, which it does when options.BlockSize is set or the blob is larger
+// than a single upload, the committed block list changes as azstorage changes it, so block_cache can keep writing the
+// blob.
 func (lfs *LoopbackFS) TruncateFile(options internal.TruncateFileOptions) error {
 	log.Trace("LoopbackFS::TruncateFile : name=%s, size=%d", options.Name, options.NewSize)
 
@@ -1112,6 +1150,8 @@ func (lfs *LoopbackFS) TruncateFile(options internal.TruncateFileOptions) error 
 		return nil
 	}
 
+	blocks := lfs.committedBlocks(root, info)
+
 	f, err := root.OpenFile(name, os.O_WRONLY, 0)
 	if err != nil {
 		return lookupError(err)
@@ -1131,6 +1171,13 @@ func (lfs *LoopbackFS) TruncateFile(options internal.TruncateFileOptions) error 
 	}
 
 	lfs.versions.changed(newInfo)
+	discardStagedBlocks(root, name)
+
+	newBlocks := truncatedBlocks(blocks, info.Size(), options.NewSize, options.BlockSize)
+	if err := writeBlockList(root, newInfo, newBlocks); err != nil {
+		log.Err("LoopbackFS::TruncateFile : failed to record the block list of %s [%v]", name, err)
+	}
+
 	return nil
 }
 
@@ -1185,7 +1232,8 @@ func (lfs *LoopbackFS) CopyToFile(options internal.CopyToFileOptions) error {
 }
 
 // CopyFromFile uploads the content of options.File, from the start of the file, as the object options.Name, creating
-// its missing parents. The object is replaced at once, as a blob is. options.Metadata is not stored.
+// its missing parents. The object is replaced at once, as a blob is, and its uncommitted blocks are discarded.
+// options.Metadata is not stored.
 func (lfs *LoopbackFS) CopyFromFile(options internal.CopyFromFileOptions) error {
 	log.Trace("LoopbackFS::CopyFromFile : name=%s", options.Name)
 
@@ -1225,6 +1273,7 @@ func (lfs *LoopbackFS) CopyFromFile(options internal.CopyFromFileOptions) error 
 		return err
 	}
 
+	discardStagedBlocks(root, name)
 	return nil
 }
 
@@ -1286,8 +1335,9 @@ func (lfs *LoopbackFS) CreateLink(options internal.CreateLinkOptions) error {
 	}
 
 	if old != nil {
-		lfs.forget(old)
+		lfs.forget(root, old)
 	}
+	discardStagedBlocks(root, name)
 	lfs.changed(root, name)
 
 	return nil
@@ -1433,137 +1483,12 @@ func (lfs *LoopbackFS) Chown(options internal.ChownOptions) error {
 	return nil
 }
 
-// ------------------------- Block operations -------------------------
-
-// StageData stages a block of the blob options.Name in the file <name>_<id>, next to the blob.
-func (lfs *LoopbackFS) StageData(options internal.StageDataOptions) error {
-	log.Trace("LoopbackFS::StageData : name=%s, id=%s", options.Name, options.Id)
-
-	if err := lfs.faults.check(OpStageData, faultName(options.Name)); err != nil {
-		return err
-	}
-
-	path := fmt.Sprintf("%s_%s", filepath.Join(lfs.path, options.Name), strings.ReplaceAll(options.Id, "/", "_"))
-	return os.WriteFile(path, options.Data, 0777)
-}
-
-// CommitData writes the staged blocks of options.List into the blob options.Name, block i at i times
-// options.BlockSize, and removes them. The blocks of the list that are not staged must be in the blob already.
-func (lfs *LoopbackFS) CommitData(options internal.CommitDataOptions) error {
-	log.Trace("LoopbackFS::CommitData : name=%s", options.Name)
-
-	if err := lfs.faults.check(OpCommitData, faultName(options.Name)); err != nil {
-		return err
-	}
-
-	mainFilepath := filepath.Join(lfs.path, options.Name)
-
-	blob, err := os.OpenFile(mainFilepath, os.O_RDWR|os.O_CREATE, os.FileMode(0777))
-	if err != nil {
-		log.Err("LoopbackFS::CommitData : error opening [%s]", err)
-		return err
-	}
-
-	if len(options.List) == 0 {
-		err = blob.Truncate(0)
-		if err != nil {
-			return err
-		}
-	}
-
-	for idx, id := range options.List {
-		path := fmt.Sprintf("%s_%s", filepath.Join(lfs.path, options.Name), strings.ReplaceAll(id, "/", "_"))
-		info, err := os.Lstat(path)
-		if err == nil {
-			block, err := os.OpenFile(path, os.O_RDONLY, os.FileMode(0666))
-			if err != nil {
-				return err
-			}
-
-			data := make([]byte, info.Size())
-			n, err := block.Read(data)
-			if int64(n) != info.Size() {
-				log.Err("LoopbackFS::CommitData : error [could not read entire file]")
-				return err
-			}
-
-			n, err = blob.WriteAt(data, int64(idx*(int)(options.BlockSize)))
-			if err != nil {
-				return err
-			}
-			if int64(n) != info.Size() {
-				log.Err("LoopbackFS::CommitData : error [could not write file]")
-				return err
-			}
-
-			err = block.Close()
-			if err != nil {
-				return err
-			}
-		} else if !os.IsNotExist(err) {
-			return err
-		}
-	}
-
-	// delete the staged files
-	for _, id := range options.List {
-		path := fmt.Sprintf("%s_%s", filepath.Join(lfs.path, options.Name), strings.ReplaceAll(id, "/", "_"))
-		_ = os.Remove(path)
-	}
-
-	err = blob.Close()
-	if err != nil {
-		return err
-	}
-
-	info, err := os.Stat(mainFilepath)
-	if err != nil {
-		return err
-	}
-
-	// The blob was changed in place, so its ETag must change.
-	lfs.versions.changed(info)
-	if options.NewETag != nil {
-		*options.NewETag = lfs.versions.etag(info)
-	}
-	return nil
-}
-
-// GetCommittedBlockList presents the blob name as committed in blocks of 1 MB.
-func (lfs *LoopbackFS) GetCommittedBlockList(name string) (*internal.CommittedBlockList, error) {
-	log.Trace("LoopbackFS::GetCommittedBlockList : name=%s", name)
-
-	if err := lfs.faults.check(OpGetCommittedBlockList, faultName(name)); err != nil {
-		return nil, err
-	}
-
-	mainFilepath := filepath.Join(lfs.path, name)
-
-	info, err := os.Lstat(mainFilepath)
-	if err != nil {
-		return nil, err
-	}
-
-	blockSize := uint64(1 * 1024 * 1024)
-	blocks := info.Size() / (int64)(blockSize)
-	list := make(internal.CommittedBlockList, 0)
-
-	for i := range blocks {
-		list = append(list, internal.CommittedBlock{
-			Id:     fmt.Sprintf("%d", i),
-			Offset: i * (int64)(blockSize),
-			Size:   blockSize,
-		})
-	}
-
-	return &list, nil
-}
-
 // NewLoopbackFSComponent returns a new loopbackfs component.
 func NewLoopbackFSComponent() internal.Component {
 	lfs := &LoopbackFS{}
 	lfs.SetName(compName)
 	lfs.listPageSize.Store(common.MaxDirListCount)
+	lfs.blockSize.Store(defaultBlockSizeMB * common.MbToBytes)
 	config.AddConfigChangeEventListener(lfs)
 	return lfs
 }
