@@ -125,6 +125,10 @@ Always reference these instructions first and fallback to search or bash command
 
 ```yaml
 # /tmp/lbfs.yaml
+logging:
+  type: base
+  level: log_debug
+  file-path: /tmp/lbfs.log  # injected faults are logged here
 components:
   - libfuse
   - block_cache      # or file_cache, xload, attr_cache, ...
