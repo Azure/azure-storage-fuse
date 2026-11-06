@@ -14,6 +14,7 @@
 **Other Changes**
 - libfuse no longer stores Go pointers in the file handles it gives libfuse, which broke cgo's pointer rules and made blobfuse2 builds with the Go race detector abort. ([PR #2449](https://github.com/Azure/azure-storage-fuse/pull/2449))
 - Test helpers of libfuse are no longer compiled into the blobfuse2 binary. ([PR #2447](https://github.com/Azure/azure-storage-fuse/pull/2447))
+- `loopbackfs`, the test component that emulates Azure Storage on a local directory, now follows `azstorage` semantics. Lookups of missing paths return `ENOENT` instead of `EIO`, which made mounts without `file_cache` unusable. Handles hold no file descriptors, so there is no descriptor leak when callers drop them. Uploads replace a blob atomically, `StageData`/`CommitData` emulate Put Block/Put Block List with persisted committed block lists, listings are paginated, and ETags change on every write. New options `list-page-size`, `block-size-mb`, `content-md5` and `faults` let tests and mounts emulate pagination, block layouts and storage failures or delays; faults are reloaded when the config file changes. ([PR #2459](https://github.com/Azure/azure-storage-fuse/pull/2459))
 
 ## 2.5.6 (2026-10-23)
 **Breaking Changes**
