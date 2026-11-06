@@ -144,6 +144,11 @@ func (suite *attrCacheIntegrationTestSuite) createFileViaCache(name string) *han
 	return h
 }
 
+// releaseFile releases a handle through attr_cache.
+func (suite *attrCacheIntegrationTestSuite) releaseFile(h *handlemap.Handle) {
+	suite.assert.NoError(suite.attrCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h}))
+}
+
 // ---- GetAttr tests ----------------------------------------------------------
 
 func (suite *attrCacheIntegrationTestSuite) TestGetAttrCacheMiss() {
@@ -420,7 +425,7 @@ func (suite *attrCacheIntegrationTestSuite) TestCreateFileInvalidatesEntry() {
 
 	h, err := suite.attrCache.CreateFile(internal.CreateFileOptions{Name: "newfile.txt", Mode: 0644})
 	suite.assert.NoError(err)
-	h.GetFileObject().Close()
+	suite.releaseFile(h)
 
 	_, ok := suite.attrCache.lru.Peek("newfile.txt")
 	suite.assert.False(ok, "CreateFile must remove the cache entry")
@@ -502,7 +507,7 @@ func (suite *attrCacheIntegrationTestSuite) TestRenameFilePreCachedDestGetsUpdat
 
 func (suite *attrCacheIntegrationTestSuite) TestWriteFileInvalidatesEntry() {
 	h := suite.createFileViaCache("write.txt")
-	defer h.GetFileObject().Close()
+	defer suite.releaseFile(h)
 
 	suite.cacheViaGetAttr("write.txt")
 
@@ -533,7 +538,7 @@ func (suite *attrCacheIntegrationTestSuite) TestTruncateFileInvalidatesEntry() {
 
 func (suite *attrCacheIntegrationTestSuite) TestFlushFileInvalidatesEntry() {
 	h := suite.createFileViaCache("flush.txt")
-	defer h.GetFileObject().Close()
+	defer suite.releaseFile(h)
 
 	suite.cacheViaGetAttr("flush.txt")
 
@@ -813,7 +818,7 @@ func (suite *attrCacheIntegrationTestSuite) TestConcurrentGetAttrAndNilAttrRace(
 				}
 				h, err := suite.attrCache.CreateFile(internal.CreateFileOptions{Name: name, Mode: 0644})
 				if err == nil {
-					h.GetFileObject().Close()
+					_ = suite.attrCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h})
 				}
 			}
 		}(i)
@@ -906,7 +911,7 @@ func (suite *attrCacheIntegrationTestSuite) TestDeleteThenRecreateFile() {
 	// Recreate via attr_cache.
 	h, err := suite.attrCache.CreateFile(internal.CreateFileOptions{Name: "lifecycle.txt", Mode: 0644})
 	suite.assert.NoError(err)
-	h.GetFileObject().Close()
+	suite.releaseFile(h)
 
 	// GetAttr must now succeed.
 	attr, err := suite.attrCache.GetAttr(internal.GetAttrOptions{Name: "lifecycle.txt"})
