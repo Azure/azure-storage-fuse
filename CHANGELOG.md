@@ -8,6 +8,7 @@
 - Free file handle on close even when upload fails, to prevent a memory leak, avoid pinning files in file_cache, and free pool buffers in block_cache. ([PR #2427](https://github.com/Azure/azure-storage-fuse/pull/2427))
 
 **Other Changes**
+- `loopbackfs`, the test component that emulates Azure Storage on a local directory, now follows `azstorage` semantics. Lookups of missing paths return `ENOENT` instead of `EIO`, which made mounts without `file_cache` unusable. Handles hold no file descriptors, so there is no descriptor leak when callers drop them. Uploads replace a blob atomically, `StageData`/`CommitData` emulate Put Block/Put Block List with persisted committed block lists, listings are paginated, and ETags change on every write. New options `list-page-size`, `block-size-mb`, `content-md5` and `faults` let tests and mounts emulate pagination, block layouts and storage failures or delays; faults are reloaded when the config file changes.
 
 ## 2.5.6 (2026-10-23)
 **Breaking Changes**

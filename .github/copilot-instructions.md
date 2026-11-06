@@ -119,6 +119,38 @@ Always reference these instructions first and fallback to search or bash command
 - **Performance Tests**: `test/scripts/` - benchmarking and stress testing
 - **Test Timeout**: Mount tests can take up to 120 minutes - NEVER CANCEL
 
+## Emulating Azure Storage with loopbackfs
+
+`loopbackfs` (`component/loopback/`) replaces `azstorage` with a local directory, so pipelines can be mounted and bugs reproduced without Azure credentials. It follows azstorage semantics (bare errno errors, path-based handles, atomic uploads, Put Block/Put Block List with persisted block lists, paginated listings, ETags that change on every write); `component/loopback/doc.go` documents the full contract.
+
+```yaml
+# /tmp/lbfs.yaml
+components:
+  - libfuse
+  - block_cache      # or file_cache, xload, attr_cache, ...
+  - loopbackfs
+loopbackfs:
+  path: /tmp/lbfs    # the emulated container; seed or inspect files here directly
+  list-page-size: 3  # optional: force directory listing pagination
+  faults:            # optional: emulate storage failures, reloaded when the config file changes
+    - op: CommitData # component method name; omit for all operations
+      path: "dir/*"  # path.Match pattern without a leading '/'; omit for all objects
+      error: EIO     # errno name; omit to only add delay-ms
+      count: 1       # optional skip/count limit which calls fail
+```
+
+```bash
+./build.sh
+mkdir -p /tmp/mnt
+./blobfuse2 mount /tmp/mnt --config-file=/tmp/lbfs.yaml --disable-version-check=true
+# ... reproduce the bug on /tmp/mnt, inspect /tmp/lbfs ...
+./blobfuse2 unmount /tmp/mnt
+```
+
+- In unit tests, wire `loopback.NewLoopbackFSComponent()` below the component under test and inject failures with `lfs.(*loopback.LoopbackFS).InjectFault(loopback.Fault{Op: loopback.OpStageData, Path: "file", Err: syscall.EIO})`.
+- Files copied directly into `path` are presented to block_cache as uploaded in `block-size-mb` blocks (default 1). Set it to block_cache's block size to open such files for writing, or to 0 to emulate single-request uploads that have no block list.
+- `test/loopback_e2e/` mounts real pipelines over loopbackfs: `go test -v ./test/loopback_e2e -args -blobfuse2=$PWD/blobfuse2`.
+
 ## Key Components and Architecture
 
 - **cmd/**: CLI commands and main entry points

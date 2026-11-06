@@ -135,9 +135,20 @@ distributed_cache:
   prefetch: <number of blocks to be prefetched in serial read case. Min - 11, Default - 2 times number of CPU cores>
   parallelism: <number of parallel threads downloading the data and writing to cache. Default - 3 times number of CPU cores>
 
-# Loopback configuration
+# Loopback configuration, emulates Azure Storage on a local directory for testing (see component/loopback/doc.go)
 loopbackfs:
-  path: <path to local directory>
+  path: <path to the local directory that holds the objects of the emulated container. Created if missing>
+  list-page-size: <maximum number of entries returned per directory listing call, 1 to 5000. Use a small value to exercise listing pagination. Default - 5000>
+  block-size-mb: <block size presented for files that were not written as blocks through loopbackfs, e.g. files copied into path. 0 presents them as blobs without blocks. Default - 1>
+  content-md5: true|false <report the MD5 of file contents in attributes and listings, like the Content-MD5 of a blob. Default - false>
+  # Errors and delays to inject into storage operations. Faults are reloaded when the config file changes.
+  faults:
+    - op: <operation to affect, e.g. ReadInBuffer, StageData, CommitData, GetAttr. Default - all operations>
+      path: <path.Match pattern of the objects to affect, without a leading '/', e.g. dir/*.bin. Default - all objects>
+      error: <errno to fail with, e.g. EIO, ENOENT, EACCES, ETIMEDOUT. Default - none, only delay>
+      delay-ms: <delay before the operation runs or fails, in milliseconds. Default - 0>
+      skip: <number of matching calls to let through first. Default - 0>
+      count: <number of calls to apply the fault to after the skipped ones. Default - 0, all calls>
 
 # Azure storage configuration
 azstorage:
