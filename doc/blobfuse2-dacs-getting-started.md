@@ -262,9 +262,15 @@ CONTAINER_SCOPE="$(az storage account show --name "$STORAGE_ACCOUNT" \
 
 # Record whether this guide created the assignment so cleanup removes only that.
 ROLE_CREATED=false
-if [ "$(az role assignment list --assignee "$MOUNT_IDENTITY_OBJECT_ID" \
+# Capture the lookup on its own so a failure stops setup instead of being
+# mistaken for "assignment already exists".
+if ! EXISTING_ROLES=$(az role assignment list --assignee "$MOUNT_IDENTITY_OBJECT_ID" \
   --role 'Storage Blob Data Reader' --scope "$CONTAINER_SCOPE" \
-  --query 'length(@)' -o tsv)" = 0 ]; then
+  --query 'length(@)' -o tsv); then
+  echo 'ERROR: role assignment lookup failed.' >&2
+  exit 1
+fi
+if [ "$EXISTING_ROLES" = 0 ]; then
   az role assignment create \
     --assignee-object-id "$MOUNT_IDENTITY_OBJECT_ID" \
     --assignee-principal-type ServicePrincipal \
