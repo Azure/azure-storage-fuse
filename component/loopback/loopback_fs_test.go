@@ -36,6 +36,7 @@ package loopback
 import (
 	"context"
 	"crypto/md5"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"os"
@@ -172,6 +173,10 @@ func TestConfigureErrors(t *testing.T) {
 	}{
 		{"no path", "loopbackfs:\n  list-page-size: 10\n"},
 		{"page size too large", fmt.Sprintf("loopbackfs:\n  path: %s\n  list-page-size: 5001\n", dir)},
+		{"unknown fault op", fmt.Sprintf("loopbackfs:\n  path: %s\n  faults:\n    - op: Bogus\n      error: EIO\n", dir)},
+		{"unknown fault error", fmt.Sprintf("loopbackfs:\n  path: %s\n  faults:\n    - error: EBOGUS\n", dir)},
+		{"empty fault", fmt.Sprintf("loopbackfs:\n  path: %s\n  faults:\n    - op: GetAttr\n", dir)},
+		{"bad fault pattern", fmt.Sprintf("loopbackfs:\n  path: %s\n  faults:\n    - path: \"[\"\n      error: EIO\n", dir)},
 		{"path within the mount", fmt.Sprintf("mount-path: %s\nloopbackfs:\n  path: %s\n", dir, filepath.Join(dir, "inner"))},
 		{"path is the mount", fmt.Sprintf("mount-path: %s\nloopbackfs:\n  path: %s\n", dir, dir)},
 	}
@@ -201,12 +206,15 @@ func TestStartWithoutConfigure(t *testing.T) {
 func TestOnConfigChange(t *testing.T) {
 	dir := t.TempDir()
 	lfs := newTestLoopback(t, dir)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "file"), []byte("data"), 0o644))
 
-	cfg := fmt.Sprintf("loopbackfs:\n  path: %s\n  list-page-size: 3\n  content-md5: true\n", dir)
+	cfg := fmt.Sprintf("loopbackfs:\n  path: %s\n  list-page-size: 3\n  faults:\n    - op: GetAttr\n      error: EIO\n", dir)
 	require.NoError(t, config.ReadConfigFromReader(strings.NewReader(cfg)))
 	lfs.OnConfigChange()
+
 	assert.Equal(t, int32(3), lfs.listPageSize.Load())
-	assert.True(t, lfs.contentMD5.Load())
+	_, err := lfs.GetAttr(internal.GetAttrOptions{Name: "file"})
+	assert.Equal(t, syscall.EIO, err)
 
 	// An invalid configuration keeps the previous options.
 	cfg = fmt.Sprintf("loopbackfs:\n  path: %s\n  list-page-size: 9999\n", dir)
@@ -214,12 +222,13 @@ func TestOnConfigChange(t *testing.T) {
 	lfs.OnConfigChange()
 	assert.Equal(t, int32(3), lfs.listPageSize.Load())
 
-	// Options removed from the configuration go back to their defaults.
+	// Removing the faults from the configuration removes them from the component.
 	cfg = fmt.Sprintf("loopbackfs:\n  path: %s\n", dir)
 	require.NoError(t, config.ReadConfigFromReader(strings.NewReader(cfg)))
 	lfs.OnConfigChange()
+	_, err = lfs.GetAttr(internal.GetAttrOptions{Name: "file"})
+	assert.NoError(t, err)
 	assert.Equal(t, int32(common.MaxDirListCount), lfs.listPageSize.Load())
-	assert.False(t, lfs.contentMD5.Load())
 }
 
 // ------------------------- Names and errors -------------------------
@@ -1026,6 +1035,15 @@ func (s *loopbackTestSuite) TestConcurrentOperations() {
 }
 
 // ------------------------- Helpers -------------------------
+
+// blockID returns a valid block ID for n, 16 bytes long before encoding like the IDs of block_cache.
+func blockID(n int) string {
+	return encodeID(fmt.Sprintf("block-%010d", n))
+}
+
+func encodeID(raw string) string {
+	return base64.StdEncoding.EncodeToString([]byte(raw))
+}
 
 func TestObjectName(t *testing.T) {
 	testCases := []struct {

@@ -851,11 +851,15 @@ func (suite *blockCacheTestSuite) TestCreateFile() {
 	suite.assert.Equal(int64(0), fs.Size())
 
 	path = "FailThis"
+	_, err = tobj.loopback.(*loopback.LoopbackFS).InjectFault(
+		loopback.Fault{Op: loopback.OpCreateFile, Path: path, Err: syscall.EIO})
+	suite.assert.NoError(err)
+
 	options = internal.CreateFileOptions{Name: path}
 	h, err = tobj.blockCache.CreateFile(options)
 	suite.assert.Error(err)
 	suite.assert.Nil(h)
-	suite.assert.Contains(err.Error(), "Failed to create file")
+	suite.assert.ErrorIs(err, syscall.EIO)
 }
 
 func (suite *blockCacheTestSuite) TestOpenWithTruncate() {
