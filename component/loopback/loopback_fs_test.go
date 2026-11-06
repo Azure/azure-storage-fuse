@@ -157,11 +157,16 @@ func TestConfigure(t *testing.T) {
 	assert.True(t, info.IsDir())
 	assert.Equal(t, dir, lfs.path)
 	assert.Equal(t, int32(common.MaxDirListCount), lfs.listPageSize.Load())
+	assert.Equal(t, int64(common.MbToBytes), lfs.blockSize.Load())
 	assert.False(t, lfs.contentMD5.Load())
 
-	lfs = newTestLoopback(t, dir, "list-page-size: 7", "content-md5: true")
+	lfs = newTestLoopback(t, dir, "list-page-size: 7", "block-size-mb: 0.5", "content-md5: true")
 	assert.Equal(t, int32(7), lfs.listPageSize.Load())
+	assert.Equal(t, int64(common.MbToBytes/2), lfs.blockSize.Load())
 	assert.True(t, lfs.contentMD5.Load())
+
+	lfs = newTestLoopback(t, dir, "block-size-mb: 0")
+	assert.Zero(t, lfs.blockSize.Load(), "an explicit 0 presents blobs without blocks")
 }
 
 func TestConfigureErrors(t *testing.T) {
@@ -173,6 +178,8 @@ func TestConfigureErrors(t *testing.T) {
 	}{
 		{"no path", "loopbackfs:\n  list-page-size: 10\n"},
 		{"page size too large", fmt.Sprintf("loopbackfs:\n  path: %s\n  list-page-size: 5001\n", dir)},
+		{"negative block size", fmt.Sprintf("loopbackfs:\n  path: %s\n  block-size-mb: -1\n", dir)},
+		{"block size too large", fmt.Sprintf("loopbackfs:\n  path: %s\n  block-size-mb: 4001\n", dir)},
 		{"unknown fault op", fmt.Sprintf("loopbackfs:\n  path: %s\n  faults:\n    - op: Bogus\n      error: EIO\n", dir)},
 		{"unknown fault error", fmt.Sprintf("loopbackfs:\n  path: %s\n  faults:\n    - error: EBOGUS\n", dir)},
 		{"empty fault", fmt.Sprintf("loopbackfs:\n  path: %s\n  faults:\n    - op: GetAttr\n", dir)},
@@ -1006,6 +1013,7 @@ func (s *loopbackTestSuite) TestConcurrentOperations() {
 			defer func() { done <- struct{}{} }()
 
 			name := fmt.Sprintf("dir%d/file", w%2)
+			id := blockID(w)
 			h := handlemap.NewHandle("shared")
 			for range rounds {
 				if _, err := s.lfs.WriteFile(&internal.WriteFileOptions{Handle: h, Offset: int64(w), Data: []byte{byte(w)}}); err != nil {
@@ -1013,6 +1021,15 @@ func (s *loopbackTestSuite) TestConcurrentOperations() {
 				}
 				if _, err := s.lfs.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Data: make([]byte, 64)}); err != nil {
 					errs <- err
+				}
+				if err := s.lfs.StageData(internal.StageDataOptions{Name: name, Id: id, Data: []byte{byte(w)}}); err != nil {
+					errs <- err
+				}
+				if err := s.lfs.CommitData(internal.CommitDataOptions{Name: name, List: []string{id}}); err != nil {
+					// Another worker can commit the blob between the staging and the commit, which discards the block.
+					if !strings.Contains(err.Error(), "neither staged nor committed") {
+						errs <- err
+					}
 				}
 				if _, _, err := s.lfs.StreamDir(internal.StreamDirOptions{Name: ""}); err != nil {
 					errs <- err
