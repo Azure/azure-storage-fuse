@@ -8,7 +8,7 @@
 - Free file handle on close even when upload fails, to prevent a memory leak, avoid pinning files in file_cache, and free pool buffers in block_cache. ([PR #2427](https://github.com/Azure/azure-storage-fuse/pull/2427))
 
 **Other Changes**
-- Publish stable releases to Azure Linux 4 production repositories for x86_64 and aarch64. Preview releases skip these production targets and retain existing distribution publishing.
+- Publish stable releases to Azure Linux 4 production repositories for x86_64 and aarch64. Preview releases skip these production targets and retain existing distribution publishing. ([PR #2443](https://github.com/Azure/azure-storage-fuse/pull/2443))
 
 ## 2.5.6 (2026-10-23)
 **Breaking Changes**
