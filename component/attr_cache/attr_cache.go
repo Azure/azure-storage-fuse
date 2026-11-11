@@ -48,6 +48,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
+	"github.com/Azure/azure-storage-fuse/v2/internal/telemetry"
 )
 
 // defaultAttrCacheTimeout is the default TTL for cached attributes (seconds).
@@ -269,6 +270,9 @@ func (ac *AttrCache) Configure(_ bool) error {
 	log.Crit("AttrCache::Configure : cache-timeout %v, no-symlinks %t, no-cache-on-list %t, max-size-mb %d",
 		ac.cacheTimeout, ac.noSymlinks, ac.noCacheOnList, effectiveMB)
 
+	telemetry.Current().Configure(map[string]string{
+		"attr_cache_ttl_seconds": fmt.Sprint(ac.cacheTimeout.Seconds()),
+	})
 	return nil
 }
 

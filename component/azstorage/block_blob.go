@@ -215,6 +215,7 @@ func (bb *BlockBlob) TestPipeline() error {
 	// we are just validating the auth mode used. So, no need to iterate over the pages
 	_, err := listBlobPager.NextPage(context.Background())
 	if err != nil {
+		observeStartupFailure(err)
 		log.Err("BlockBlob::TestPipeline : Failed to validate account with given auth %s", err.Error())
 		var respErr *azcore.ResponseError
 		errors.As(err, &respErr)
