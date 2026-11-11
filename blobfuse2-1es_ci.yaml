@@ -129,6 +129,16 @@ extends:
             displayName: 'File cache loopback mount E2E'
             workingDirectory: $(WORK_DIR)
 
+          - script: |
+              go test -race -count=1 -v -timeout=5m -tags=$(tags) ./test/telemetry_smoke \
+                -run '^(TestRuntimeConfigOptOutMounted|TestStaleMountTelemetryRecovery)$'
+            displayName: 'Telemetry loopback mount regressions'
+            condition: and(succeeded(), eq(variables['distro_version'], 'ubuntu_22_x86'))
+            workingDirectory: $(WORK_DIR)
+            env:
+              BLOBFUSE_TEST_BINARY: $(WORK_DIR)/blobfuse2
+              BLOBFUSE_DISABLE_TELEMETRY: 'true'
+
           # Compare the libfuse read/write callback benchmarks with the base of the change, and fail if they got
           # slower by more than 10%, see test/scripts/libfuse_bench_compare.sh. Runs only for changes to libfuse or
           # its dependencies. A change that accepts a measured regression on purpose says so with

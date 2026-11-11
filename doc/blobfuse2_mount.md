@@ -22,6 +22,7 @@ blobfuse2 mount [path] [flags]
       --container-name string        Configures the name of the container to be mounted
       --disable-compression          Disable transport layer compression.
       --disable-kernel-cache         Disable the kernel cache while retaining Blobfuse2 caches. Required when blobs can be modified outside Blobfuse2; use --attr-cache-timeout to configure attribute freshness.
+      --disable-telemetry             Disable Microsoft lifecycle and error telemetry and delete retained telemetry state.
       --disable-writeback-cache      Disallow libfuse to buffer write requests if you must strictly open files in O_WRONLY or O_APPEND mode.
       --entry-timeout uint32         The entry timeout in seconds.
       --file-cache-timeout uint32    file cache timeout (default 120)
@@ -47,6 +48,9 @@ blobfuse2 mount [path] [flags]
 ```
 
 ### Options inherited from parent commands
+
+Microsoft telemetry configuration and opt-out behavior are described in
+[Microsoft lifecycle and error telemetry](microsoft-telemetry.md).
 
 ```
       --disable-version-check   To disable version check that is performed automatically
