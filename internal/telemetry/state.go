@@ -29,12 +29,13 @@ type processIdentity struct {
 }
 
 type sessionRecord struct {
-	Session  string          `json:"session"`
-	Owner    processIdentity `json:"owner"`
-	Updated  time.Time       `json:"updated"`
-	Uptime   float64         `json:"uptime_seconds"`
-	Ready    bool            `json:"ready"`
-	Terminal *Event          `json:"terminal,omitempty"`
+	Session  string             `json:"session"`
+	Owner    processIdentity    `json:"owner"`
+	Updated  time.Time          `json:"updated"`
+	Uptime   float64            `json:"uptime_seconds"`
+	Ready    bool               `json:"ready"`
+	Terminal *Event             `json:"terminal,omitempty"`
+	Baseline map[string]float64 `json:"baseline,omitempty"`
 }
 
 type stateStore struct {
@@ -494,6 +495,9 @@ func (s *stateStore) recover(current processIdentity, session string, makeEvent 
 				e.Properties["previous_ready"] = strconv.FormatBool(record.Ready)
 				e.Measurements["previous_last_known_uptime_seconds"] = record.Uptime
 				record.Terminal = &e
+				// Startup handoff counters are irrelevant after confirmed
+				// process death. Compact them before consuming reserved space.
+				record.Baseline = nil
 				if err := s.writeWithinBudget(entry.Name(), record, MaxStateBytes); err != nil {
 					recoveryErr = errors.Join(recoveryErr, err)
 					continue

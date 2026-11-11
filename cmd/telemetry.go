@@ -34,9 +34,10 @@ const telemetryConnectionString = "InstrumentationKey=5caab1e6-8d2e-4ba1-b211-94
 	"ApplicationId=8357c71a-edea-4079-9250-d83849380ec5"
 
 type microsoftTelemetryOptions struct {
-	Disabled       bool   `config:"disabled"`
-	StateDirectory string `config:"state-directory"`
-	MountScope     string `config:"mount-scope"`
+	Disabled        bool   `config:"disabled"`
+	StateDirectory  string `config:"state-directory"`
+	MountScope      string `config:"mount-scope"`
+	IntervalSeconds int    `config:"snapshot-interval-sec"`
 }
 
 func configuredTelemetryConnectionString(override, embedded string, testBinary bool) string {
@@ -76,6 +77,9 @@ func telemetryOptions() (microsoftTelemetryOptions, error) {
 	} else {
 		o.StateDirectory = common.ExpandPath(o.StateDirectory)
 	}
+	if !o.Disabled && o.IntervalSeconds != 0 && (o.IntervalSeconds < 60 || o.IntervalSeconds > 3600) {
+		return o, fmt.Errorf("telemetry snapshot interval must be between 60 and 3600 seconds")
+	}
 	return o, nil
 }
 
@@ -88,8 +92,8 @@ func beginMountTelemetry() *telemetry.Session {
 	input := telemetry.Options{
 		Disabled: o.Disabled, ConnectionString: configuredTelemetryConnectionString(
 			os.Getenv("BLOBFUSE_TELEMETRY_CONNECTION_STRING"), telemetryConnectionString, testing.Testing()),
-		StateDirectory: o.StateDirectory,
-		MountPath:      options.MountPath, MountScope: o.MountScope,
+		StateDirectory: o.StateDirectory, Interval: time.Duration(o.IntervalSeconds) * time.Second,
+		MountPath: options.MountPath, MountScope: o.MountScope,
 		Version: common.Blobfuse2Version, Child: daemon.WasReborn(),
 		Diagnostic: func(message string) { log.Warn("%s", message) },
 	}

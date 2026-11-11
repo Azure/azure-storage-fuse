@@ -110,7 +110,7 @@ func getAzStorageClientOptions(conf *AzStorageConfig) (azcore.ClientOptions, err
 		log.Err("utils::getAzStorageClientOptions : Failed to create transport client [%s]", err.Error())
 	}
 
-	perCallPolicies := []policy.Policy{telemetryPolicy}
+	perCallPolicies := []policy.Policy{requestObservationPolicy{}, telemetryPolicy}
 
 	serviceApiVersion := os.Getenv("AZURE_STORAGE_SERVICE_API_VERSION")
 	if serviceApiVersion != "" {
@@ -118,7 +118,7 @@ func getAzStorageClientOptions(conf *AzStorageConfig) (azcore.ClientOptions, err
 		perCallPolicies = append(perCallPolicies, newServiceVersionPolicy(serviceApiVersion))
 	}
 
-	perRetryPolicies := []policy.Policy{}
+	perRetryPolicies := []policy.Policy{attemptObservationPolicy{}}
 	if conf.capMbpsRead > 0 || conf.capIOps > 0 {
 		// Convert Mbps to Bytes/sec: 1 Mbps = (1024* 1024) / 8 = 131072 Bytes/sec
 		bytesPerSec := conf.capMbpsRead * 131072
@@ -198,7 +198,7 @@ func newBlobfuse2HttpClient(conf *AzStorageConfig) (*http.Client, error) {
 	}
 
 	return &http.Client{
-		Transport: &http.Transport{
+		Transport: observedTransport{next: &http.Transport{
 			Proxy: ProxyURL,
 			// We use Dial instead of DialContext as DialContext has been reported to cause slower performance.
 			Dial /*Context*/ : (&net.Dialer{
@@ -217,7 +217,7 @@ func newBlobfuse2HttpClient(conf *AzStorageConfig) (*http.Client, error) {
 			// make things ugly and hence user needs to disable this feature through config
 			DisableCompression:     conf.disableCompression,
 			MaxResponseHeaderBytes: MaxResponseHeaderBytes,
-		},
+		}},
 	}, nil
 }
 

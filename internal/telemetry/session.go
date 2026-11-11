@@ -5,8 +5,10 @@ package telemetry
 
 import (
 	"errors"
+	"math/rand/v2"
 	"net/http"
 	"os"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -20,6 +22,7 @@ type Options struct {
 	StateDirectory   string
 	MountPath        string
 	MountScope       string
+	Interval         time.Duration
 	Version          string
 	SessionID        string
 	StartedAt        time.Time
@@ -46,15 +49,32 @@ type Session struct {
 	config           map[string]string
 	stage            string
 	failure          string
+	sequence         uint64
 	record           sessionRecord
 	store            *stateStore
 	stateDirectory   string
 	mountPath        string
 	mountScope       string
 	reporter         *reporter
+	stop             chan struct{}
+	done             chan struct{}
+	readySignal      chan struct{}
+	once             sync.Once
 	diag             func(string)
 	lastDiag         atomic.Int64
+	native           func() map[string]float64
+	onDisable        func()
+	http             [2][600]atomic.Uint64
+	attempts         [2]atomic.Uint64
+	noResponse       [2]atomic.Uint64
+	retries          [2]atomic.Uint64
+	retried          [2]atomic.Uint64
+	requests         [2]atomic.Uint64
+	failed           [2]atomic.Uint64
+	network          [2][8]atomic.Uint64
 	running          atomic.Bool
+	baseline         map[string]float64
+	child            bool
 }
 
 var active atomic.Pointer[Session]
@@ -98,10 +118,19 @@ func Start(o Options) (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
+	if o.Interval == 0 {
+		o.Interval = 5 * time.Minute
+	}
+	if o.Interval < time.Minute || o.Interval > time.Hour {
+		return nil, errors.New("telemetry interval must be between 60 and 3600 seconds")
+	}
 	s := &Session{
 		id: newID(), version: o.Version, start: time.Now(),
-		config: map[string]string{}, stage: "configuration", diag: diagnostic,
+		stop: make(chan struct{}), done: make(chan struct{}),
+		readySignal: make(chan struct{}),
+		config:      map[string]string{}, stage: "configuration", diag: diagnostic,
 		stateDirectory: o.StateDirectory, mountPath: o.MountPath, mountScope: o.MountScope,
+		child: o.Child,
 	}
 	s.startMono, err = monotonicNow()
 	if err != nil {
@@ -125,6 +154,15 @@ func Start(o Options) (*Session, error) {
 		s.warn("telemetry: protected state unavailable; reporting is memory-only")
 	} else {
 		s.store = store
+		if o.Child {
+			var previous sessionRecord
+			if err := store.locked(func() error { return store.read("session-"+s.id+".json", &previous) }); err == nil {
+				s.baseline = previous.Baseline
+				s.record.Baseline = previous.Baseline
+			} else {
+				s.warn("telemetry: startup counters unavailable after daemon handoff")
+			}
+		}
 	}
 	s.reporter = newReporter(d, s.store, s.warn, o.HTTPClient)
 	if s.store != nil {
@@ -141,6 +179,7 @@ func Start(o Options) (*Session, error) {
 		s.reporter.report(s.event("attempted"), true)
 	}
 	active.Store(s)
+	go s.poll(o.Interval)
 	return s, nil
 }
 
@@ -167,6 +206,15 @@ func (s *Session) RetryState() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.store = store
+	if s.child {
+		var previous sessionRecord
+		if err := store.locked(func() error { return store.read("session-"+s.id+".json", &previous) }); err == nil {
+			s.baseline = previous.Baseline
+			s.record.Baseline = previous.Baseline
+		} else {
+			s.warn("telemetry: startup counters unavailable after delayed state attachment")
+		}
+	}
 	pending, err := store.recover(s.record.Owner, s.id, s.event)
 	if err != nil {
 		s.warn("telemetry: recovery incomplete after mount-path validation")
@@ -201,6 +249,17 @@ func monotonicNow() (int64, error) {
 func (s *Session) startupMilliseconds() (float64, bool) {
 	now, err := monotonicNow()
 	return float64(now-s.startMono) / float64(time.Millisecond), err == nil && now >= s.startMono
+}
+
+func (s *Session) NativeHooks(enable, disable func()) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if Current() != s {
+		disable()
+		return
+	}
+	s.onDisable = disable
+	enable()
 }
 
 func (s *Session) event(kind string) Event {
@@ -252,7 +311,7 @@ func Failure(category string) {
 	}
 }
 
-func Ready(properties map[string]string, _ func() map[string]float64) {
+func Ready(properties map[string]string, native func() map[string]float64) {
 	s := Current()
 	if s == nil {
 		return
@@ -263,8 +322,9 @@ func Ready(properties map[string]string, _ func() map[string]float64) {
 	if Current() != s || !s.ready.IsZero() {
 		return
 	}
-	s.ready = time.Now()
+	s.ready, s.native = time.Now(), native
 	s.running.Store(true)
+	close(s.readySignal)
 	e := s.event("result")
 	for k, v := range s.config {
 		e.Properties[k] = v
@@ -293,6 +353,142 @@ func (s *Session) checkpoint() {
 	}
 }
 
+func (s *Session) phase() int {
+	if s.running.Load() {
+		return 1
+	}
+	return 0
+}
+
+// HTTPAttempt counts transport calls, not physical-wire transmissions.
+func HTTPAttempt(hasResponse bool) {
+	if s := Current(); s != nil {
+		phase := s.phase()
+		s.attempts[phase].Add(1)
+		if !hasResponse {
+			s.noResponse[phase].Add(1)
+		}
+	}
+}
+
+// HTTPResponse counts only responses observed at the instrumented boundary.
+func HTTPResponse(status int) {
+	if s := Current(); s != nil && status >= 100 && status < 600 {
+		s.http[s.phase()][status].Add(1)
+	}
+}
+
+func SDKRequest(attempts int, failed bool) {
+	if s := Current(); s != nil {
+		phase := s.phase()
+		s.requests[phase].Add(1)
+		if failed {
+			s.failed[phase].Add(1)
+		}
+		if attempts > 1 {
+			s.retried[phase].Add(1)
+			s.retries[phase].Add(uint64(attempts - 1))
+		}
+	}
+}
+
+// Network uses a closed category set: DNS, TLS, timeout, reset, cancelled, other.
+func Network(category int, body bool) {
+	if s := Current(); s != nil {
+		if category < 0 || category > 5 {
+			category = 5
+		}
+		if body {
+			s.network[s.phase()][6].Add(1)
+		}
+		s.network[s.phase()][category].Add(1)
+	}
+}
+
+func (s *Session) measurements() map[string]float64 {
+	m := map[string]float64{}
+	if !s.ready.IsZero() {
+		m["uptime_seconds"] = time.Since(s.ready).Seconds()
+	}
+	for phase, label := range []string{"startup", "runtime"} {
+		total := uint64(0)
+		for code := 100; code < 600; code++ {
+			count := s.http[phase][code].Load()
+			total += count
+			if count > 0 {
+				m[label+"_http_response_"+strconv.Itoa(code)] = float64(count)
+			}
+		}
+		m[label+"_http_responses_total"] = float64(total)
+		m[label+"_http_transport_attempts"] = float64(s.attempts[phase].Load())
+		m[label+"_http_no_response"] = float64(s.noResponse[phase].Load())
+		m[label+"_sdk_requests"] = float64(s.requests[phase].Load())
+		m[label+"_sdk_terminal_failures"] = float64(s.failed[phase].Load())
+		m[label+"_sdk_retry_attempts"] = float64(s.retries[phase].Load())
+		m[label+"_sdk_retried_requests"] = float64(s.retried[phase].Load())
+		for i, name := range []string{"dns", "tls", "timeout", "reset", "cancelled", "other", "body_read", "unused"} {
+			if count := s.network[phase][i].Load(); count > 0 {
+				m[label+"_transport_"+name] = float64(count)
+			}
+		}
+	}
+	if s.native != nil {
+		for k, v := range s.native() {
+			m[k] = v
+		}
+	}
+	m["telemetry_dropped_records"] = float64(s.reporter.dropped.Load())
+	m["telemetry_delivery_failures"] = float64(s.reporter.failures.Load())
+	for key, value := range s.baseline {
+		m[key] += value
+	}
+	return m
+}
+
+func (s *Session) snapshot() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.ready.IsZero() {
+		return
+	}
+	s.sequence++
+	e := s.event("snapshot")
+	e.Properties["sequence_number"] = strconv.FormatUint(s.sequence, 10)
+	e.Properties["counter_scope"] = "session_cumulative"
+	e.Properties["fuse_counters_available"] = strconv.FormatBool(s.native != nil)
+	e.Properties["config_fingerprint"] = fingerprint(s.config)
+	e.Measurements = s.measurements()
+	parts, err := splitSnapshot(e, s.reporter.dest.key)
+	if err != nil {
+		s.warn("telemetry: snapshot cannot fit event limits")
+		return
+	}
+	for _, part := range parts {
+		s.reporter.report(part, false)
+	}
+	s.checkpoint()
+}
+
+func (s *Session) poll(interval time.Duration) {
+	defer close(s.done)
+	select {
+	case <-s.stop:
+		return
+	case <-s.readySignal:
+	}
+	for {
+		jitter := time.Duration(rand.Int64N(int64(interval/5)+1)) - interval/10
+		timer := time.NewTimer(interval + jitter)
+		select {
+		case <-s.stop:
+			timer.Stop()
+			return
+		case <-timer.C:
+			s.snapshot()
+		}
+	}
+}
+
 // Detach stops parent collection but retains its reporter until launch succeeds
 // or fails. No replacement session may bypass the parent's opt-out state.
 func (s *Session) Detach() {
@@ -304,10 +500,19 @@ func (s *Session) Detach() {
 	if s.closed || s.disabled.Load() || s.detached.Load() {
 		return
 	}
+	s.stopCollection()
 	s.mu.Lock()
+	s.record.Baseline = s.measurements()
 	s.checkpoint()
 	s.mu.Unlock()
 	s.detached.Store(true)
+}
+
+func (s *Session) stopCollection() {
+	s.once.Do(func() {
+		close(s.stop)
+		<-s.done
+	})
 }
 
 // HandoffFailed reports a definitive launch failure before a worker exists.
@@ -343,6 +548,12 @@ func (s *Session) Disable() {
 	s.reporter.cancel()
 	s.lifecycleMu.Lock()
 	defer s.lifecycleMu.Unlock()
+	s.stopCollection()
+	s.mu.Lock()
+	if s.onDisable != nil {
+		s.onDisable()
+	}
+	s.mu.Unlock()
 	s.reporter.close(0)
 	if s.closed {
 		// A concurrent finish may have closed the store just before it saw
@@ -384,7 +595,9 @@ func (s *Session) finish(mountErr error, handoffFailure bool) {
 		return
 	}
 	s.finishing.Store(true)
+	s.stopCollection()
 	if !s.disabled.Load() && (!s.detached.Load() || handoffFailure) {
+		s.snapshot()
 		s.mu.Lock()
 		if handoffFailure {
 			s.stage, s.failure = "daemonization", ""
@@ -429,6 +642,11 @@ func (s *Session) finish(mountErr error, handoffFailure bool) {
 		s.reporter.report(e, true)
 		s.mu.Unlock()
 	}
+	s.mu.Lock()
+	if s.onDisable != nil {
+		s.onDisable()
+	}
+	s.mu.Unlock()
 	budget := FlushTimeout
 	if s.disabled.Load() || s.detached.Load() && !handoffFailure {
 		budget = 0

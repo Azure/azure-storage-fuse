@@ -126,6 +126,8 @@ static int populate_callbacks(fuse_operations_t *opt)
     opt->utimens    = (int (*)(const char *path, const timespec_t tv[2], fuse_file_info_t *fi))libfuse_utimens;
     #endif
 
+    if (telemetry_active())
+        telemetry_wrap_callbacks(opt);
     return 0;
 }
 

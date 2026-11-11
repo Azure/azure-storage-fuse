@@ -11,6 +11,8 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -64,7 +66,7 @@ func validID(s string) bool {
 
 func encode(e Event, key string) ([]byte, error) {
 	switch e.Name {
-	case "blobfuse.mount.attempted", "blobfuse.mount.result",
+	case "blobfuse.mount.attempted", "blobfuse.mount.result", "blobfuse.mount.snapshot",
 		"blobfuse.mount.stopped", "blobfuse.mount.recovery":
 	default:
 		return nil, errors.New("invalid telemetry event")
@@ -111,7 +113,10 @@ var approvedProperties = map[string]bool{
 	"mount_session_id": true, "blobfuse_version": true,
 	"config_fingerprint": true, "outcome": true, "failure_stage": true,
 	"failure_category": true, "termination_class": true,
+	"sequence_number": true, "counter_scope": true,
+	"snapshot_id": true, "part_index": true, "part_count": true,
 	"previous_session_id": true, "previous_ready": true,
+	"fuse_counters_available": true,
 }
 
 // Older retained events remain replayable, without uploading retired metadata.
@@ -120,6 +125,47 @@ var retiredProperties = map[string]bool{
 	"http_scope": true, "fuse_observation_scope": true, "retry_exhaustion_available": true,
 	"mount_attempt_id": true, "counter_encoding": true, "retry_scope": true,
 	"exact_backoff_available": true,
+}
+
+// splitSnapshot retains every measurement and identifies parts of one snapshot.
+func splitSnapshot(e Event, key string) ([]Event, error) {
+	keys := make([]string, 0, len(e.Measurements))
+	for k := range e.Measurements {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	newPart := func() Event {
+		p := make(map[string]string, len(e.Properties)+3)
+		for k, v := range e.Properties {
+			p[k] = v
+		}
+		p["snapshot_id"], p["event_id"] = e.Properties["event_id"], newID()
+		p["part_index"], p["part_count"] = "9999", "9999"
+		return Event{Name: e.Name, Time: e.Time, Properties: p, Measurements: map[string]float64{}}
+	}
+	current := newPart()
+	var parts []Event
+	for _, k := range keys {
+		current.Measurements[k] = e.Measurements[k]
+		if _, err := encode(current, key); err != nil {
+			delete(current.Measurements, k)
+			if len(current.Measurements) == 0 {
+				return nil, err
+			}
+			parts = append(parts, current)
+			current = newPart()
+			current.Measurements[k] = e.Measurements[k]
+			if _, err := encode(current, key); err != nil {
+				return nil, err
+			}
+		}
+	}
+	parts = append(parts, current)
+	for i := range parts {
+		parts[i].Properties["part_index"] = strconv.Itoa(i + 1)
+		parts[i].Properties["part_count"] = strconv.Itoa(len(parts))
+	}
+	return parts, nil
 }
 
 func fingerprint(properties map[string]string) string {

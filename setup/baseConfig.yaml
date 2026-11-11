@@ -14,6 +14,7 @@ logging:
 # See doc/microsoft-telemetry.md for privacy, limits and recovery semantics.
 microsoft-telemetry:
   disabled: false
+  snapshot-interval-sec: 300
   # state-directory: /persistent/blobfuse/microsoft-telemetry
   # Optional stable, locally hashed deployment label for namespace replacement.
   # Use a distinct label for each logical mount sharing a state root.
