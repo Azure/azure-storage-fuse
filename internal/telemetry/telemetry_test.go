@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -28,7 +29,7 @@ func testEvent() Event {
 }
 
 func TestRetiredPropertiesAreNotEncoded(t *testing.T) {
-	for _, kind := range []string{"attempted", "result", "stopped", "recovery"} {
+	for _, kind := range []string{"attempted", "result", "snapshot", "stopped", "recovery"} {
 		t.Run(kind, func(t *testing.T) {
 			e := testEvent()
 			e.Name = "blobfuse.mount." + kind
@@ -62,6 +63,53 @@ func TestRetiredPropertiesAreNotEncoded(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestEncodeAndSplit(t *testing.T) {
+	e := testEvent()
+	e.Name = "blobfuse.mount.snapshot"
+	for i := 0; i < 2500; i++ {
+		e.Measurements[fmt.Sprintf("fuse_read_errno_category_%04d", i)] = float64(i)
+	}
+	parts, err := splitSnapshot(e, "test-key")
+	if err != nil || len(parts) < 2 {
+		t.Fatalf("split: %d parts, %v", len(parts), err)
+	}
+	seen := map[string]float64{}
+	ids := map[string]bool{}
+	for _, part := range parts {
+		b, err := encode(part, "test-key")
+		if err != nil || len(b) > MaxEventBytes {
+			t.Fatalf("oversized part: %d, %v", len(b), err)
+		}
+		id := part.Properties["event_id"]
+		if ids[id] || part.Properties["snapshot_id"] != e.Properties["event_id"] {
+			t.Fatal("invalid part identity")
+		}
+		ids[id] = true
+		for k, v := range part.Measurements {
+			seen[k] = v
+		}
+	}
+	if len(seen) != len(e.Measurements) {
+		t.Fatal("measurements lost")
+	}
+	for k, v := range e.Measurements {
+		if seen[k] != v {
+			t.Fatalf("measurement changed: %s", k)
+		}
+	}
+	t.Run("NaN", func(t *testing.T) {
+		small := testEvent()
+		small.Measurements["count"] = 1
+		if _, err := encode(small, "key"); err != nil {
+			t.Fatal("valid small event rejected:", err)
+		}
+		small.Measurements["count"] = math.NaN()
+		if _, err := encode(small, "key"); err == nil {
+			t.Fatal("accepted NaN")
+		}
+	})
 }
 
 func TestEncodedEventSizeBoundary(t *testing.T) {
@@ -157,7 +205,7 @@ func TestResponseHandling(t *testing.T) {
 	})
 }
 
-func TestSessionLifecycle(t *testing.T) {
+func TestSessionLifecycleAndCounters(t *testing.T) {
 	var mu sync.Mutex
 	var events []envelope
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -172,13 +220,38 @@ func TestSessionLifecycle(t *testing.T) {
 	defer server.Close()
 	s, err := Start(Options{ConnectionString: "InstrumentationKey=test;IngestionEndpoint=" + server.URL,
 		StateDirectory: filepath.Join(t.TempDir(), "microsoft-telemetry"), HTTPClient: server.Client(),
-		MountPath: "/test/lifecycle-mount", Version: "test"})
+		MountPath: "/test/lifecycle-mount",
+		Version:   "test"})
 	if err != nil || s == nil {
 		t.Fatalf("start: %v", err)
 	}
-	defer s.Disable()
+	t.Cleanup(func() { s.Close(nil) })
+	var checkpoint map[string]any
+	if err := s.store.read("session-"+s.id+".json", &checkpoint); err != nil {
+		t.Fatal(err)
+	}
+	if checkpoint["session"] != s.id {
+		t.Fatal("checkpoint lost session identity")
+	}
+	if _, exists := checkpoint["attempt"]; exists {
+		t.Fatal("new checkpoint retained a separate attempt identity")
+	}
+	HTTPResponse(503)
+	SDKRequest(2, false)
 	s.Configure(map[string]string{"auth_mode": "MSI", "account_name": "MUST-NOT-BE-SENT"})
-	Ready(map[string]string{"fuse_api_major": "3"}, nil)
+	Ready(map[string]string{"fuse_api_major": "3"}, func() map[string]float64 {
+		return map[string]float64{"fuse_read_completed": 1, "fuse_read_errno_EIO": 1}
+	})
+	var workers sync.WaitGroup
+	for range 8 {
+		workers.Go(func() {
+			for range 1000 {
+				HTTPResponse(200)
+			}
+		})
+	}
+	workers.Wait()
+	s.snapshot()
 	TeardownComplete()
 	s.Close(nil)
 	if Current() != nil {
@@ -189,13 +262,25 @@ func TestSessionLifecycle(t *testing.T) {
 	kinds := map[string]int{}
 	for _, e := range events {
 		kinds[e.Data.Data.Name]++
+		for key := range retiredProperties {
+			if _, exists := e.Data.Data.Properties[key]; exists {
+				t.Errorf("new lifecycle exported retired field: %s", key)
+			}
+		}
 		if strings.Contains(fmt.Sprint(e), "MUST-NOT-BE-SENT") {
 			t.Fatal("unapproved configuration exported")
 		}
+		if e.Data.Data.Name == "blobfuse.mount.snapshot" {
+			m := e.Data.Data.Measurements
+			if m["runtime_http_response_200"] != 8000 || m["startup_http_response_503"] != 1 ||
+				m["startup_sdk_retry_attempts"] != 1 || m["fuse_read_errno_EIO"] != 1 {
+				t.Fatalf("counter mismatch: %+v", m)
+			}
+		}
 	}
 	if kinds["blobfuse.mount.attempted"] != 1 || kinds["blobfuse.mount.result"] != 1 ||
-		kinds["blobfuse.mount.stopped"] != 1 {
-		t.Fatalf("unexpected lifecycle: %+v", kinds)
+		kinds["blobfuse.mount.stopped"] != 1 || kinds["blobfuse.mount.snapshot"] < 1 {
+		t.Fatalf("wrong lifecycle: %+v", kinds)
 	}
 }
 
@@ -358,7 +443,7 @@ func TestRecoveryWorkAndStateBudgets(t *testing.T) {
 	}
 }
 
-func TestDaemonHandoffPreservesIdentity(t *testing.T) {
+func TestDaemonHandoffPreservesIdentityAndStartupCounters(t *testing.T) {
 	var mu sync.Mutex
 	var names []string
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -380,6 +465,8 @@ func TestDaemonHandoffPreservesIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	HTTPResponse(200)
+	SDKRequest(1, false)
 	o.SessionID, o.StartedAt = parent.Identity()
 	o.StartMonotonic = parent.StartMonotonic()
 	// Complete the one startup event before simulating the handoff so this
@@ -394,8 +481,12 @@ func TestDaemonHandoffPreservesIdentity(t *testing.T) {
 	}
 	defer child.Close(nil)
 	Ready(nil, nil)
-	if child.id != o.SessionID || child.startMono != o.StartMonotonic {
-		t.Fatal("handoff lost identity or startup timing")
+	child.mu.Lock()
+	values := child.measurements()
+	child.mu.Unlock()
+	if child.id != o.SessionID ||
+		child.startMono != o.StartMonotonic || values["startup_http_response_200"] != 1 {
+		t.Fatalf("handoff lost startup state: %+v", values)
 	}
 	TeardownComplete()
 	child.Close(nil)
@@ -415,7 +506,7 @@ func TestDaemonHandoffPreservesIdentity(t *testing.T) {
 	}
 }
 
-func TestRuntimeOptOutPurgesState(t *testing.T) {
+func TestRuntimeOptOutStopsNativeHooksAndPurgesState(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(503)
 	}))
@@ -426,10 +517,16 @@ func TestRuntimeOptOutPurgesState(t *testing.T) {
 	if err != nil || s == nil {
 		t.Fatalf("start: %v", err)
 	}
+	var enabled atomic.Bool
+	s.NativeHooks(func() { enabled.Store(true) }, func() { enabled.Store(false) })
 	Ready(nil, nil)
 	s.Disable()
-	if Current() != nil {
+	if enabled.Load() || Current() != nil {
 		t.Fatal("collection remained active after opt-out")
+	}
+	s.NativeHooks(func() { enabled.Store(true) }, func() { enabled.Store(false) })
+	if enabled.Load() {
+		t.Fatal("late initialization re-enabled native collection")
 	}
 	store, err := openMountStore(dir, "/test/runtime-opt-out", "", false, func(string) {})
 	if err != nil || store == nil {
@@ -446,6 +543,18 @@ func TestRuntimeOptOutPurgesState(t *testing.T) {
 		}
 	}
 	s.Close(nil)
+}
+
+func BenchmarkHTTPCounter(b *testing.B) {
+	s := &Session{}
+	active.Store(s)
+	defer active.Store(nil)
+	b.ReportAllocs()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			HTTPResponse(200)
+		}
+	})
 }
 
 func TestStateProtectionAndOptOut(t *testing.T) {

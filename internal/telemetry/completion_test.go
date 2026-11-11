@@ -146,7 +146,7 @@ func TestDiscardedTerminalDoesNotBecomeUnclean(t *testing.T) {
 }
 
 func TestNonTerminalAcknowledgementRetainsRunningSession(t *testing.T) {
-	for _, name := range []string{"blobfuse.mount.attempted", "blobfuse.mount.result"} {
+	for _, name := range []string{"blobfuse.mount.attempted", "blobfuse.mount.result", "blobfuse.mount.snapshot"} {
 		t.Run(name, func(t *testing.T) {
 			store := testStore(t)
 			current, err := identity(os.Getpid())

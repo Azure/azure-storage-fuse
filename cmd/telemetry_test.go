@@ -109,12 +109,13 @@ func TestTelemetryOptionsAndAllowlist(t *testing.T) {
 	if err := config.ReadConfigFromReader(strings.NewReader(`
 default-working-dir: /tmp/telemetry-test
 microsoft-telemetry:
+  snapshot-interval-sec: 300
 `)); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("BLOBFUSE_DISABLE_TELEMETRY", "false")
 	o, err := telemetryOptions()
-	if err != nil ||
+	if err != nil || o.IntervalSeconds != 300 ||
 		o.StateDirectory != filepath.Join("/tmp/telemetry-test", "microsoft-telemetry") {
 		t.Fatalf("options: %+v %v", o, err)
 	}

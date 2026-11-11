@@ -4,6 +4,7 @@
 package telemetry
 
 import (
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -61,6 +62,60 @@ func TestRecoveryMakesProgressAtRecordLimit(t *testing.T) {
 	}
 	if err := store.checkpoint(sessionRecord{Session: newID(), Owner: self, Updated: time.Now()}); err != nil {
 		t.Fatal("recovery did not free room for a new session:", err)
+	}
+}
+
+func TestRecoveryMakesProgressAtLegacyByteLimit(t *testing.T) {
+	store := testStore(t)
+	self, err := identity(os.Getpid())
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous := self
+	previous.Start = "old-process"
+	left := MaxStateBytes
+	records := 0
+	for left > 0 {
+		size := min(left, MaxStateRecordBytes-1024)
+		record := sessionRecord{Session: newID(), Owner: previous, Updated: time.Now(),
+			Baseline: map[string]float64{"": 1}}
+		body, err := json.Marshal(record)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if size < len(body) {
+			t.Fatal("fixture cannot fit final legacy record")
+		}
+		record.Baseline = map[string]float64{strings.Repeat("x", size-len(body)): 1}
+		body, err = json.Marshal(record)
+		if err != nil || len(body) != size {
+			t.Fatal("legacy byte-limit fixture has incorrect size")
+		}
+		// Simulate a pre-reservation journal without filling any real disk:
+		// exactly one MiB of valid bounded checkpoints in a temporary directory.
+		if err := os.WriteFile(store.root.Name()+"/session-"+record.Session+".json", body, 0600); err != nil {
+			t.Fatal(err)
+		}
+		left -= len(body)
+		records++
+	}
+	reporting := &Session{id: newID()}
+	pending, err := store.recover(self, reporting.id, reporting.event)
+	if err != nil || len(pending) != 8 {
+		t.Fatalf("legacy full-byte store stuck: events=%d err=%v", len(pending), err)
+	}
+	for _, e := range pending {
+		var saved sessionRecord
+		if err := store.read("session-"+e.Properties["previous_session_id"]+".json", &saved); err != nil {
+			t.Fatal(err)
+		}
+		if saved.Baseline != nil || saved.Terminal == nil || saved.Terminal.Properties["event_id"] != e.Properties["event_id"] {
+			t.Fatal("recovery checkpoint was not compacted and persisted")
+		}
+	}
+	entries, err := store.entries()
+	if err != nil || len(entries) != records+1 {
+		t.Fatal("legacy byte-limit recovery allocated redundant files")
 	}
 }
 

@@ -91,7 +91,7 @@ func testStaleMount(t *testing.T, binary string, disableRemount bool) {
 		"foreground": true, "read-only": true, "allow-other": false,
 		"default-working-dir": work,
 		"logging":             map[string]interface{}{"type": "base", "level": "LOG_INFO", "file-path": filepath.Join(dir, "blobfuse.log")},
-		"microsoft-telemetry": map[string]interface{}{"disabled": false},
+		"microsoft-telemetry": map[string]interface{}{"disabled": false, "snapshot-interval-sec": 60},
 	}
 	configPath := filepath.Join(dir, "mount.yaml")
 	writeConfig := func() {

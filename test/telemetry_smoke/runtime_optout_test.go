@@ -70,7 +70,8 @@ func TestRuntimeConfigOptOutMounted(t *testing.T) {
 			names = append(names, name)
 		}
 		mu.Unlock()
-		// Keep the real running checkpoint available for the purge assertion.
+		// Failed one-shot sends must not stop later reporting or remove the
+		// running checkpoint that opt-out must purge.
 		w.WriteHeader(503)
 	}))
 	defer server.Close()
@@ -86,7 +87,7 @@ func TestRuntimeConfigOptOutMounted(t *testing.T) {
 		"foreground": true, "read-only": true, "allow-other": false,
 		"default-working-dir": work,
 		"logging":             map[string]interface{}{"type": "base", "level": "LOG_WARNING", "file-path": filepath.Join(dir, "blobfuse.log")},
-		"microsoft-telemetry": map[string]interface{}{"disabled": false},
+		"microsoft-telemetry": map[string]interface{}{"disabled": false, "snapshot-interval-sec": 60},
 	}
 	configPath := filepath.Join(dir, "mount.yaml")
 	writeConfig := func(atomicReplace bool) {
@@ -183,13 +184,14 @@ func TestRuntimeConfigOptOutMounted(t *testing.T) {
 	await(75*time.Second, func() (bool, error) {
 		mu.Lock()
 		defer mu.Unlock()
-		ready := false
+		ready, snapshot := false, false
 		for _, name := range names {
 			ready = ready || name == "blobfuse.mount.result:success"
+			snapshot = snapshot || name == "blobfuse.mount.snapshot"
 		}
-		return ready, nil
+		return ready && snapshot, nil
 	})
-	t.Log("Real mount emitted readiness to the local HTTPS receiver.")
+	t.Log("Real mount emitted readiness and periodic snapshot to the local HTTPS receiver.")
 	stateRoot := filepath.Join(work, "microsoft-telemetry")
 	countState := func() (int, error) {
 		n := 0
@@ -219,11 +221,11 @@ func TestRuntimeConfigOptOutMounted(t *testing.T) {
 	mu.Unlock()
 	probe()
 	t.Log("Atomic YAML edit triggered watcher-driven purge; mounted file access still works.")
-	// Ensure opt-out leaves the filesystem running until normal teardown.
+	// Covers a full maximum-jitter snapshot interval plus margin.
 	select {
 	case <-done:
 		t.Fatalf("opt-out stopped the mount: %v", exitErr)
-	case <-time.After(time.Second):
+	case <-time.After(70 * time.Second):
 	}
 	mu.Lock()
 	requestsNow := len(names)
@@ -253,5 +255,5 @@ func TestRuntimeConfigOptOutMounted(t *testing.T) {
 	if n, err := countState(); err != nil && !errors.Is(err, os.ErrNotExist) || n != 0 {
 		t.Fatalf("shutdown recreated retained state: count=%d err=%v", n, err)
 	}
-	t.Log("No telemetry after opt-out or during shutdown; clean unmount confirmed. No Azure traffic.")
+	t.Log("No telemetry over the next reporting interval or shutdown; clean unmount confirmed. No Azure traffic.")
 }

@@ -264,7 +264,7 @@ func run(ctx context.Context, binary, configPath, output string) (err error) {
 	config["file_cache"] = map[string]interface{}{"path": cache, "max-size-mb": 16, "timeout-sec": 1}
 	config["logging"] = map[string]interface{}{"type": "base", "level": "LOG_WARNING",
 		"file-path": filepath.Join(directory, "blobfuse.log"), "max-file-size-mb": 1, "file-count": 1}
-	config["microsoft-telemetry"] = map[string]interface{}{"disabled": false,
+	config["microsoft-telemetry"] = map[string]interface{}{"disabled": false, "snapshot-interval-sec": 60,
 		"state-directory": filepath.Join(work, "microsoft-telemetry")}
 	delete(config, "distributed_cache")
 	delete(config, "mount-all-containers")
@@ -350,7 +350,7 @@ func run(ctx context.Context, binary, configPath, output string) (err error) {
 				}
 			}
 		}
-		for _, kind := range []string{"attempted", "result", "stopped"} {
+		for _, kind := range []string{"attempted", "result", "snapshot", "stopped"} {
 			if !accepted["blobfuse.mount."+kind] {
 				err = errors.Join(err, fmt.Errorf("Application Insights did not acknowledge a %s event", kind))
 			}
@@ -405,6 +405,13 @@ func run(ctx context.Context, binary, configPath, output string) (err error) {
 		if !errors.Is(statErr, os.ErrNotExist) {
 			return errors.New("missing-entry lookup did not return ENOENT")
 		}
+	}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-done:
+		return fmt.Errorf("BlobFuse stopped during the test (%v)", waitErr)
+	case <-time.After(70 * time.Second):
 	}
 	if err := unmount(binary, mountPath, false); err != nil {
 		return errors.New("test unmount failed; cleanup will retry")
