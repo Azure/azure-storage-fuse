@@ -1192,6 +1192,217 @@ func (suite *attrCacheTestSuite) TestChmod() {
 	}
 }
 
+// A chmod that repeats the mode this mount already applied is answered from the cache.
+func (suite *attrCacheTestSuite) TestChmodRedundantRequestSkipped() {
+	defer suite.cleanupTest()
+	for _, path := range []string{"a", "a/"} {
+		suite.cleanupTest()
+		suite.SetupTest()
+		suite.Run(path, func() {
+			truncatedPath := internal.TruncateDirName(path)
+			// libfuse passes the raw POSIX mode, including the file type bits.
+			options := internal.ChmodOptions{Name: path, Mode: fs.FileMode(0o100600)}
+			addPathToCache(suite.assert, suite.attrCache, path, false)
+
+			suite.mock.EXPECT().Chmod(options).Return(nil).Times(1)
+			suite.assert.NoError(suite.attrCache.Chmod(options))
+			applied := getCacheItem(suite.attrCache, truncatedPath)
+			suite.assert.True(applied.chmodApplied)
+
+			// Repeats are not forwarded (gomock fails on an unexpected second call) and leave the entry untouched.
+			for range 3 {
+				suite.assert.NoError(suite.attrCache.Chmod(options))
+			}
+			// The same permission bits without the type bits are equally redundant.
+			suite.assert.NoError(suite.attrCache.Chmod(internal.ChmodOptions{Name: path, Mode: 0o600}))
+			suite.assert.Same(applied, getCacheItem(suite.attrCache, truncatedPath))
+		})
+	}
+}
+
+// A chmod to a different mode is always forwarded.
+func (suite *attrCacheTestSuite) TestChmodDifferentModeForwarded() {
+	defer suite.cleanupTest()
+	path := "a"
+	addPathToCache(suite.assert, suite.attrCache, path, false)
+	first := internal.ChmodOptions{Name: path, Mode: 0o600}
+	second := internal.ChmodOptions{Name: path, Mode: 0o640}
+
+	gomock.InOrder(
+		suite.mock.EXPECT().Chmod(first).Return(nil),
+		suite.mock.EXPECT().Chmod(second).Return(nil),
+		suite.mock.EXPECT().Chmod(first).Return(nil),
+	)
+	suite.assert.NoError(suite.attrCache.Chmod(first))
+	suite.assert.NoError(suite.attrCache.Chmod(second))
+	suite.assert.NoError(suite.attrCache.Chmod(first))
+	suite.assert.EqualValues(0o600, getCacheItem(suite.attrCache, path).attr.Mode)
+}
+
+// Modes learned from storage are not trusted for deduplication: the first chmod is forwarded.
+func (suite *attrCacheTestSuite) TestChmodStorageModeNotTrusted() {
+	defer suite.cleanupTest()
+	path := "a"
+	options := internal.ChmodOptions{Name: path, Mode: 0o600}
+	suite.mock.EXPECT().GetAttr(internal.GetAttrOptions{Name: path}).Return(getPathAttr(path, defaultSize, 0o600, false), nil)
+	_, err := suite.attrCache.GetAttr(internal.GetAttrOptions{Name: path})
+	suite.assert.NoError(err)
+
+	suite.mock.EXPECT().Chmod(options).Return(nil).Times(1)
+	suite.assert.NoError(suite.attrCache.Chmod(options))
+	suite.assert.NoError(suite.attrCache.Chmod(options))
+}
+
+// Without a cached entry nothing is known about the stored mode, so every chmod is forwarded.
+func (suite *attrCacheTestSuite) TestChmodUncachedPathForwarded() {
+	defer suite.cleanupTest()
+	options := internal.ChmodOptions{Name: "a", Mode: 0o600}
+	suite.mock.EXPECT().Chmod(options).Return(nil).Times(2)
+	suite.assert.NoError(suite.attrCache.Chmod(options))
+	suite.assert.NoError(suite.attrCache.Chmod(options))
+}
+
+// Any invalidation (write, truncate, flush, upload, ...) forgets the applied mode.
+func (suite *attrCacheTestSuite) TestChmodAfterInvalidationForwarded() {
+	defer suite.cleanupTest()
+	path := "a"
+	options := internal.ChmodOptions{Name: path, Mode: 0o600}
+	addPathToCache(suite.assert, suite.attrCache, path, false)
+	suite.mock.EXPECT().Chmod(options).Return(nil)
+	suite.assert.NoError(suite.attrCache.Chmod(options))
+
+	truncate := internal.TruncateFileOptions{Name: path}
+	suite.mock.EXPECT().TruncateFile(truncate).Return(nil)
+	suite.assert.NoError(suite.attrCache.TruncateFile(truncate))
+	assertInvalid(suite, path)
+
+	suite.mock.EXPECT().Chmod(options).Return(nil)
+	suite.assert.NoError(suite.attrCache.Chmod(options))
+}
+
+// Once the entry expires the stored mode may have changed elsewhere, so the chmod is forwarded.
+func (suite *attrCacheTestSuite) TestChmodAfterExpiryForwarded() {
+	defer suite.cleanupTest()
+	suite.cleanupTest()
+	suite.setupTestHelper("attr_cache:\n  timeout-sec: 1")
+	path := "a"
+	options := internal.ChmodOptions{Name: path, Mode: 0o600}
+	addPathToCache(suite.assert, suite.attrCache, path, false)
+
+	suite.mock.EXPECT().Chmod(options).Return(nil)
+	suite.assert.NoError(suite.attrCache.Chmod(options))
+	suite.assert.NoError(suite.attrCache.Chmod(options))
+
+	item := getCacheItem(suite.attrCache, path)
+	expired := *item
+	expired.cachedAt = time.Now().Add(-2 * time.Second)
+	suite.attrCache.lru.Put(path, &expired)
+
+	suite.mock.EXPECT().Chmod(options).Return(nil)
+	suite.assert.NoError(suite.attrCache.Chmod(options))
+}
+
+// setuid/setgid/sticky requests are always forwarded, in POSIX and Go mode layouts.
+func (suite *attrCacheTestSuite) TestChmodSpecialBitsForwarded() {
+	defer suite.cleanupTest()
+	for _, mode := range []fs.FileMode{0o4755, 0o2755, 0o1777, 0o755 | os.ModeSetuid, 0o777 | os.ModeSticky} {
+		path := "a"
+		options := internal.ChmodOptions{Name: path, Mode: mode}
+		addPathToCache(suite.assert, suite.attrCache, path, false)
+		suite.mock.EXPECT().Chmod(options).Return(nil).Times(2)
+		suite.assert.NoError(suite.attrCache.Chmod(options))
+		suite.assert.NoError(suite.attrCache.Chmod(options))
+	}
+
+	// A plain mode is not redundant with an earlier request that also carried special bits.
+	addPathToCache(suite.assert, suite.attrCache, "b", false)
+	withSetuid := internal.ChmodOptions{Name: "b", Mode: 0o4755}
+	plain := internal.ChmodOptions{Name: "b", Mode: 0o755}
+	gomock.InOrder(
+		suite.mock.EXPECT().Chmod(withSetuid).Return(nil),
+		suite.mock.EXPECT().Chmod(plain).Return(nil),
+	)
+	suite.assert.NoError(suite.attrCache.Chmod(withSetuid))
+	suite.assert.NoError(suite.attrCache.Chmod(plain))
+}
+
+// A failed chmod does not mark the mode as applied.
+func (suite *attrCacheTestSuite) TestChmodErrorNotRecorded() {
+	defer suite.cleanupTest()
+	path := "a"
+	options := internal.ChmodOptions{Name: path, Mode: 0o600}
+	addPathToCache(suite.assert, suite.attrCache, path, false)
+
+	gomock.InOrder(
+		suite.mock.EXPECT().Chmod(options).Return(syscall.EACCES),
+		suite.mock.EXPECT().Chmod(options).Return(nil),
+	)
+	suite.assert.Error(suite.attrCache.Chmod(options))
+	suite.assert.False(getCacheItem(suite.attrCache, path).chmodApplied)
+	suite.assert.NoError(suite.attrCache.Chmod(options))
+}
+
+// no-chmod-cache restores forwarding of every chmod.
+func (suite *attrCacheTestSuite) TestChmodCacheDisabled() {
+	defer suite.cleanupTest()
+	suite.cleanupTest()
+	suite.setupTestHelper("attr_cache:\n  no-chmod-cache: true")
+	suite.assert.True(suite.attrCache.noChmodCache)
+
+	path := "a"
+	options := internal.ChmodOptions{Name: path, Mode: 0o600}
+	addPathToCache(suite.assert, suite.attrCache, path, false)
+	suite.mock.EXPECT().Chmod(options).Return(nil).Times(3)
+	for range 3 {
+		suite.assert.NoError(suite.attrCache.Chmod(options))
+	}
+
+	absent := internal.ChmodOptions{Name: "b", Mode: 0o600}
+	suite.attrCache.lru.deletePath("b", time.Now())
+	suite.mock.EXPECT().Chmod(absent).Return(syscall.ENOENT)
+	suite.assert.ErrorIs(suite.attrCache.Chmod(absent), syscall.ENOENT)
+}
+
+// A path cached as absent from storage fails with ENOENT without a storage call, exactly as
+// storage would answer. file_cache relies on that error to apply the mode to a file that exists
+// only locally and to replay it after upload.
+func (suite *attrCacheTestSuite) TestChmodCachedAbsentPathNotForwarded() {
+	defer suite.cleanupTest()
+	path := "a"
+	options := internal.ChmodOptions{Name: path, Mode: 0o600}
+
+	suite.mock.EXPECT().GetAttr(internal.GetAttrOptions{Name: path}).Return(nil, syscall.ENOENT)
+	_, err := suite.attrCache.GetAttr(internal.GetAttrOptions{Name: path})
+	suite.assert.ErrorIs(err, syscall.ENOENT)
+	suite.assert.ErrorIs(suite.attrCache.Chmod(options), syscall.ENOENT)
+
+	// Deleted paths become negative entries too.
+	deleted := "b"
+	addPathToCache(suite.assert, suite.attrCache, deleted, false)
+	suite.mock.EXPECT().DeleteFile(internal.DeleteFileOptions{Name: deleted}).Return(nil)
+	suite.assert.NoError(suite.attrCache.DeleteFile(internal.DeleteFileOptions{Name: deleted}))
+	suite.assert.ErrorIs(suite.attrCache.Chmod(internal.ChmodOptions{Name: deleted, Mode: 0o4755}), syscall.ENOENT)
+
+	// Once uploaded (CopyFromFile invalidates the entry) the chmod reaches storage again.
+	upload := internal.CopyFromFileOptions{Name: path}
+	suite.mock.EXPECT().CopyFromFile(upload).Return(nil)
+	suite.assert.NoError(suite.attrCache.CopyFromFile(upload))
+	assertInvalid(suite, path)
+	suite.mock.EXPECT().Chmod(options).Return(nil)
+	suite.assert.NoError(suite.attrCache.Chmod(options))
+}
+
+// An expired negative entry says nothing about storage, so the chmod is forwarded.
+func (suite *attrCacheTestSuite) TestChmodExpiredAbsentPathForwarded() {
+	defer suite.cleanupTest()
+	path := "a"
+	options := internal.ChmodOptions{Name: path, Mode: 0o600}
+	suite.attrCache.lru.deletePath(path, time.Now().Add(-2*suite.attrCache.cacheTimeout))
+
+	suite.mock.EXPECT().Chmod(options).Return(nil)
+	suite.assert.NoError(suite.attrCache.Chmod(options))
+}
+
 // Tests Chown
 func (suite *attrCacheTestSuite) TestChown() {
 	defer suite.cleanupTest()
