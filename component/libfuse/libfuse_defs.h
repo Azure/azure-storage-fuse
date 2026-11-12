@@ -103,8 +103,9 @@ extern int libfuse_releasedir(char *path, fuse_file_info_t *fi);
 
 extern int libfuse_create(char *path, mode_t mode, fuse_file_info_t *fi);
 extern int libfuse_open(char *path, fuse_file_info_t *fi);
-extern int libfuse_read(char *path, char *buf, size_t size, off_t, fuse_file_info_t *fi);
-extern int libfuse_write(char *path, char *buf, size_t size, off_t, fuse_file_info_t *fi);
+// Called by native_read_file and native_write_file with the handle ID of the file, see native_file_io.h
+extern int libfuse_read(char *path, char *buf, size_t size, off_t, uint64_t handle_id);
+extern int libfuse_write(char *path, char *buf, size_t size, off_t, uint64_t handle_id);
 extern int libfuse_flush(char *path, fuse_file_info_t *fi);
 extern int libfuse_release(char *path, fuse_file_info_t *fi);
 // truncate and rename is lib version specific so defined later
