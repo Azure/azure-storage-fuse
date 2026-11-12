@@ -428,13 +428,20 @@ func (m *MockComponent) ReadDir(arg0 ReadDirOptions) ([]*ObjAttr, error) {
 	return ret0, ret1
 }
 
-// ReadDir mocks base method.
+// StreamDir mocks base method.
 func (m *MockComponent) StreamDir(arg0 StreamDirOptions) ([]*ObjAttr, string, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "StreamDir", arg0)
 	ret0, _ := ret[0].([]*ObjAttr)
-	ret1, _ := ret[1].(error)
-	return ret0, "", ret1
+	ret1, _ := ret[1].(string)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// StreamDir indicates an expected call of StreamDir.
+func (mr *MockComponentMockRecorder) StreamDir(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StreamDir", reflect.TypeOf((*MockComponent)(nil).StreamDir), arg0)
 }
 
 // ReadDir indicates an expected call of ReadDir.
