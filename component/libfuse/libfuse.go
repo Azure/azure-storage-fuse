@@ -120,6 +120,9 @@ var fuseFS *Libfuse
 
 var libfuseStatsCollector *stats_manager.StatsCollector
 
+// getCurrentUser looks up the user that runs blobfuse2. A variable, so that tests can make the lookup fail.
+var getCurrentUser = common.GetCurrentUser
+
 // Bitmasks in Go: https://yourbasic.org/golang/bitmask-flag-set-clear/
 
 var ignoreFiles = map[string]bool{
@@ -268,7 +271,7 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 	}
 
 	if !config.IsSet(compName+".uid") && !config.IsSet(compName+".gid") && !config.IsSet("lfuse.uid") && !config.IsSet("lfuse.gid") {
-		uid, gid, err := common.GetCurrentUser()
+		uid, gid, err := getCurrentUser()
 		if err != nil {
 			// Not worth failing the mount over, the process runs as the current user anyway
 			uid, gid = uint32(os.Getuid()), uint32(os.Getgid())
