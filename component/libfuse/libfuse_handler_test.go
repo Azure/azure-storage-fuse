@@ -36,7 +36,9 @@
 package libfuse
 
 import (
+	"errors"
 	"io/fs"
+	"os"
 	"testing"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -140,6 +142,50 @@ func (suite *libfuseTestSuite) TestConfigDisableKernelCache() {
 	suite.assert.Equal(uint32(0), suite.libfuse.attributeExpiration)
 	suite.assert.Equal(uint32(0), suite.libfuse.negativeTimeout)
 	suite.assert.True(suite.libfuse.directIO)
+}
+
+// stubCurrentUser makes the lookup of the current user return uid, gid and err until the test ends
+func (suite *libfuseTestSuite) stubCurrentUser(uid, gid uint32, err error) {
+	saved := getCurrentUser
+	getCurrentUser = func() (uint32, uint32, error) { return uid, gid, err }
+	suite.T().Cleanup(func() { getCurrentUser = saved })
+}
+
+// TestConfigCurrentUser verifies that files are owned by the current user unless uid or gid is configured
+func (suite *libfuseTestSuite) TestConfigCurrentUser() {
+	defer suite.cleanupTest()
+	suite.cleanupTest()
+	suite.stubCurrentUser(1234, 5678, nil)
+	suite.setupTestHelper(emptyConfig)
+	suite.assert.Equal(uint32(1234), suite.libfuse.ownerUID)
+	suite.assert.Equal(uint32(5678), suite.libfuse.ownerGID)
+
+	suite.cleanupTest()
+	suite.stubCurrentUser(0, 0, errors.New("the lookup must not be needed"))
+	suite.setupTestHelper("libfuse:\n  uid: 42\n  gid: 43\n")
+	suite.assert.Equal(uint32(42), suite.libfuse.ownerUID)
+	suite.assert.Equal(uint32(43), suite.libfuse.ownerGID)
+}
+
+// TestConfigCurrentUserLookupFails verifies that a failed lookup of the current user falls back to the uid and gid of
+// the process, and that the rest of the configuration is still applied
+func (suite *libfuseTestSuite) TestConfigCurrentUserLookupFails() {
+	for _, tc := range []struct {
+		config        string
+		maxBackground uint32
+	}{
+		{emptyConfig, defaultMaxBackground},
+		{"libfuse:\n  max-fuse-threads: 64\n", 64},
+	} {
+		suite.cleanupTest()
+		suite.stubCurrentUser(1234, 5678, errors.New("user: unknown userid"))
+		suite.setupTestHelper(tc.config)
+
+		suite.assert.Equal(uint32(os.Getuid()), suite.libfuse.ownerUID, tc.config)
+		suite.assert.Equal(uint32(os.Getgid()), suite.libfuse.ownerGID, tc.config)
+		suite.assert.Equal(tc.maxBackground, suite.libfuse.maxBackground, tc.config)
+	}
+	suite.cleanupTest()
 }
 
 func (suite *libfuseTestSuite) TestConfigFuseTraceEnable() {
