@@ -36,10 +36,15 @@ package file_cache
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
+	"sync"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
+
+	"golang.org/x/sys/unix"
 )
 
 const DefaultEvictTime = 10
@@ -54,6 +59,9 @@ type cachePolicyConfig struct {
 	lowThreshold  float64
 
 	fileLocks *common.LockMap
+
+	// Held for writing while empty directories are removed from the cache. Nil means no locking.
+	dirLock *sync.RWMutex
 
 	policyTrace bool
 }
@@ -129,4 +137,71 @@ func deleteFile(name string) error {
 	}
 
 	return nil
+}
+
+// removeEmptyParents removes the directories above name, a path in the cache directory tmpPath, that are empty. It
+// stops at the first directory that is not empty and never removes tmpPath or anything outside it. Both paths are
+// cleaned first, so ".." and repeated separators cannot reach outside the cache. The directories are opened one at a
+// time from tmpPath without following symlinks, so a symlink in the cache cannot lead rmdir outside it; tmpPath itself
+// may be a symlink. Callers hold dirLock for writing, see FileCache.createLocalFile.
+func removeEmptyParents(tmpPath string, name string) {
+	root := filepath.Clean(tmpPath)
+	dir := filepath.Dir(filepath.Clean(name))
+	if !isBelow(root, dir) {
+		return
+	}
+	rel, err := filepath.Rel(root, dir)
+	if err != nil {
+		return
+	}
+	parts := strings.Split(rel, string(filepath.Separator))
+
+	// fds[i] is the directory holding parts[i].
+	rootFd, err := unix.Open(root, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
+	if err != nil {
+		log.Debug("cachePolicy::removeEmptyParents : failed to open %s [%s]", root, err.Error())
+		return
+	}
+	fds := []int{rootFd}
+	defer func() {
+		for _, fd := range fds {
+			_ = unix.Close(fd)
+		}
+	}()
+
+	for _, part := range parts[:len(parts)-1] {
+		fd, err := unix.Openat(fds[len(fds)-1], part, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+		if err == unix.ENOENT {
+			// Nothing below it exists, so start with this directory, which is already gone, and its parents.
+			break
+		}
+		if err != nil {
+			// ELOOP or ENOTDIR for a symlink or a file: what is below it is not in the cache.
+			log.Debug("cachePolicy::removeEmptyParents : not removing directories in %s [%s]",
+				filepath.Join(root, filepath.Join(parts[:len(fds)]...)), err.Error())
+			return
+		}
+		fds = append(fds, fd)
+	}
+
+	for i := len(fds) - 1; i >= 0; i-- {
+		// rmdir fails on a directory that is not empty, so a directory is never removed with anything in it. It does
+		// not follow a symlink either.
+		err := unix.Unlinkat(fds[i], parts[i], unix.AT_REMOVEDIR)
+		if err == nil || err == unix.ENOENT {
+			continue
+		}
+
+		if err != unix.ENOTEMPTY && err != unix.EEXIST {
+			log.Debug("cachePolicy::removeEmptyParents : failed to remove %s [%s]",
+				filepath.Join(root, filepath.Join(parts[:i+1]...)), err.Error())
+		}
+		return
+	}
+}
+
+// isBelow reports whether path is inside the directory root, and is not root itself. Both must be clean.
+func isBelow(root string, path string) bool {
+	rel, err := filepath.Rel(root, path)
+	return err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
