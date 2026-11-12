@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) Microsoft Corporation.
+ * Licensed under the MIT License
+ */
+
 #define FUSE_USE_VERSION 39
 #define _FILE_OFFSET_BITS 64
 
