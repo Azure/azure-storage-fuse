@@ -14,6 +14,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
+	"github.com/Azure/azure-storage-fuse/v2/internal/telemetry"
 )
 
 /* NOTES:
@@ -140,6 +141,7 @@ func (lf *Libfuse) Start(ctx context.Context) error {
 	}
 
 	// This starts the libfuse process and hence shall always be the last statement
+	telemetry.Stage("fuse_initialization")
 	err := lf.initFuse()
 	if err != nil {
 		log.Err("Libfuse::Start : Failed to init fuse [%s]", err.Error())
@@ -338,6 +340,10 @@ func (lf *Libfuse) Configure(_ bool) error {
 		log.Err("Libfuse::Configure : config error [invalid config settings]")
 		return fmt.Errorf("%s config error %s", lf.Name(), err.Error())
 	}
+
+	telemetry.Current().Configure(map[string]string{
+		"kernel_attr_timeout_seconds": fmt.Sprint(lf.attributeExpiration),
+	})
 
 	// Disable libfuse logs if the mount is not running in foreground.
 	// Currently as of 01-05-2025, we emit the libfuse logs only to the stdout.
