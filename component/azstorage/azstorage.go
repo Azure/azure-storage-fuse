@@ -47,6 +47,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
+	"github.com/Azure/azure-storage-fuse/v2/internal/telemetry"
 
 	"github.com/spf13/cobra"
 )
@@ -98,8 +99,11 @@ reconfigure:
 		return fmt.Errorf("config error in %s [%s]", az.Name(), err.Error())
 	}
 
+	telemetry.Current().Configure(map[string]string{"auth_mode": az.stConfig.authConfig.AuthMode.String()})
+	telemetry.Stage("storage_initialization")
 	err = az.configureAndTest(isParent)
 	if err != nil {
+		observeStartupFailure(err)
 		log.Err("AzStorage::Configure : Failed to validate storage account [%s]", err.Error())
 		return err
 	}
@@ -173,7 +177,10 @@ func (az *AzStorage) configureAndTest(isParent bool) error {
 			err = az.storage.TestPipeline()
 			if err != nil {
 				log.Err("AzStorage::configureAndTest : Failed to validate credentials [%s]", err.Error())
-				return fmt.Errorf("failed to authenticate %s credentials with error [%s]", az.Name(), err.Error())
+				return &storageValidationError{
+					message: fmt.Sprintf("failed to authenticate %s credentials with error [%s]", az.Name(), err.Error()),
+					cause:   err,
+				}
 			}
 		}
 	}

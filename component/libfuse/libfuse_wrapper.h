@@ -71,6 +71,7 @@
 
 #include "libfuse_defs.h"
 #include "native_file_io.h"
+#include "telemetry_callbacks.h"
 
 // Method to populate the fuse structure with our callback methods
 static int populate_callbacks(fuse_operations_t *opt)

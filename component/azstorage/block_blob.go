@@ -221,9 +221,15 @@ func (bb *BlockBlob) TestPipeline() error {
 		if respErr != nil {
 			if respErr.ErrorCode == "InvalidQueryParameterValue" {
 				// User explicitly mounting FNS account as HNS which is not supported
-				return fmt.Errorf("BlockBlob::TestPipeline : Detected FNS account being mounted as HNS")
+				return &storageValidationError{
+					message: "BlockBlob::TestPipeline : Detected FNS account being mounted as HNS",
+					cause:   err,
+				}
 			}
-			return fmt.Errorf("BlockBlob::TestPipeline : [%s]", respErr.ErrorCode)
+			return &storageValidationError{
+				message: fmt.Sprintf("BlockBlob::TestPipeline : [%s]", respErr.ErrorCode),
+				cause:   err,
+			}
 		}
 		return err
 	}

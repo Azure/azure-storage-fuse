@@ -231,7 +231,10 @@ func (dl *Datalake) testDFSPipeline() error {
 		var respErr *azcore.ResponseError
 		errors.As(err, &respErr)
 		if respErr != nil {
-			return fmt.Errorf("Datalake::TestPipeline : [%s]", respErr.ErrorCode)
+			return &storageValidationError{
+				message: fmt.Sprintf("Datalake::TestPipeline : [%s]", respErr.ErrorCode),
+				cause:   err,
+			}
 		}
 		return err
 	} else {

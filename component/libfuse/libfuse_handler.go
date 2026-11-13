@@ -373,6 +373,7 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 	log.Info("Libfuse::libfuse_init : want: 0x%x, max_read: %d, max_write: %d, max_readahead: %d, max_background: %d",
 		conn.want, conn.max_read, conn.max_write, conn.max_readahead, conn.max_background)
 
+	fuseTelemetryReady(3, C.GoString(C.telemetry_libfuse_version()), int(conn.proto_major), int(conn.proto_minor))
 	return nil
 }
 

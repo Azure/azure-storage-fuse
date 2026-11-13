@@ -56,6 +56,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/telemetry"
 
 	"github.com/sevlyar/go-daemon"
 	"github.com/spf13/cobra"
@@ -139,6 +140,7 @@ func (opt *mountOptions) validate(skipNonEmptyMount bool) error {
 			}
 		}
 	} else if !skipNonEmptyMount && !common.IsDirectoryEmpty(opt.MountPath) {
+		telemetry.Failure("mount_directory_not_empty")
 		return fmt.Errorf("mount directory is not empty")
 	}
 
@@ -191,6 +193,7 @@ func (opt *mountOptions) validate(skipNonEmptyMount bool) error {
 }
 
 func OnConfigChange() {
+	disableTelemetryOnConfigChange()
 	newLogOptions := &LogOptions{}
 	err := config.UnmarshalKey("logging", newLogOptions)
 	if err != nil {
@@ -294,9 +297,15 @@ var mountCmd = &cobra.Command{
 			}
 		}
 
+		mountTelemetry := beginMountTelemetry()
+		defer mountTelemetry.Close()
+
 		err := config.Unmarshal(&options)
 		if err != nil {
 			return fmt.Errorf("failed to unmarshal config [%s]", err.Error())
+		}
+		if options.Foreground {
+			mountTelemetry.ReportAttempt()
 		}
 
 		// Translate the FUSE-style `-o ro` (also `ro=true`) into the blobfuse2
@@ -310,6 +319,7 @@ var mountCmd = &cobra.Command{
 		// tuning knobs onto block_cache. Runs before synthesis so it sees the
 		// user's original components list.
 		if err = normalizeDistCacheConfig(options.Components); err != nil {
+			telemetry.Failure("pipeline_config_conflict")
 			return err
 		}
 
@@ -347,6 +357,7 @@ var mountCmd = &cobra.Command{
 		}
 
 		if err = common.ValidatePipeline(options.Components); err != nil {
+			telemetry.Failure("pipeline_config_conflict")
 			// file-cache, block-cache and xload are mutually exclusive
 			log.Err("mount: invalid pipeline components [%s]", err.Error())
 			return fmt.Errorf("invalid pipeline components [%s]", err.Error())
@@ -441,6 +452,7 @@ var mountCmd = &cobra.Command{
 			options.Logging.LogLevel = "LOG_WARNING"
 		}
 
+		telemetry.Stage("mount_path_validation")
 		err = options.validate(options.NonEmpty)
 		if err != nil {
 			return err
@@ -478,6 +490,7 @@ var mountCmd = &cobra.Command{
 		// It's best to destroy the logger before we return to the caller, as caller may abruptly exit on error and we
 		// might lose some logs in the channel which are not yet flushed to the file in case of not destroying the logger
 		defer func() {
+			mountTelemetry.Close()
 			_ = log.Destroy()
 		}()
 
@@ -542,6 +555,8 @@ var mountCmd = &cobra.Command{
 
 		common.ForegroundMount = options.Foreground
 
+		telemetry.Stage("pipeline_initialization")
+		telemetryPipeline(options.Components)
 		pipeline, err = internal.NewPipeline(options.Components, !daemon.WasReborn())
 		if err != nil {
 			log.Err("mount : failed to initialize new pipeline [%v]", err)
@@ -550,6 +565,10 @@ var mountCmd = &cobra.Command{
 
 		log.Info("mount: Mounting blobfuse2 on %s", options.MountPath)
 		if !options.Foreground {
+			telemetry.Stage("daemonization")
+			if mountTelemetry != nil && !daemon.WasReborn() {
+				mountTelemetry.Detach()
+			}
 			pidFile := strings.ReplaceAll(options.MountPath, "/", "_") + ".pid"
 			pidFileName := filepath.Join(os.ExpandEnv(common.DefaultWorkDir), pidFile)
 
@@ -584,12 +603,17 @@ var mountCmd = &cobra.Command{
 		retry:
 			// If the .pid file is locked and there no blobfuse process owning it then we need to try
 			// a cleanup of the .pid file. If cleanup goes through then retry the daemonization.
+			if !daemon.WasReborn() {
+				dmnCtx.Env = telemetryDaemonEnvironment(mountTelemetry, os.Environ())
+			}
 			child, err := dmnCtx.Reborn()
 			if err != nil {
 				log.Err("mount : failed to daemonize application [%s], trying auto cleanup", err.Error())
 				rmErr := os.Remove(pidFileName)
 				if rmErr != nil {
 					log.Err("mount : auto cleanup failed [%v]", rmErr.Error())
+					disableTelemetryOnConfigChange()
+					mountTelemetry.HandoffFailed()
 					return fmt.Errorf("failed to daemonize application [%s]", err.Error())
 				}
 				goto retry
@@ -626,7 +650,6 @@ var mountCmd = &cobra.Command{
 				}()
 
 			} else { // execute in parent only
-
 				childDone := make(chan struct{})
 
 				go monitorChild(child.Pid, childDone)
@@ -756,6 +779,7 @@ func runPipeline(pipeline *internal.Pipeline, ctx context.Context) error {
 		return fmt.Errorf("unable to stop pipeline [%s]", err.Error())
 	}
 
+	telemetry.TeardownComplete()
 	return nil
 }
 
