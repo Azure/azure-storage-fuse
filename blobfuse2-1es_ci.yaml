@@ -19,7 +19,7 @@ pr:
     - MIGRATION.md
     - SECURITY.md
     - NOTICE
-    - LICENSE.txt
+    - LICENSE
     - CODE_OF_CONDUCT.md
     - TSG.md
     - setup/readme.md
