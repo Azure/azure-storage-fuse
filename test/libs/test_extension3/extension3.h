@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) Microsoft Corporation.
+ * Licensed under the MIT License
+ */
+
 
 #ifndef __EXTENSION3_H__
 #define __EXTENSION3_H__

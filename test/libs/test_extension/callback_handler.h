@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) Microsoft Corporation.
+ * Licensed under the MIT License
+ */
+
 
 #ifndef __CALLBACK_HANDLERS_H__
 #define __CALLBACK_HANDLERS_H__
