@@ -25,11 +25,13 @@ import (
 )
 
 // The state directory, at the top of the backing directory, holds what Azure Storage keeps outside the namespace of
-// a container, such as blobs that are being uploaded. Operations of the component never list it and reject names
-// within it.
+// a container: uncommitted blocks, committed block lists, and blobs that are being uploaded. Operations of the
+// component never list it and reject names within it.
 const (
-	stateDir  = ".loopbackfs"
-	uploadDir = stateDir + "/uploads"
+	stateDir     = ".loopbackfs"
+	stagedDir    = stateDir + "/staged"
+	blockListDir = stateDir + "/blocklists"
+	uploadDir    = stateDir + "/uploads"
 )
 
 // copyBufferSize is the largest buffer used to copy data that the kernel cannot copy between files by itself.
@@ -214,7 +216,7 @@ func (lfs *LoopbackFS) upload(root *os.Root, name string, write func(*os.File) e
 	uploaded = true
 
 	if old != nil {
-		lfs.forget(old)
+		lfs.forget(root, old)
 	}
 	lfs.versions.changed(info)
 
@@ -222,8 +224,9 @@ func (lfs *LoopbackFS) upload(root *os.Root, name string, write func(*os.File) e
 }
 
 // forget drops what the component keeps about a file that was removed or replaced.
-func (lfs *LoopbackFS) forget(info fs.FileInfo) {
+func (lfs *LoopbackFS) forget(root *os.Root, info fs.FileInfo) {
 	lfs.versions.removed(info)
+	removeBlockList(root, info)
 }
 
 // blobReader reads the content of an object, as Azure Storage returns it: the content of a symbolic link is its
@@ -362,6 +365,13 @@ func (l *objectLocks) lock(names ...string) func() {
 			l.stripes[stripes[i]].Unlock()
 		}
 	}
+}
+
+// rlock locks the object name for reading and returns the function that unlocks it.
+func (l *objectLocks) rlock(name string) func() {
+	stripe := &l.stripes[stripeOf(name)]
+	stripe.RLock()
+	return stripe.RUnlock
 }
 
 // md5Of returns the MD5 of the content of the file name, or nil if it cannot be read.
