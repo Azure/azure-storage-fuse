@@ -1,36 +1,8 @@
 
 /*
-    _____           _____   _____   ____          ______  _____  ------
-   |     |  |      |     | |     | |     |     | |       |            |
-   |     |  |      |     | |     | |     |     | |       |            |
-   | --- |  |      |     | |-----| |---- |     | |-----| |-----  ------
-   |     |  |      |     | |     | |     |     |       | |       |
-   | ____|  |_____ | ____| | ____| |     |_____|  _____| |_____  |_____
-
-
-   Licensed under the MIT License <http://opensource.org/licenses/MIT>.
-
-   Copyright © 2020-2023 Microsoft Corporation. All rights reserved.
-   Author : <blobfusedev@microsoft.com>
-
-   Permission is hereby granted, free of charge, to any person obtaining a copy
-   of this software and associated documentation files (the "Software"), to deal
-   in the Software without restriction, including without limitation the rights
-   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-   copies of the Software, and to permit persons to whom the Software is
-   furnished to do so, subject to the following conditions:
-
-   The above copyright notice and this permission notice shall be included in all
-   copies or substantial portions of the Software.
-
-   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-   SOFTWARE
-*/
+ * Copyright (c) Microsoft Corporation.
+ * Licensed under the MIT License
+ */
 
 #ifndef __NATIVE_FILE_IO_H__
 #define __NATIVE_FILE_IO_H__
@@ -45,7 +17,8 @@
 
     Contract with the Go side:
       - fd == 0 means the file is not served natively (it is not cached locally, or file_cache runs with
-        offload-io: true). Those reads and writes go to libfuse_read/libfuse_write and through the pipeline.
+        offload-io: true). Those reads and writes go to libfuse_read/libfuse_write and through the pipeline. They get
+        the handle ID of the file from here, so that Go does not have to call back into C on every read and write.
       - C only does the IO, and marks the handle dirty when a write changed the file. Everything else is decided in
         Go: flush, fsync and release consume the dirty mark (consume_dirty_flag) and carry it over to the handle, so
         that file_cache uploads the file.
@@ -54,7 +27,7 @@
 // file_handle_t : native object given to libfuse as the file handle (fi->fh) of an open file
 typedef struct {
     uint64_t       fd;                  // Descriptor of the locally cached file, 0 if IO is not served natively
-    uint64_t       obj;                 // handlemap.Handle of this open file
+    uint64_t       obj;                 // handlemap.HandleID of this open file. C must not keep Go pointers.
     uint8_t        dirty;               // A native write changed the file since the mark was last consumed
 } file_handle_t;
 
@@ -71,6 +44,12 @@ static file_handle_t* allocate_native_file_object(uint64_t fd, uint64_t obj)
     return fobj;
 }
 
+// get_native_file_object : Native object of an open file, as handed to libfuse when the file was opened or created
+static file_handle_t* get_native_file_object(fuse_file_info_t* fi)
+{
+    return (file_handle_t*)fi->fh;
+}
+
 // release_native_file_object : Release the native object of a closed file
 static void release_native_file_object(fuse_file_info_t* fi)
 {
@@ -83,7 +62,7 @@ static int native_read_file(char *path, char *buf, size_t size, off_t offset, fu
 {
     file_handle_t* handle_obj = (file_handle_t*)fi->fh;
     if (handle_obj->fd == 0)
-        return libfuse_read(path, buf, size, offset, fi);
+        return libfuse_read(path, buf, size, offset, handle_obj->obj);
 
     ssize_t res = pread(handle_obj->fd, buf, size, offset);
     return res < 0 ? -errno : (int)res;
@@ -94,7 +73,7 @@ static int native_write_file(char *path, char *buf, size_t size, off_t offset, f
 {
     file_handle_t* handle_obj = (file_handle_t*)fi->fh;
     if (handle_obj->fd == 0)
-        return libfuse_write(path, buf, size, offset, fi);
+        return libfuse_write(path, buf, size, offset, handle_obj->obj);
 
     ssize_t res = pwrite(handle_obj->fd, buf, size, offset);
     if (res < 0)

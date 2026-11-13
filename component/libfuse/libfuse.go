@@ -1,41 +1,12 @@
-/*
-    _____           _____   _____   ____          ______  _____  ------
-   |     |  |      |     | |     | |     |     | |       |            |
-   |     |  |      |     | |     | |     |     | |       |            |
-   | --- |  |      |     | |-----| |---- |     | |-----| |-----  ------
-   |     |  |      |     | |     | |     |     |       | |       |
-   | ____|  |_____ | ____| | ____| |     |_____|  _____| |_____  |_____
-
-
-   Licensed under the MIT License <http://opensource.org/licenses/MIT>.
-
-   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
-   Author : <blobfusedev@microsoft.com>
-
-   Permission is hereby granted, free of charge, to any person obtaining a copy
-   of this software and associated documentation files (the "Software"), to deal
-   in the Software without restriction, including without limitation the rights
-   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-   copies of the Software, and to permit persons to whom the Software is
-   furnished to do so, subject to the following conditions:
-
-   The above copyright notice and this permission notice shall be included in all
-   copies or substantial portions of the Software.
-
-   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-   SOFTWARE
-*/
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 
 package libfuse
 
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -80,15 +51,6 @@ type Libfuse struct {
 	kernelListCacheTracker  *kernelListCacheTracker
 }
 
-// To support pagination in readdir calls this structure holds a block of items for a given directory
-type dirChildCache struct {
-	sIndex   uint64              // start index of current block of items
-	eIndex   uint64              // End index of current block of items
-	length   uint64              // Length of the children list
-	token    string              // Token to get next block of items from container
-	children []*internal.ObjAttr // Slice holding current block of children
-}
-
 // Structure defining your config parameters
 type LibfuseOptions struct {
 	mountPath               string
@@ -128,7 +90,8 @@ var fuseFS *Libfuse
 
 var libfuseStatsCollector *stats_manager.StatsCollector
 
-// Bitmasks in Go: https://yourbasic.org/golang/bitmask-flag-set-clear/
+// getCurrentUser looks up the user that runs blobfuse2. A variable, so that tests can make the lookup fail.
+var getCurrentUser = common.GetCurrentUser
 
 var ignoreFiles = map[string]bool{
 	".Trash":           true,
@@ -276,12 +239,13 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 	}
 
 	if !config.IsSet(compName+".uid") && !config.IsSet(compName+".gid") && !config.IsSet("lfuse.uid") && !config.IsSet("lfuse.gid") {
-		var err error
-		lf.ownerUID, lf.ownerGID, err = common.GetCurrentUser()
+		uid, gid, err := getCurrentUser()
 		if err != nil {
-			log.Err("Libfuse::Validate : config error [unable to obtain current user info]")
-			return nil
+			// Not worth failing the mount over, the process runs as the current user anyway
+			uid, gid = uint32(os.Getuid()), uint32(os.Getgid())
+			log.Warn("Libfuse::Validate : unable to obtain current user info, using uid %d and gid %d of the process [%s]", uid, gid, err.Error())
 		}
+		lf.ownerUID, lf.ownerGID = uid, gid
 	}
 
 	if config.IsSet(compName + ".max-fuse-threads") {
@@ -296,7 +260,7 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 }
 
 func (lf *Libfuse) GenConfig() string {
-	log.Info("Libfuse::Configure : config generation started")
+	log.Info("Libfuse::GenConfig : config generation started")
 
 	// If DirectIO is enabled, override expiration values
 	directIO := false
@@ -378,9 +342,7 @@ func (lf *Libfuse) Configure(_ bool) error {
 	// Disable libfuse logs if the mount is not running in foreground.
 	// Currently as of 01-05-2025, we emit the libfuse logs only to the stdout.
 	if !common.ForegroundMount {
-		if lf.traceEnable {
-			lf.traceEnable = false
-		}
+		lf.traceEnable = false
 	}
 
 	log.Crit("Libfuse::Configure : read-only %t, allow-other %t, allow-root %t, default-perm %d, entry-timeout %d, attr-time %d, negative-timeout %d, ignore-open-flags %t, nonempty %t, direct_io %t, max_background %d, fuse-trace %t, extension %s, disable-writeback-cache %t, dirPermission %v, mountPath %v, umask %v, disableKernelCache %v, kernelListCacheExpirationSec %v",
