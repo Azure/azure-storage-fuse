@@ -90,6 +90,9 @@ parameters:
     type: boolean
     default: true
 
+variables:
+  BLOBFUSE_DISABLE_TELEMETRY: 'true'
+
 stages:
 
   - ${{ if eq(parameters.base_test, true) }}:

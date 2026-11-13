@@ -18,6 +18,9 @@ parameters:
     default: true
 
 
+variables:
+  BLOBFUSE_DISABLE_TELEMETRY: 'true'
+
 stages:
   - stage: BuildAndTest
     condition: ${{ eq(parameters.coverage_test, true) }}
