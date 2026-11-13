@@ -62,7 +62,7 @@ else
         export AZURE_STORAGE_IDENTITY_CLIENT_ID=1f1551d2-2db2-4d4d-a6f5-d7edbe75d98e
 
         echo "Start blobfuse"
-        $WORKDIR/blobfuse2 mount /blob_mnt --log-level=log_debug --log-file-path=$WORKDIR/blobfuse2.log --log-type=base --block-cache --container-name=longhaul
+        BLOBFUSE_DISABLE_TELEMETRY=true $WORKDIR/blobfuse2 mount /blob_mnt --log-level=log_debug --log-file-path=$WORKDIR/blobfuse2.log --log-type=base --block-cache --container-name=longhaul
 
         sleep 2
 

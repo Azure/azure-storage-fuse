@@ -18,7 +18,7 @@ for i in `seq 0 40`; do
     # https://learn.microsoft.com/en-us/azure/storage/blobs/blobfuse2-how-to-deploy#configure-the-microsoft-package-repository
 
     # mounts
-    ./blobfuse2 mount /tmp/mntpoint --config-file=./config.yml -o ro
+    BLOBFUSE_DISABLE_TELEMETRY=true ./blobfuse2 mount /tmp/mntpoint --config-file=./config.yml -o ro
 
     # clear caches to be sure
     sync

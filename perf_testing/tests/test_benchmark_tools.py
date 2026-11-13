@@ -595,6 +595,7 @@ class FioResultTests(unittest.TestCase):
                 command,
             )
             self.assertEqual(run.call_args.kwargs["cwd"], benchmark_runner.output_dir)
+            self.assertIn("--disable-telemetry", command)
 
     def test_wait_for_blobfuse_exit_waits_for_pid_file_removal(self):
         with tempfile.TemporaryDirectory() as temporary:

@@ -43,7 +43,7 @@ echo $fiocmd
 echo 
 
 # Mount Blobfuse2
-./blobfuse2 mount $mntPath --config-file=$v2configPath &
+BLOBFUSE_DISABLE_TELEMETRY=true ./blobfuse2 mount $mntPath --config-file=$v2configPath &
 if [ $? -ne 0 ]; then
     exit 1
 fi

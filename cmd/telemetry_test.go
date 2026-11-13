@@ -1,0 +1,145 @@
+// Copyright (c) 2026 Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+package cmd
+
+import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/Azure/azure-storage-fuse/v2/common/config"
+	"github.com/Azure/azure-storage-fuse/v2/internal/telemetry"
+	"github.com/spf13/viper"
+)
+
+func TestTelemetryPipelineDerivesAttributeCacheEnablement(t *testing.T) {
+	for _, components := range [][]string{
+		{"libfuse", "attr_cache", "file_cache", "azstorage"},
+		{"libfuse", "file_cache", "azstorage"},
+	} {
+		t.Run(strings.Join(components, ","), func(t *testing.T) {
+			results := make(chan map[string]string, 1)
+			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var batch []struct {
+					Data struct {
+						Base struct {
+							Name       string            `json:"name"`
+							Properties map[string]string `json:"properties"`
+						} `json:"baseData"`
+					} `json:"data"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&batch); err != nil {
+					t.Error(err)
+					w.WriteHeader(400)
+					return
+				}
+				for _, item := range batch {
+					if item.Data.Base.Name == "blobfuse.mount.result" {
+						results <- item.Data.Base.Properties
+					}
+				}
+				w.WriteHeader(200)
+			}))
+			defer server.Close()
+			s, err := telemetry.Start(telemetry.Options{
+				ConnectionString: "InstrumentationKey=test;IngestionEndpoint=" + server.URL,
+				HTTPClient:       server.Client(),
+			})
+			if err != nil || s == nil {
+				t.Fatalf("start: %v", err)
+			}
+			defer s.Disable()
+			telemetryPipeline(components)
+			telemetry.Ready(nil)
+			telemetry.TeardownComplete()
+			s.Close()
+			select {
+			case got := <-results:
+				if got["pipeline_components"] != strings.Join(components, ",") {
+					t.Fatalf("effective pipeline changed: %+v", got)
+				}
+				if _, exists := got["attr_cache_enabled"]; exists {
+					t.Fatal("redundant attribute-cache flag was exported")
+				}
+			default:
+				t.Fatal("mount result was not delivered")
+			}
+		})
+	}
+}
+
+func TestTelemetryDisableWins(t *testing.T) {
+	old := disableMicrosoftTelemetry
+	defer func() { disableMicrosoftTelemetry = old }()
+	t.Cleanup(viper.Reset)
+	for _, tc := range []struct {
+		name       string
+		file, flag bool
+		env        string
+		want       bool
+	}{
+		{"default on", false, false, "false", false},
+		{"config wins", true, false, "false", true},
+		{"flag wins", false, true, "false", true},
+		{"environment wins", false, false, "true", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			viper.Reset()
+			viper.Set("microsoft-telemetry.disabled", tc.file)
+			disableMicrosoftTelemetry = tc.flag
+			t.Setenv("BLOBFUSE_DISABLE_TELEMETRY", tc.env)
+			o, err := telemetryOptions()
+			if err != nil || o.Disabled != tc.want {
+				t.Fatalf("options: %+v %v", o, err)
+			}
+		})
+	}
+}
+
+func TestTelemetryOptionsAndAllowlist(t *testing.T) {
+	t.Cleanup(viper.Reset)
+	viper.Reset()
+	if err := config.ReadConfigFromReader(strings.NewReader(`
+default-working-dir: /tmp/telemetry-test
+microsoft-telemetry:
+`)); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("BLOBFUSE_DISABLE_TELEMETRY", "false")
+	o, err := telemetryOptions()
+	if err != nil || o.Disabled {
+		t.Fatalf("options: %+v %v", o, err)
+	}
+
+	t.Setenv("BLOBFUSE_DISABLE_TELEMETRY", "invalid")
+	if _, err := telemetryOptions(); err == nil {
+		t.Fatal("invalid opt-out silently accepted")
+	}
+	if normalizedPlatform("/sensitive/path") != "unknown" {
+		t.Fatal("unsafe platform text accepted")
+	}
+}
+
+func TestTelemetryDestinationSelection(t *testing.T) {
+	for _, tc := range []struct {
+		name, override, embedded, want string
+		testBinary                     bool
+	}{
+		{name: "compiled-default", embedded: "production", want: "production"},
+		{name: "environment-override", embedded: "production", override: "test", want: "test"},
+		{name: "empty-environment-fallback", embedded: "production", override: "  ", want: "production"},
+		{name: "test-binary-ignores-default", embedded: "production", testBinary: true},
+		{name: "test-binary-explicit-override", embedded: "production", override: "test", testBinary: true, want: "test"},
+		{name: "unconfigured"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := configuredTelemetryConnectionString(tc.override, tc.embedded, tc.testBinary)
+			if got != tc.want {
+				t.Fatalf("destination %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

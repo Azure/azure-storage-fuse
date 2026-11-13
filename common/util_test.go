@@ -72,6 +72,7 @@ func (suite *utilTestSuite) SetupTest() {
 }
 
 func TestUtil(t *testing.T) {
+	t.Setenv("BLOBFUSE_DISABLE_TELEMETRY", "true")
 	suite.Run(t, new(utilTestSuite))
 }
 

@@ -235,6 +235,30 @@ func cloneReferenceDeployment(t *testing.T, refName, newName string) {
 		}
 	}
 	if tmpl, ok := spec["template"].(map[string]any); ok {
+		podSpec, ok := tmpl["spec"].(map[string]any)
+		if !ok {
+			t.Fatal("clone: reference deployment has no pod spec")
+		}
+		containers, ok := podSpec["containers"].([]any)
+		if !ok {
+			t.Fatal("clone: reference deployment has no containers")
+		}
+		found := false
+		for _, raw := range containers {
+			container, ok := raw.(map[string]any)
+			if !ok || container["name"] != "blobfuse2" {
+				continue
+			}
+			args, ok := container["args"].([]any)
+			if !ok {
+				t.Fatal("clone: blobfuse2 container has no arguments")
+			}
+			container["args"] = append(args, "--disable-telemetry")
+			found = true
+		}
+		if !found {
+			t.Fatal("clone: reference deployment has no blobfuse2 container")
+		}
 		if tmeta, ok := tmpl["metadata"].(map[string]any); ok {
 			if tlabels, ok := tmeta["labels"].(map[string]any); ok {
 				tlabels["app"] = newName

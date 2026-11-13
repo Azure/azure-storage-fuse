@@ -23,5 +23,5 @@ pip install torch
 
 sudo rm -rf $MOUNT_PATH/*
 
-blobfuse2 mount $MOUNT_PATH --tmp-path=/mnt/ramdisk --container-name="vibhansa" --block-cache --log-type base --log-file-path=./master_blobfuse2.log
+BLOBFUSE_DISABLE_TELEMETRY=true blobfuse2 mount $MOUNT_PATH --tmp-path=/mnt/ramdisk --container-name="vibhansa" --block-cache --log-type base --log-file-path=./master_blobfuse2.log
 sleep 5

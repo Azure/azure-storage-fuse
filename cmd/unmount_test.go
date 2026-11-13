@@ -277,6 +277,7 @@ func (suite *unmountTestSuite) TestInvalidFlagWithOutValue() {
 }
 
 func TestUnMountCommand(t *testing.T) {
+	t.Setenv("BLOBFUSE_DISABLE_TELEMETRY", "true")
 	confFile, err := os.CreateTemp("", "conf*.yaml")
 	if err != nil {
 		t.Error("Failed to create config file")

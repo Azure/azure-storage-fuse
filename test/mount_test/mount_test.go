@@ -491,6 +491,7 @@ func (suite *mountSuite) TestWriteBackCacheAndIgnoreOpenFlags() {
 }
 
 func TestMountSuite(t *testing.T) {
+	t.Setenv("BLOBFUSE_DISABLE_TELEMETRY", "true")
 	suite.Run(t, new(mountSuite))
 }
 

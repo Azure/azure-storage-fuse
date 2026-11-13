@@ -357,7 +357,7 @@ func mountLoopback(t *testing.T) *loopbackMount {
 	}
 	m.cmd = exec.Command(bin, "mount", m.dir, "--config-file="+configPath, "--foreground=true", "--disable-version-check=true")
 	m.cmd.Stdout, m.cmd.Stderr = out, out
-	m.cmd.Env = append(os.Environ(), "GOTRACEBACK=all")
+	m.cmd.Env = append(os.Environ(), "GOTRACEBACK=all", "BLOBFUSE_DISABLE_TELEMETRY=true")
 	if err := m.cmd.Start(); err != nil {
 		_ = out.Close()
 		t.Fatalf("failed to start blobfuse2: %v", err)

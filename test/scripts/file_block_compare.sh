@@ -1,6 +1,8 @@
 #!/bin/bash
 # ./file_block_compare.sh <mnt path> <1:create data>
 
+export BLOBFUSE_DISABLE_TELEMETRY=true
+
 mntPath=$1
 tmpPath=$2
 fileConfigPath=$3
