@@ -14,6 +14,7 @@
 **Other Changes**
 - libfuse no longer stores Go pointers in the file handles it gives libfuse, which broke cgo's pointer rules and made blobfuse2 builds with the Go race detector abort. ([PR #2449](https://github.com/Azure/azure-storage-fuse/pull/2449))
 - Test helpers of libfuse are no longer compiled into the blobfuse2 binary. ([PR #2447](https://github.com/Azure/azure-storage-fuse/pull/2447))
+- Publish stable releases to Azure Linux 4 production repositories for x86_64 and aarch64. Preview releases skip these production targets and retain existing distribution publishing. ([PR #2443](https://github.com/Azure/azure-storage-fuse/pull/2443))
 
 ## 2.5.6 (2026-10-23)
 **Breaking Changes**
