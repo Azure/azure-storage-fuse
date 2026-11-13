@@ -207,7 +207,7 @@ func (tree *Tree) MergeWithKey(key string, obj any, getValue func(val any) (res 
 				if elem.Field(i).Type().Kind() == reflect.Struct {
 					subKey := key + "." + idx
 					tree.MergeWithKey(subKey, elem.Field(i).Addr().Interface(), getValue)
-				} else if elem.Field(i).Type().Kind() == reflect.Ptr {
+				} else if elem.Field(i).Type().Kind() == reflect.Pointer {
 					subKey := key + "." + idx
 					tree.MergeWithKey(subKey, elem.Field(i).Elem().Addr().Interface(), getValue)
 				} else {
@@ -244,7 +244,7 @@ func (tree *Tree) Merge(obj any, getValue func(val any) (res any, ok bool)) {
 				if elem.Field(i).Type().Kind() == reflect.Struct {
 					subKey := idx
 					tree.MergeWithKey(subKey, elem.Field(i).Addr().Interface(), getValue)
-				} else if elem.Field(i).Type().Kind() == reflect.Ptr {
+				} else if elem.Field(i).Type().Kind() == reflect.Pointer {
 					subKey := idx
 					tree.MergeWithKey(subKey, elem.Field(i).Elem().Addr().Interface(), getValue)
 				} else {
