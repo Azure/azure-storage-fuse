@@ -42,7 +42,24 @@ list it or reach it. It can be deleted when no mount uses the backing directory.
 	  path: <backing directory>
 	  list-page-size: <most entries per StreamDir page, 1 to 5000. Default - 5000>
 	  content-md5: true|false <report the MD5 of file contents in GetAttr and listings. Default - false>
+	  faults: <list of faults, see below>
 
 All options but path can change while mounted: they are applied again when the configuration file changes.
+
+# Faults
+
+loopbackfs can inject errors and delays into its operations, to emulate failures and slowness of Azure Storage:
+
+	loopbackfs:
+	  path: /tmp/loopback
+	  faults:
+	    - op: ReadInBuffer   # operation, named after the component method. * or none for all
+	      path: "dir/*.bin"  # path.Match pattern of the objects, without a leading slash. None for all
+	      error: EIO         # errno to fail with, such as ENOENT, EACCES or ETIMEDOUT. None to only delay
+	      delay-ms: 200      # how long to wait before running or failing the call
+	      skip: 1            # number of matching calls to let through first
+	      count: 2           # number of calls to apply the fault to after the skipped ones. 0 or none for all
+
+Tests inject faults with LoopbackFS.InjectFault.
 */
 package loopback
