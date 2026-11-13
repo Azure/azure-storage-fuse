@@ -8,7 +8,7 @@ pwd
 for i in {1,2,3}
 do
 	echo "--------------- Test $i ------------------------"
-	./blobfuse2 mount /home/vibhansa/blob_mnt --config-file=./config.yaml &
+	BLOBFUSE_DISABLE_TELEMETRY=true ./blobfuse2 mount /home/vibhansa/blob_mnt --config-file=./config.yaml &
 	sleep 5
 	rm -rf ~/blob_mnt/*
 	ls -l ~/blob_mnt

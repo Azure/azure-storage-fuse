@@ -1,0 +1,224 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
+
+package telemetry
+
+import (
+	"bytes"
+	"encoding/json"
+	"math"
+	"net/http"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+)
+
+func testEvent() Event {
+	return Event{Name: "blobfuse.mount.result", Time: time.Now().UTC(),
+		Properties: map[string]string{"schema_version": "1", "event_id": newID(),
+			"mount_session_id": newID()},
+		Measurements: map[string]float64{}}
+}
+
+func TestEncodeRejectsUnapprovedSchema(t *testing.T) {
+	e := testEvent()
+	e.Name = "unexpected.event"
+	if _, err := encode(e, "test-key"); err == nil {
+		t.Fatal("encoder accepted an unapproved event")
+	}
+	e.Name = "blobfuse.mount.result"
+	for _, field := range []string{"account_name", "raw_error"} {
+		e.Properties[field] = "not-allowed"
+		if _, err := encode(e, "test-key"); err == nil {
+			t.Fatalf("encoder accepted unapproved property %s", field)
+		}
+		delete(e.Properties, field)
+	}
+}
+
+func TestEncodedEventSizeBoundary(t *testing.T) {
+	const limit = 32 * 1024
+	e := testEvent()
+	e.Properties["failure_category"] = ""
+	// JSON escaping reaches the envelope cap using only approved fields.
+	for _, field := range []string{"pipeline_components", "auth_mode", "distro_name", "distro_version", "kernel_release"} {
+		e.Properties[field] = strings.Repeat("<", 1024)
+	}
+	body, err := encode(e, "test-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	padding := limit - len(body)
+	if padding < 0 || padding/6+padding%6 >= 1024 {
+		t.Fatalf("fixture cannot reach size boundary within property limits: padding=%d", padding)
+	}
+	e.Properties["failure_category"] = strings.Repeat("<", padding/6) + strings.Repeat("x", padding%6)
+	body, err = encode(e, "test-key")
+	if err != nil || len(body) != limit {
+		t.Fatalf("32-KiB encoded event rejected: bytes=%d err=%v", len(body), err)
+	}
+	e.Properties["failure_category"] += "x"
+	if _, err := encode(e, "test-key"); err == nil || err.Error() != "telemetry event exceeds limit" {
+		t.Fatalf("expected event-size rejection above 32 KiB: %v", err)
+	}
+}
+
+func TestMeasurementNamesAreEventSpecific(t *testing.T) {
+	for _, tc := range []struct {
+		event   string
+		allowed map[string]bool
+	}{
+		{event: "blobfuse.mount.attempted"},
+		{event: "blobfuse.mount.result", allowed: map[string]bool{
+			"time_to_mount_ms": true, "time_to_failure_ms": true,
+		}},
+		{event: "blobfuse.mount.stopped", allowed: map[string]bool{
+			"final_uptime_seconds": true, "last_known_uptime_seconds": true,
+		}},
+	} {
+		t.Run(tc.event, func(t *testing.T) {
+			e := testEvent()
+			e.Name = tc.event
+			for _, measurements := range []map[string]float64{nil, {}} {
+				e.Measurements = measurements
+				if _, err := encode(e, "test-key"); err != nil {
+					t.Fatalf("measurement-free event rejected: %v", err)
+				}
+			}
+			for _, name := range []string{
+				"time_to_mount_ms", "time_to_failure_ms", "final_uptime_seconds", "last_known_uptime_seconds",
+				"counter_0001", "", "Time_to_mount_ms", "private/fixture",
+			} {
+				t.Run(name, func(t *testing.T) {
+					e.Measurements = map[string]float64{name: 12.5}
+					e.Properties["outcome"] = "success"
+					before, err := json.Marshal(e)
+					require.NoError(t, err)
+					body, err := encode(e, "test-key")
+					after, marshalErr := json.Marshal(e)
+					require.NoError(t, marshalErr)
+					require.True(t, bytes.Equal(before, after), "encoding mutated the input event")
+					if !tc.allowed[name] {
+						if err == nil || err.Error() != "unapproved telemetry measurement" || body != nil {
+							t.Fatalf("unapproved measurement was not rejected: err=%v body=%s", err, body)
+						}
+						return
+					}
+					require.NoError(t, err)
+					var batch []envelope
+					require.NoError(t, json.Unmarshal(body, &batch))
+					if len(batch) != 1 || batch[0].Data.Data.Name != tc.event ||
+						batch[0].Data.Data.Properties["outcome"] != "success" || len(batch[0].Data.Data.Measurements) != 1 ||
+						batch[0].Data.Data.Measurements[name] != 12.5 {
+						t.Fatalf("approved measurement changed during encoding: %s", body)
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestMeasurementValuesMustBeFinite(t *testing.T) {
+	for _, tc := range []struct {
+		event, measurement string
+	}{
+		{"blobfuse.mount.result", "time_to_mount_ms"},
+		{"blobfuse.mount.result", "time_to_failure_ms"},
+		{"blobfuse.mount.stopped", "final_uptime_seconds"},
+		{"blobfuse.mount.stopped", "last_known_uptime_seconds"},
+	} {
+		t.Run(tc.measurement, func(t *testing.T) {
+			e := testEvent()
+			e.Name = tc.event
+			for _, value := range []float64{0, 12.5, math.MaxFloat64, math.NaN(), math.Inf(1), math.Inf(-1)} {
+				e.Measurements = map[string]float64{tc.measurement: value}
+				body, err := encode(e, "test-key")
+				if math.IsNaN(value) || math.IsInf(value, 0) {
+					if err == nil || err.Error() != "invalid telemetry measurement" || body != nil {
+						t.Fatalf("nonfinite measurement accepted: value=%v err=%v", value, err)
+					}
+				} else if err != nil {
+					t.Fatalf("finite measurement rejected: value=%v err=%v", value, err)
+				}
+			}
+		})
+	}
+}
+
+func TestDestinationValidation(t *testing.T) {
+	const base = "https://eastus-8.in.applicationinsights.azure.com"
+	for _, endpoint := range []string{
+		"http://eastus-8.in.applicationinsights.azure.com",
+		"https://example.com", "https://localhost", "https://127.0.0.1", "https://[::1]",
+		base + ".example.invalid", "https://notapplicationinsights.azure.com",
+		"https://in.applicationinsights.azure.com", "https://.in.applicationinsights.azure.com",
+		"https://extra.eastus-8.in.applicationinsights.azure.com",
+		"https://-eastus.in.applicationinsights.azure.com",
+		"https://eastus-.in.applicationinsights.azure.com",
+		"https://east_us.in.applicationinsights.azure.com",
+		"https://" + strings.Repeat("a", 64) + ".in.applicationinsights.azure.com",
+		"https://eastus-8.in.applicationinsights.azure.com.",
+		"https://dc.services.visualstudio.com", "https://dc.applicationinsights.azure.com",
+		"https://eastus.in.applicationinsights.azure.cn", "https://dc.applicationinsights.us",
+		base + ":8443", base + ":", base + "/custom", base + "/v2.1/track",
+		base + "/%2f", base + "?query=value", base + "?", base + "#fragment", base + "#",
+		"https://user:password@eastus-8.in.applicationinsights.azure.com",
+	} {
+		t.Run(endpoint, func(t *testing.T) {
+			_, err := parseDestination("InstrumentationKey=x;IngestionEndpoint=" + endpoint)
+			require.Error(t, err, "accepted unsupported ingestion endpoint")
+		})
+	}
+	for _, value := range []string{
+		"", "InstrumentationKey=x;IngestionEndpoint=http://localhost",
+		"InstrumentationKey=x;IngestionEndpoint=https://user:pass@host",
+		"InstrumentationKey=x;IngestionEndpoint=https://host?q=x",
+		"InstrumentationKey=x;IngestionEndpoint=https://host;Authorization=aad",
+	} {
+		if _, err := parseDestination(value); err == nil {
+			t.Fatalf("accepted unsafe destination: %s", value)
+		}
+	}
+	for _, endpoint := range []string{
+		base, base + "/", base + ":443/",
+		"https://EASTUS-8.IN.APPLICATIONINSIGHTS.AZURE.COM/",
+		"https://southcentralus.in.applicationinsights.azure.com/",
+		"https://a.in.applicationinsights.azure.com",
+		"https://" + strings.Repeat("a", 63) + ".in.applicationinsights.azure.com",
+	} {
+		d, err := parseDestination("InstrumentationKey=x;IngestionEndpoint=" + endpoint)
+		require.NoError(t, err)
+		require.Equal(t, strings.TrimRight(strings.ToLower(endpoint), "/")+"/v2.1/track", d.endpoint)
+		require.Equal(t, "x", d.key)
+	}
+}
+
+func TestStartRejectsNonMicrosoftDestinationBeforeDelivery(t *testing.T) {
+	s, err := Start(Options{
+		ConnectionString: "InstrumentationKey=x;IngestionEndpoint=https://example.invalid",
+		HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			t.Error("invalid destination reached delivery")
+			return testResponse(200), nil
+		})},
+	})
+	if s != nil {
+		s.Close()
+	}
+	require.Error(t, err)
+	require.Nil(t, s)
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { return fn(req) }
+
+func TestInactiveSession(t *testing.T) {
+	for _, options := range []Options{{}, {Disabled: true}} {
+		s, err := Start(options)
+		if err != nil || s != nil {
+			t.Fatalf("inactive session: %v", err)
+		}
+	}
+}
