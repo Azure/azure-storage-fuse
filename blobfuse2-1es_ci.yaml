@@ -192,12 +192,9 @@ extends:
 
           # Copyright checks
           - script: |
-              result=$(grep -L -r --include \*.go "`date +%Y` Microsoft Corporation" ./ | wc -l)
-              if [ $result -ne 0 ]; then
-                exit 1
-              else
-                echo "Copyright statements are up to date"
-              fi
+              set -e
+              python3 -m unittest discover -s test/scripts -p 'test_check_copyright.py' 2>&1
+              python3 test/scripts/check_copyright.py
             displayName: 'Copyright check'
             condition: always()
             failOnStderr: true

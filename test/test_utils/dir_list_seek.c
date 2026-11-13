@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) Microsoft Corporation.
+ * Licensed under the MIT License
+ */
+
 #include <dirent.h>
 #include <fcntl.h>
 #include <stdio.h>
