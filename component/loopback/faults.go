@@ -51,6 +51,7 @@ const (
 	OpStageData             Op = "StageData"
 	OpCommitData            Op = "CommitData"
 	OpGetCommittedBlockList Op = "GetCommittedBlockList"
+	OpGetFileBlockOffsets   Op = "GetFileBlockOffsets"
 )
 
 var knownOps = []Op{
@@ -58,7 +59,7 @@ var knownOps = []Op{
 	OpCreateFile, OpDeleteFile, OpOpenFile, OpReleaseFile, OpFlushFile, OpRenameFile,
 	OpReadFile, OpReadInBuffer, OpWriteFile, OpTruncateFile, OpCopyToFile, OpCopyFromFile,
 	OpCreateLink, OpReadLink, OpGetAttr, OpChmod, OpChown,
-	OpStageData, OpCommitData, OpGetCommittedBlockList,
+	OpStageData, OpCommitData, OpGetCommittedBlockList, OpGetFileBlockOffsets,
 }
 
 // Fault is an error or a delay that loopbackfs injects into its operations, to emulate failures and slowness of

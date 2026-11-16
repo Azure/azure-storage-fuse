@@ -976,7 +976,8 @@ func (suite *blockCacheDistCacheSuite) SetupTest() {
 	suite.srv = newIntegMockServer(suite.T())
 
 	// Build config: block_cache → distributed_cache → loopbackfs
-	// block-size-mb: 1 to match loopback's GetCommittedBlockList (hardcoded 1MB).
+	// block-size-mb: 1 to match the 1MB blocks loopbackfs presents for files written directly to its path
+	// (loopbackfs.block-size-mb defaults to 1).
 	// mem-size-mb sized so distributed_cache's fair-share (10% of bcRef) covers
 	// distCacheMinBuffers × chunkSize and async populate is enabled — this
 	// suite exercises the L2 population path, so we must stay above the
