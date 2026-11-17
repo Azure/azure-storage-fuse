@@ -2,6 +2,7 @@
 **Breaking Changes**
 
 **Features**
+- `attr_cache` answers a `chmod` without calling Azure Storage when the path's cached attributes are still valid and show the call can't change anything: the path doesn't exist in storage (the call fails with `ENOENT`, as storage would), or this mount already applied the same mode. Applications that reapply the same permissions after every write, such as OpenClaw hardening its SQLite state database, no longer make a synchronous `SetAccessControl` call each time on HNS accounts. The first `chmod` after a cache entry expires or is invalidated, and every request that sets setuid, setgid, or sticky bits, is still sent. Because the cache now decides whether a repeated `chmod` is sent, a mode that another client changes on the same path won't be overridden by repeating an earlier `chmod` on this mount until the cache entry expires (`attr_cache.timeout-sec`). If other clients change modes on the same paths, set `attr_cache.no-chmod-cache: true` to send every `chmod` to storage. ([PR #2444](https://github.com/Azure/azure-storage-fuse/pull/2444))
 
 **Bug Fixes**
 - Fix blobfuse2 crashing when a rename cannot read the attributes of its source for a reason other than the source not existing, such as a permission error or a network failure. The rename now fails with that error (`EACCES`, `EINVAL` or `EIO`), also when the attributes of an existing destination cannot be read. ([PR #2450](https://github.com/Azure/azure-storage-fuse/pull/2450))
