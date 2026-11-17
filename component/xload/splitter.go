@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"reflect"
 	"sync"
 	"time"
@@ -24,7 +23,7 @@ var _ XComponent = &downloadSplitter{}
 type splitter struct {
 	XBase
 	blockPool   *BlockPool
-	path        string
+	root        *os.Root // xload local path; all file operations stay within it
 	fileLocks   *common.LockMap
 	validateMD5 bool
 }
@@ -37,7 +36,7 @@ type downloadSplitter struct {
 
 type downloadSplitterOptions struct {
 	blockPool   *BlockPool
-	path        string
+	root        *os.Root
 	workerCount uint32
 	remote      internal.Component
 	statsMgr    *StatsManager
@@ -46,17 +45,17 @@ type downloadSplitterOptions struct {
 }
 
 func newDownloadSplitter(opts *downloadSplitterOptions) (*downloadSplitter, error) {
-	if opts == nil || opts.blockPool == nil || opts.path == "" || opts.remote == nil || opts.statsMgr == nil || opts.fileLocks == nil || opts.workerCount == 0 {
+	if opts == nil || opts.blockPool == nil || opts.root == nil || opts.remote == nil || opts.statsMgr == nil || opts.fileLocks == nil || opts.workerCount == 0 {
 		log.Err("lister::NewRemoteLister : invalid parameters sent to create download splitter")
 		return nil, fmt.Errorf("invalid parameters sent to create download splitter")
 	}
 
-	log.Debug("splitter::NewDownloadSplitter : create new download splitter for %s, block size %v, workers %v", opts.path, opts.blockPool.GetBlockSize(), opts.workerCount)
+	log.Debug("splitter::NewDownloadSplitter : create new download splitter for %s, block size %v, workers %v", opts.root.Name(), opts.blockPool.GetBlockSize(), opts.workerCount)
 
 	ds := &downloadSplitter{
 		splitter: splitter{
 			blockPool:   opts.blockPool,
-			path:        opts.path,
+			root:        opts.root,
 			fileLocks:   opts.fileLocks,
 			validateMD5: opts.validateMD5,
 		},
@@ -78,12 +77,12 @@ func (ds *downloadSplitter) Init() {
 }
 
 func (ds *downloadSplitter) Start(ctx context.Context) {
-	log.Debug("downloadSplitter::Start : start download splitter for %s", ds.path)
+	log.Debug("downloadSplitter::Start : start download splitter for %s", ds.root.Name())
 	ds.GetThreadPool().Start(ctx)
 }
 
 func (ds *downloadSplitter) Stop() {
-	log.Debug("downloadSplitter::Stop : stop download splitter for %s", ds.path)
+	log.Debug("downloadSplitter::Stop : stop download splitter for %s", ds.root.Name())
 	if ds.GetThreadPool() != nil {
 		ds.GetThreadPool().Stop()
 	}
@@ -95,8 +94,11 @@ func (ds *downloadSplitter) Process(item *WorkItem) (int, error) {
 	log.Debug("downloadSplitter::Process : Splitting data for %s, size %v, mode %v, priority %v, access time %v, modified time %v", item.Path, item.DataLen,
 		item.Mode, item.Priority, item.Atime.Format(time.DateTime), item.Mtime.Format(time.DateTime))
 
-	var err error
-	localPath := filepath.Join(ds.path, item.Path)
+	name, err := localName(item.Path)
+	if err != nil {
+		log.Err("downloadSplitter::Process : Invalid path [%s]", err.Error())
+		return -1, err
+	}
 
 	// if priority is false, it means that it has been scheduled by the lister and not by the OpenFile call.
 	// So, get a lock. If the locking goes into wait state, it means the file is already under download by the OpenFile thread.
@@ -108,7 +110,7 @@ func (ds *downloadSplitter) Process(item *WorkItem) (int, error) {
 		defer flock.Unlock()
 	}
 
-	filePresent, isDir, size := isFilePresent(localPath)
+	filePresent, isDir, size := isFilePresent(ds.root, name)
 	if filePresent {
 		if isDir {
 			log.Err("downloadSplitter::Process : %s is a directory", item.Path)
@@ -123,7 +125,7 @@ func (ds *downloadSplitter) Process(item *WorkItem) (int, error) {
 	// TODO:: xload : what should be the flags
 	// TODO:: xload : verify if the mode is set correctly
 	// TODO:: xload : handle case if blob is a symlink
-	item.FileHandle, err = os.OpenFile(localPath, os.O_RDWR|os.O_CREATE, item.Mode)
+	item.FileHandle, err = ds.root.OpenFile(name, os.O_RDWR|os.O_CREATE, item.Mode)
 	if err != nil {
 		log.Err("downloadSplitter::Process : Failed to create file %s [%s]", item.Path, err.Error())
 		return -1, fmt.Errorf("failed to open file %s [%s]", item.Path, err.Error())
@@ -149,7 +151,7 @@ func (ds *downloadSplitter) Process(item *WorkItem) (int, error) {
 		log.Err("downloadSplitter::Process : Failed to truncate file %s, so deleting it from local path [%s]", item.Path, err.Error())
 
 		// delete the file which failed to truncate from the local path
-		err1 := os.Remove(localPath)
+		err1 := ds.root.Remove(name)
 		if err1 != nil {
 			log.Err("downloadSplitter::Process : Failed to delete file %s [%s]", item.Path, err1.Error())
 		}
@@ -245,7 +247,7 @@ func (ds *downloadSplitter) Process(item *WorkItem) (int, error) {
 	if operationSuccess {
 		// update the last modified time
 		// TODO:: xload : verify if the lmt is updated correctly
-		err = os.Chtimes(localPath, item.Atime, item.Mtime)
+		err = ds.root.Chtimes(name, item.Atime, item.Mtime)
 		if err != nil {
 			log.Err("downloadSplitter::Process : Failed to change times of file %s [%s]", item.Path, err.Error())
 		}
@@ -272,7 +274,7 @@ func (ds *downloadSplitter) Process(item *WorkItem) (int, error) {
 		log.Err("downloadSplitter::Process : Failed to download data for file %s, so deleting it from local path", item.Path)
 
 		// delete the file which failed to download from the local path
-		err = os.Remove(localPath)
+		err = ds.root.Remove(name)
 		if err != nil {
 			log.Err("downloadSplitter::Process : Failed to delete file %s [%s]", item.Path, err.Error())
 		}

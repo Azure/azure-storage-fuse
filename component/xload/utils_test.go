@@ -6,6 +6,7 @@ package xload
 import (
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -86,26 +87,28 @@ func (suite *utilsTestSuite) TestRoundFloat() {
 }
 
 func (suite *utilsTestSuite) TestIsFilePresent() {
-	path := "/home/randomFile1234"
-	isPresent, isDir, size := isFilePresent(path)
+	currDir, err := os.Getwd()
+	suite.assert.NoError(err)
+	root, err := os.OpenRoot(currDir)
+	suite.assert.NoError(err)
+	defer root.Close()
+
+	isPresent, isDir, size := isFilePresent(root, "randomFile1234")
 	suite.assert.False(isPresent)
 	suite.assert.False(isDir)
 	suite.assert.EqualValues(0, size)
 
-	currDir, err := os.Getwd()
-	suite.assert.NoError(err)
-
-	isPresent, isDir, size = isFilePresent(currDir)
+	isPresent, isDir, size = isFilePresent(root, ".")
 	suite.assert.True(isPresent)
 	suite.assert.True(isDir)
 	suite.assert.Positive(size)
 
-	path = filepath.Join(currDir, "testFile1234")
+	path := filepath.Join(currDir, "testFile1234")
 	_, err = os.Create(path)
 	defer os.Remove(path)
 	suite.assert.NoError(err)
 
-	isPresent, isDir, size = isFilePresent(path)
+	isPresent, isDir, size = isFilePresent(root, "testFile1234")
 	suite.assert.True(isPresent)
 	suite.assert.False(isDir)
 	suite.assert.EqualValues(0, size)
@@ -113,10 +116,45 @@ func (suite *utilsTestSuite) TestIsFilePresent() {
 	err = os.Truncate(path, 10)
 	suite.assert.NoError(err)
 
-	isPresent, isDir, size = isFilePresent(path)
+	isPresent, isDir, size = isFilePresent(root, "testFile1234")
 	suite.assert.True(isPresent)
 	suite.assert.False(isDir)
 	suite.assert.EqualValues(10, size)
+}
+
+func (suite *utilsTestSuite) TestLocalName() {
+	up := ".."
+
+	valid := map[string]string{
+		"":            ".",
+		"file":        "file",
+		"dir/file":    "dir/file",
+		up + "file":   up + "file",
+		"dir/.hidden": "dir/.hidden",
+	}
+	for name, expected := range valid {
+		localName, err := localName(name)
+		suite.assert.NoError(err, name)
+		suite.assert.Equal(expected, localName, name)
+	}
+
+	invalid := []string{
+		up,
+		up + "/file",
+		"dir/" + up + "/" + up + "/file",
+		"dir/" + up + "/file",
+		"dir/" + up,
+		"/etc/file",
+		"./file",
+		"dir/./file",
+		"dir//file",
+		"dir/",
+	}
+	for _, name := range invalid {
+		localName, err := localName(name)
+		suite.assert.ErrorIs(err, syscall.EINVAL, name)
+		suite.assert.Empty(localName, name)
+	}
 }
 
 func TestUtilsSuite(t *testing.T) {
