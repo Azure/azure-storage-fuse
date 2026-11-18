@@ -47,10 +47,9 @@ blobfuse2 mount [path] [flags]
       --wait-for-mount duration      Let parent process wait for given timeout before exit (default 5s)
 ```
 
-### Options inherited from parent commands
+See [Microsoft mount lifecycle telemetry](microsoft-telemetry.md) for configuration and opt-out settings.
 
-Microsoft telemetry configuration and opt-out behavior are described in
-[Microsoft lifecycle and error telemetry](microsoft-telemetry.md).
+### Options inherited from parent commands
 
 ```
       --disable-version-check   To disable version check that is performed automatically
