@@ -153,6 +153,20 @@ func (rl *remoteLister) Process(item *WorkItem) (int, error) {
 			}
 			if err != nil {
 				log.Err("remoteLister::Process : Skipping remote entry [%s]", err.Error())
+
+				// the entry is already counted in ListerCount, so report it as failed the same way as a directory
+				// that cannot be created or a file that cannot be downloaded, to let the progress complete
+				component := SPLITTER
+				if entry.IsDir() {
+					component = LISTER
+				}
+				rl.GetStatsManager().AddStats(&StatsItem{
+					Component: component,
+					Name:      entry.Path,
+					Dir:       entry.IsDir(),
+					Success:   false,
+					Download:  true,
+				})
 				continue
 			}
 

@@ -518,7 +518,8 @@ func (suite *xloadTestSuite) TestOpenFileWithDownload() {
 	err = suite.xload.ReleaseFile(internal.ReleaseFileOptions{Handle: fh1})
 	suite.assert.NoError(err)
 
-	fh2, err := suite.xload.OpenFile(internal.OpenFileOptions{Name: "dir_0/file_3", Flags: os.O_RDONLY, Mode: common.DefaultFilePermissionBits})
+	// libfuse passes default-permission as the mode, which may include special bits such as sticky
+	fh2, err := suite.xload.OpenFile(internal.OpenFileOptions{Name: "dir_0/file_3", Flags: os.O_RDONLY, Mode: os.ModeSticky | 0777})
 	suite.assert.NoError(err)
 	suite.assert.NotNil(fh2)
 	suite.assert.Equal((int64)(27), fh2.Size)

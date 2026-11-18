@@ -94,10 +94,21 @@ func (ds *downloadSplitter) Process(item *WorkItem) (int, error) {
 	log.Debug("downloadSplitter::Process : Splitting data for %s, size %v, mode %v, priority %v, access time %v, modified time %v", item.Path, item.DataLen,
 		item.Mode, item.Priority, item.Atime.Format(time.DateTime), item.Mtime.Format(time.DateTime))
 
+	// report a file that fails before its download starts, so that the progress can complete
+	failed := func(err error) (int, error) {
+		ds.GetStatsManager().AddStats(&StatsItem{
+			Component: SPLITTER,
+			Name:      item.Path,
+			Success:   false,
+			Download:  true,
+		})
+		return -1, err
+	}
+
 	name, err := localName(item.Path)
 	if err != nil {
 		log.Err("downloadSplitter::Process : Invalid path [%s]", err.Error())
-		return -1, err
+		return failed(err)
 	}
 
 	// if priority is false, it means that it has been scheduled by the lister and not by the OpenFile call.
@@ -114,7 +125,7 @@ func (ds *downloadSplitter) Process(item *WorkItem) (int, error) {
 	if filePresent {
 		if isDir {
 			log.Err("downloadSplitter::Process : %s is a directory", item.Path)
-			return -1, fmt.Errorf("%s is a directory", item.Path)
+			return failed(fmt.Errorf("%s is a directory", item.Path))
 		} else if item.DataLen == uint64(size) {
 			log.Debug("downloadSplitter::Process : %s will be served from local path, priority %v", item.Path, item.Priority)
 			return int(size), nil
@@ -125,10 +136,11 @@ func (ds *downloadSplitter) Process(item *WorkItem) (int, error) {
 	// TODO:: xload : what should be the flags
 	// TODO:: xload : verify if the mode is set correctly
 	// TODO:: xload : handle case if blob is a symlink
-	item.FileHandle, err = ds.root.OpenFile(name, os.O_RDWR|os.O_CREATE, item.Mode)
+	// os.Root only accepts permission bits, so drop type bits such as os.ModeSymlink from remote modes
+	item.FileHandle, err = ds.root.OpenFile(name, os.O_RDWR|os.O_CREATE, item.Mode.Perm())
 	if err != nil {
 		log.Err("downloadSplitter::Process : Failed to create file %s [%s]", item.Path, err.Error())
-		return -1, fmt.Errorf("failed to open file %s [%s]", item.Path, err.Error())
+		return failed(fmt.Errorf("failed to open file %s [%s]", item.Path, err.Error()))
 	}
 
 	defer item.FileHandle.Close()
@@ -156,7 +168,7 @@ func (ds *downloadSplitter) Process(item *WorkItem) (int, error) {
 			log.Err("downloadSplitter::Process : Failed to delete file %s [%s]", item.Path, err1.Error())
 		}
 
-		return -1, fmt.Errorf("failed to truncate file %s [%s]", item.Path, err.Error())
+		return failed(fmt.Errorf("failed to truncate file %s [%s]", item.Path, err.Error()))
 	}
 
 	numBlocks := ((item.DataLen - 1) / ds.blockPool.GetBlockSize()) + 1

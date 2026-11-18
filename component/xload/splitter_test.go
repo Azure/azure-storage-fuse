@@ -236,6 +236,15 @@ func (suite *splitterTestSuite) TestProcessStaysWithinPath() {
 	data, err := os.ReadFile(outsidePath)
 	suite.assert.NoError(err)
 	suite.assert.Equal(outsideData, data)
+
+	// remote modes may carry type and special bits, which os.Root does not accept
+	n, err = ds.Process(&WorkItem{Path: "file_4", DataLen: 36, Mode: 0644 | os.ModeSymlink | os.ModeSticky})
+	suite.assert.NoError(err)
+	suite.assert.Equal(0, n)
+	info, err := os.Stat(filepath.Join(cachePath, "file_4"))
+	suite.assert.NoError(err)
+	suite.assert.True(info.Mode().IsRegular())
+	suite.assert.EqualValues(36, info.Size())
 }
 
 func (suite *splitterTestSuite) TestSplitterStartStop() {

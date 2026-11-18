@@ -467,7 +467,8 @@ func (xl *Xload) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, 
 		log.Debug("Xload::OpenFile : %s will be served from local path", options.Name)
 	}
 
-	fh, err := xl.root.OpenFile(name, options.Flags, options.Mode)
+	// os.Root only accepts permission bits, while default-permission may also set bits such as sticky
+	fh, err := xl.root.OpenFile(name, options.Flags, options.Mode.Perm())
 	if err != nil {
 		log.Err("Xload::OpenFile : error opening cached file %s [%s]", options.Name, err.Error())
 		return nil, err

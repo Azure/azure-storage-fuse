@@ -344,19 +344,23 @@ func (suite *listTestSuite) TestListerStaysWithinPath() {
 	blockPool := NewBlockPool(4, 10, context.TODO())
 	defer blockPool.Terminate()
 
+	statsMgr, err := NewStatsManager(10, false, nil)
+	suite.assert.NoError(err)
+	statsMgr.Start()
+
 	rl, err := newRemoteLister(&remoteListerOptions{
 		root:              cacheRoot,
 		workerCount:       2,
 		defaultPermission: common.DefaultFilePermissionBits,
 		remote:            remote,
-		statsMgr:          tl.stMgr,
+		statsMgr:          statsMgr,
 	})
 	suite.assert.NoError(err)
 
-	ds, err := newDownloadSplitter(&downloadSplitterOptions{blockPool, cacheRoot, 2, remote, tl.stMgr, common.NewLockMap(), false})
+	ds, err := newDownloadSplitter(&downloadSplitterOptions{blockPool, cacheRoot, 2, remote, statsMgr, common.NewLockMap(), false})
 	suite.assert.NoError(err)
 
-	rdm, err := newRemoteDataManager(&remoteDataManagerOptions{workerCount: 2, remote: remote, statsMgr: tl.stMgr})
+	rdm, err := newRemoteDataManager(&remoteDataManagerOptions{workerCount: 2, remote: remote, statsMgr: statsMgr})
 	suite.assert.NoError(err)
 
 	rl.SetNext(ds)
@@ -366,6 +370,14 @@ func (suite *listTestSuite) TestListerStaysWithinPath() {
 	rl.Start(context.TODO())
 	time.Sleep(2 * time.Second)
 	rl.Stop()
+	ds.Stop()
+	rdm.Stop()
+	statsMgr.Stop()
+
+	// every listed entry ends as done or failed, so that the progress can reach 100%
+	suite.assert.EqualValues(11, statsMgr.totalFiles)
+	suite.assert.EqualValues(2, statsMgr.success)
+	suite.assert.EqualValues(9, statsMgr.failed)
 
 	entries, err := os.ReadDir(tl.path)
 	suite.assert.NoError(err)
