@@ -9,6 +9,7 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal/cachefs"
 	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
 )
 
@@ -72,22 +73,23 @@ func getUsagePercentage(path string, maxSizeMB float64) float64 {
 	return usagePercent
 }
 
-// Delete a given file
-func deleteFile(name string) error {
+// Delete a given file under root
+func deleteFile(root *os.Root, name string) error {
 	log.Debug("cachePolicy::deleteFile : attempting to delete %s", name)
 
-	err := os.Remove(name)
+	rel := cachefs.RelPath(root, name)
+	err := cachefs.Remove(root, rel)
 	if err != nil && os.IsPermission(err) {
 		// File is not having delete permissions so change the mode and retry deletion
 		log.Warn("cachePolicy::deleteFile : failed to delete %s due to permission", name)
 
-		err = os.Chmod(name, os.FileMode(0666))
+		err = cachefs.Chmod(root, rel, os.FileMode(0666))
 		if err != nil {
 			log.Err("cachePolicy::deleteFile : %s failed to reset permissions", name)
 			return err
 		}
 
-		err = os.Remove(name)
+		err = cachefs.Remove(root, rel)
 	} else if err != nil && os.IsNotExist(err) {
 		log.Debug("cachePolicy::deleteFile : %s does not exist in local cache", name)
 		return nil

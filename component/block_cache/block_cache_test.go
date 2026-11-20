@@ -528,6 +528,26 @@ func (suite *blockCacheTestSuite) TestFileReadTotalBytes() {
 	suite.assert.Nil(h.Buffers.Cooking)
 }
 
+// A dangling symlink planted at a block's cache path must not redirect the block download outside the cache.
+func (suite *blockCacheTestSuite) TestBlockDownloadDoesNotFollowSymlink() {
+	path := "symlink_block_download"
+	tobj, err := setupPipeline("")
+	defer tobj.cleanupPipeline()
+	suite.assert.NoError(err)
+
+	suite.assert.NoError(os.WriteFile(filepath.Join(tobj.fake_storage_path, path), make([]byte, 1024), 0644))
+
+	victim := filepath.Join(suite.T().TempDir(), "victim")
+	suite.assert.NoError(os.Symlink(victim, filepath.Join(tobj.disk_cache_path, path+"::0")))
+
+	h, err := tobj.blockCache.OpenFile(internal.OpenFileOptions{Name: path})
+	suite.assert.NoError(err)
+	_, _ = tobj.blockCache.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: make([]byte, 10)})
+
+	_, err = os.Stat(victim)
+	suite.assert.True(os.IsNotExist(err))
+}
+
 func (suite *blockCacheTestSuite) TestFileReadBlockCacheTmpPath() {
 	tobj, err := setupPipeline("")
 	defer tobj.cleanupPipeline()

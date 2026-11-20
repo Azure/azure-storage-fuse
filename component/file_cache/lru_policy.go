@@ -11,6 +11,7 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal/cachefs"
 )
 
 type lruNode struct {
@@ -28,6 +29,9 @@ type lruPolicy struct {
 	wg sync.WaitGroup
 
 	cachePolicyConfig
+
+	// root confines file removals to the cache directory. Opened in StartPolicy, closed in ShutdownPolicy.
+	root *os.Root
 
 	nodeMap sync.Map
 
@@ -90,6 +94,17 @@ func NewLRUPolicy(cfg cachePolicyConfig) cachePolicy {
 
 func (p *lruPolicy) StartPolicy() error {
 	log.Trace("lruPolicy::StartPolicy")
+	if err := os.MkdirAll(p.tmpPath, cachefs.DirPerm); err != nil {
+		log.Err("lruPolicy::StartPolicy : failed to create cache dir %s [%v]", p.tmpPath, err)
+		return err
+	}
+	root, err := os.OpenRoot(p.tmpPath)
+	if err != nil {
+		log.Err("lruPolicy::StartPolicy : failed to open cache root %s [%v]", p.tmpPath, err)
+		return err
+	}
+	p.root = root
+
 	p.currMarker.prev = nil
 	p.currMarker.next = p.lastMarker
 	p.lastMarker.prev = p.currMarker
@@ -103,7 +118,7 @@ func (p *lruPolicy) StartPolicy() error {
 	p.purgeSignal = make(chan struct{}, 1)
 	p.validateChan = make(chan string, 10000)
 
-	_, err := common.GetUsage(p.tmpPath)
+	_, err = common.GetUsage(p.tmpPath)
 	if err == nil {
 		p.duPresent = true
 	} else {
@@ -136,7 +151,7 @@ func (p *lruPolicy) ShutdownPolicy() error {
 	p.closeSignalValidate <- 1
 	// wait for all go-routines to stop.
 	p.wg.Wait()
-	return nil
+	return p.root.Close()
 }
 
 func (p *lruPolicy) UpdateConfig(c cachePolicyConfig) error {
@@ -487,7 +502,7 @@ func (p *lruPolicy) deleteItem(name string) bool {
 	}
 
 	// There are no open handles for this file so its safe to remove this
-	err := deleteFile(name)
+	err := deleteFile(p.root, name)
 	if err != nil && !os.IsNotExist(err) {
 		log.Err("lruPolicy::DeleteItem : failed to delete local file %s [%s]", name, err.Error())
 	}

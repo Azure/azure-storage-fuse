@@ -955,6 +955,58 @@ func (suite *fileCacheTestSuite) TestOpenFileInCache() {
 	suite.assert.True(err == nil || os.IsExist(err))
 }
 
+// A dangling symlink planted in the cache must not redirect the download write outside the cache.
+func (suite *fileCacheTestSuite) TestOpenFileDoesNotFollowSymlink() {
+	defer suite.cleanupTest()
+	path := "symlink_download"
+	suite.assert.NoError(os.WriteFile(filepath.Join(suite.fake_storage_path, path), []byte("blob-content"), 0644))
+
+	victim := filepath.Join(suite.T().TempDir(), "victim")
+	suite.assert.NoError(os.Symlink(victim, filepath.Join(suite.cache_path, path)))
+
+	_, _ = suite.fileCache.OpenFile(internal.OpenFileOptions{Name: path, Mode: 0644})
+
+	_, err := os.Stat(victim)
+	suite.assert.True(os.IsNotExist(err))
+}
+
+// A symlink in the cache, even one pointing inside the cache, is replaced by the downloaded file.
+func (suite *fileCacheTestSuite) TestOpenFileReplacesInCacheSymlink() {
+	defer suite.cleanupTest()
+	path := "symlink_in_cache"
+	suite.assert.NoError(os.WriteFile(filepath.Join(suite.fake_storage_path, path), []byte("blob-content"), 0644))
+	suite.assert.NoError(os.Symlink("other_entry", filepath.Join(suite.cache_path, path)))
+
+	handle, err := suite.fileCache.OpenFile(internal.OpenFileOptions{Name: path, Mode: 0644})
+	suite.assert.NoError(err)
+	defer suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
+
+	info, err := os.Lstat(filepath.Join(suite.cache_path, path))
+	suite.assert.NoError(err)
+	suite.assert.True(info.Mode().IsRegular())
+	_, err = os.Lstat(filepath.Join(suite.cache_path, "other_entry"))
+	suite.assert.True(os.IsNotExist(err))
+
+	data, err := suite.fileCache.ReadFile(internal.ReadFileOptions{Handle: handle})
+	suite.assert.NoError(err)
+	suite.assert.Equal("blob-content", string(data))
+}
+
+// CreateFile must not truncate a pre-existing file that a planted symlink points to.
+func (suite *fileCacheTestSuite) TestCreateFileDoesNotFollowSymlink() {
+	defer suite.cleanupTest()
+	path := "symlink_create"
+	victim := filepath.Join(suite.T().TempDir(), "victim")
+	suite.assert.NoError(os.WriteFile(victim, []byte("keep"), 0644))
+	suite.assert.NoError(os.Symlink(victim, filepath.Join(suite.cache_path, path)))
+
+	_, _ = suite.fileCache.CreateFile(internal.CreateFileOptions{Name: path, Mode: 0644})
+
+	content, err := os.ReadFile(victim)
+	suite.assert.NoError(err)
+	suite.assert.Equal("keep", string(content))
+}
+
 // Tests for GetProperties in OpenFile should be done in E2E tests
 // - there is no good way to test it here with a loopback FS without a mock component.
 
