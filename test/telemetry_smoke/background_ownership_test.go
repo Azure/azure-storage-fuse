@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestBackgroundAttemptOwnedByDaemon(t *testing.T) {
+func TestBackgroundStartupOwnedByDaemon(t *testing.T) {
 	type event struct {
 		Time time.Time `json:"time"`
 		Data struct {
@@ -28,8 +28,8 @@ func TestBackgroundAttemptOwnedByDaemon(t *testing.T) {
 	}
 	var mu sync.Mutex
 	var events []event
-	attempted, release, cancelled := make(chan struct{}), make(chan struct{}), make(chan struct{})
-	var attemptOnce, releaseOnce, cancelOnce sync.Once
+	resultStarted, release, cancelled := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	var resultOnce, releaseOnce, cancelOnce sync.Once
 	m := startTelemetryMount(t, func(w http.ResponseWriter, r *http.Request) {
 		var batch []event
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxItem)).Decode(&batch); err != nil {
@@ -41,8 +41,8 @@ func TestBackgroundAttemptOwnedByDaemon(t *testing.T) {
 		events = append(events, batch...)
 		mu.Unlock()
 		for _, e := range batch {
-			if e.Data.Base.Name == "blobfuse.mount.attempted" {
-				attemptOnce.Do(func() { close(attempted) })
+			if e.Data.Base.Name == "blobfuse.mount.result" {
+				resultOnce.Do(func() { close(resultStarted) })
 				select {
 				case <-release:
 				case <-r.Context().Done():
@@ -55,9 +55,9 @@ func TestBackgroundAttemptOwnedByDaemon(t *testing.T) {
 	})
 	t.Cleanup(func() { releaseOnce.Do(func() { close(release) }) })
 	select {
-	case <-attempted:
+	case <-resultStarted:
 	case <-time.After(3 * time.Second):
-		t.Fatal("daemon did not start its attempted request")
+		t.Fatal("daemon did not start its mount result request")
 	}
 	select {
 	case <-m.done:
@@ -71,7 +71,7 @@ func TestBackgroundAttemptOwnedByDaemon(t *testing.T) {
 	require.True(t, mounted, "daemon exited with parent")
 	select {
 	case <-cancelled:
-		t.Fatal("parent exit cancelled the attempted request")
+		t.Fatal("parent exit cancelled the mount result request")
 	default:
 	}
 	releaseOnce.Do(func() { close(release) })
@@ -79,7 +79,7 @@ func TestBackgroundAttemptOwnedByDaemon(t *testing.T) {
 	m.await(t, 10*time.Second, func() (bool, error) {
 		mu.Lock()
 		defer mu.Unlock()
-		return len(events) >= 3, nil
+		return len(events) >= 2, nil
 	})
 	mu.Lock()
 	defer mu.Unlock()
@@ -89,8 +89,10 @@ func TestBackgroundAttemptOwnedByDaemon(t *testing.T) {
 		counts[e.Data.Base.Name]++
 		require.NotEmpty(t, session)
 		require.Equal(t, session, e.Data.Base.Properties["mount_session_id"])
-		if e.Data.Base.Name == "blobfuse.mount.attempted" && (e.Time.Before(m.started) || e.Time.After(time.Now())) {
-			t.Fatal("background attempt has an invalid observation time")
+		if e.Data.Base.Name == "blobfuse.mount.result" {
+			require.False(t, e.Time.Before(m.started) || e.Time.After(time.Now()), "invalid result observation time")
+			require.EqualValues(t, 1, e.Data.Base.Measurements["result"])
+			require.Positive(t, e.Data.Base.Measurements["mount_latency_ms"])
 		}
 		if e.Data.Base.Name == "blobfuse.mount.stopped" {
 			require.Equal(t, "clean", e.Data.Base.Properties["termination_class"])
@@ -98,5 +100,5 @@ func TestBackgroundAttemptOwnedByDaemon(t *testing.T) {
 			require.NotContains(t, e.Data.Base.Measurements, "last_known_uptime_seconds")
 		}
 	}
-	require.Equal(t, map[string]int{"blobfuse.mount.attempted": 1, "blobfuse.mount.result": 1, "blobfuse.mount.stopped": 1}, counts)
+	require.Equal(t, map[string]int{"blobfuse.mount.result": 1, "blobfuse.mount.stopped": 1}, counts)
 }
