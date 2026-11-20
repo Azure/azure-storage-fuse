@@ -12,6 +12,7 @@
 - Free file handle on close even when upload fails, to prevent a memory leak, avoid pinning files in file_cache, and free pool buffers in block_cache. ([PR #2427](https://github.com/Azure/azure-storage-fuse/pull/2427))
 
 **Other Changes**
+- Build with Microsoft Go 1.26.11 to fix build-time code-execution and file-write vulnerabilities in the Go toolchain (CVE-2026-97033 through CVE-2026-97043). ([PR #2491](https://github.com/Azure/azure-storage-fuse/pull/2491))
 - libfuse no longer stores Go pointers in the file handles it gives libfuse, which broke cgo's pointer rules and made blobfuse2 builds with the Go race detector abort. ([PR #2449](https://github.com/Azure/azure-storage-fuse/pull/2449))
 - Test helpers of libfuse are no longer compiled into the blobfuse2 binary. ([PR #2447](https://github.com/Azure/azure-storage-fuse/pull/2447))
 - Build with `golang.org/x/crypto` 0.59.0, `golang.org/x/net` 0.63.0, and `github.com/klauspost/compress` 1.20.4 to fix CVE-2026-116591 in the `zstd` decoder of `github.com/klauspost/compress` and to clear reports of GO-2026-5932 in `golang.org/x/crypto`, whose affected `openpgp` packages blobfuse2 doesn't use. ([PR #2485](https://github.com/Azure/azure-storage-fuse/pull/2485))
