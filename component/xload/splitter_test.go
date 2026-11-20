@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -91,6 +92,7 @@ func createTestFiles(path string, assert *assert.Assertions) {
 
 type testSplitter struct {
 	path      string
+	root      *os.Root
 	blockSize uint64
 	blockPool *BlockPool
 	locks     *common.LockMap
@@ -101,6 +103,11 @@ func setupTestSplitter() (*testSplitter, error) {
 	ts := &testSplitter{}
 	ts.path = filepath.Join("/tmp/", fmt.Sprintf("xsplitter_%v", randomString(8)))
 	err := os.MkdirAll(ts.path, 0777)
+	if err != nil {
+		return nil, err
+	}
+
+	ts.root, err = os.OpenRoot(ts.path)
 	if err != nil {
 		return nil, err
 	}
@@ -121,6 +128,7 @@ func setupTestSplitter() (*testSplitter, error) {
 func (ts *testSplitter) cleanup() error {
 	ts.stMgr.Stop()
 	ts.blockPool.Terminate()
+	_ = ts.root.Close()
 
 	err := os.RemoveAll(ts.path)
 	return err
@@ -141,9 +149,13 @@ func (suite *splitterTestSuite) TestNewDownloadSplitter() {
 	suite.assert.NoError(err)
 	suite.assert.NotNil(statsMgr)
 
+	root, err := os.OpenRoot(os.TempDir())
+	suite.assert.NoError(err)
+	defer root.Close()
+
 	ds, err = newDownloadSplitter(&downloadSplitterOptions{
 		blockPool:   NewBlockPool(1, 1, context.TODO()),
-		path:        "/home/user/random_path",
+		root:        root,
 		workerCount: 4,
 		remote:      remote,
 		statsMgr:    statsMgr,
@@ -163,7 +175,7 @@ func (suite *splitterTestSuite) TestProcessFilePresent() {
 		suite.assert.NoError(err)
 	}()
 
-	ds, err := newDownloadSplitter(&downloadSplitterOptions{ts.blockPool, ts.path, 4, remote, ts.stMgr, ts.locks, false})
+	ds, err := newDownloadSplitter(&downloadSplitterOptions{ts.blockPool, ts.root, 4, remote, ts.stMgr, ts.locks, false})
 	suite.assert.NoError(err)
 	suite.assert.NotNil(ds)
 
@@ -182,6 +194,109 @@ func (suite *splitterTestSuite) TestProcessFilePresent() {
 	suite.assert.Equal(36, n)
 }
 
+func (suite *splitterTestSuite) TestProcessStaysWithinPath() {
+	ts, err := setupTestSplitter()
+	suite.assert.NoError(err)
+	defer func() {
+		suite.assert.NoError(ts.cleanup())
+	}()
+
+	cachePath := filepath.Join(ts.path, "cache")
+	suite.assert.NoError(os.Mkdir(cachePath, 0777))
+	cacheRoot, err := os.OpenRoot(cachePath)
+	suite.assert.NoError(err)
+	defer cacheRoot.Close()
+
+	ds, err := newDownloadSplitter(&downloadSplitterOptions{ts.blockPool, cacheRoot, 4, remote, ts.stMgr, ts.locks, false})
+	suite.assert.NoError(err)
+	rdm, err := newRemoteDataManager(&remoteDataManagerOptions{workerCount: 2, remote: remote, statsMgr: ts.stMgr})
+	suite.assert.NoError(err)
+	ds.SetNext(rdm)
+	rdm.Start(context.TODO())
+	ds.Start(context.TODO())
+	defer func() {
+		ds.Stop()
+		rdm.Stop()
+	}()
+
+	n, err := ds.Process(&WorkItem{Path: filepath.Join("..", "escaped_file"), Mode: 0644})
+	suite.assert.ErrorIs(err, syscall.EINVAL)
+	suite.assert.Equal(-1, n)
+	suite.assert.NoFileExists(filepath.Join(ts.path, "escaped_file"))
+
+	// a symlink planted in the cache must not redirect the download outside of it
+	outsideData := []byte("local data outside the cache")
+	outsidePath := filepath.Join(ts.path, "outside_file")
+	suite.assert.NoError(os.WriteFile(outsidePath, outsideData, 0644))
+	suite.assert.NoError(os.Symlink(outsidePath, filepath.Join(cachePath, "link_file")))
+
+	n, err = ds.Process(&WorkItem{Path: "link_file", DataLen: 5, Mode: 0644})
+	suite.assert.Error(err)
+	suite.assert.Equal(-1, n)
+	data, err := os.ReadFile(outsidePath)
+	suite.assert.NoError(err)
+	suite.assert.Equal(outsideData, data)
+
+	// remote modes may carry type and special bits, which os.Root does not accept
+	n, err = ds.Process(&WorkItem{Path: "file_4", DataLen: 36, Mode: 0644 | os.ModeSymlink | os.ModeSticky})
+	suite.assert.NoError(err)
+	suite.assert.Equal(0, n)
+	info, err := os.Stat(filepath.Join(cachePath, "file_4"))
+	suite.assert.NoError(err)
+	suite.assert.True(info.Mode().IsRegular())
+	suite.assert.EqualValues(36, info.Size())
+}
+
+func (suite *splitterTestSuite) TestProcessReportsOneResultPerFile() {
+	ts, err := setupTestSplitter()
+	suite.assert.NoError(err)
+	defer func() {
+		suite.assert.NoError(ts.cleanup())
+	}()
+
+	statsMgr, err := NewStatsManager(10, false, nil)
+	suite.assert.NoError(err)
+	statsMgr.Start()
+
+	ds, err := newDownloadSplitter(&downloadSplitterOptions{ts.blockPool, ts.root, 2, remote, statsMgr, ts.locks, false})
+	suite.assert.NoError(err)
+	rdm, err := newRemoteDataManager(&remoteDataManagerOptions{workerCount: 2, remote: remote, statsMgr: statsMgr})
+	suite.assert.NoError(err)
+	ds.SetNext(rdm)
+	rdm.Start(context.TODO())
+	ds.Start(context.TODO())
+
+	// downloaded by OpenFile on priority, then found cached by the background attempt of the lister
+	_, err = ds.Process(&WorkItem{Path: "file_3", DataLen: 27, Mode: 0644, Priority: true})
+	suite.assert.NoError(err)
+	_, err = ds.Process(&WorkItem{Path: "file_3", DataLen: 27, Mode: 0644})
+	suite.assert.NoError(err)
+
+	// failed on priority, then downloaded by the background attempt
+	outsidePath := filepath.Join(os.TempDir(), "xsplitter_outside_"+randomString(8))
+	suite.assert.NoError(os.WriteFile(outsidePath, nil, 0644))
+	defer os.Remove(outsidePath)
+	linkPath := filepath.Join(ts.path, "file_2")
+	suite.assert.NoError(os.Symlink(outsidePath, linkPath))
+	_, err = ds.Process(&WorkItem{Path: "file_2", DataLen: 18, Mode: 0644, Priority: true})
+	suite.assert.Error(err)
+	suite.assert.NoError(os.Remove(linkPath))
+	_, err = ds.Process(&WorkItem{Path: "file_2", DataLen: 18, Mode: 0644})
+	suite.assert.NoError(err)
+
+	// failed in the background attempt
+	suite.assert.NoError(os.Mkdir(filepath.Join(ts.path, "file_1"), 0777))
+	_, err = ds.Process(&WorkItem{Path: "file_1", DataLen: 9, Mode: 0644})
+	suite.assert.Error(err)
+
+	ds.Stop()
+	rdm.Stop()
+	statsMgr.Stop()
+
+	suite.assert.EqualValues(2, statsMgr.success)
+	suite.assert.EqualValues(1, statsMgr.failed)
+}
+
 func (suite *splitterTestSuite) TestSplitterStartStop() {
 	ts, err := setupTestSplitter()
 	suite.assert.NoError(err)
@@ -193,7 +308,7 @@ func (suite *splitterTestSuite) TestSplitterStartStop() {
 	}()
 
 	rl, err := newRemoteLister(&remoteListerOptions{
-		path:              ts.path,
+		root:              ts.root,
 		workerCount:       4,
 		defaultPermission: common.DefaultFilePermissionBits,
 		remote:            remote,
@@ -202,7 +317,7 @@ func (suite *splitterTestSuite) TestSplitterStartStop() {
 	suite.assert.NoError(err)
 	suite.assert.NotNil(rl)
 
-	ds, err := newDownloadSplitter(&downloadSplitterOptions{ts.blockPool, ts.path, 4, remote, ts.stMgr, ts.locks, true})
+	ds, err := newDownloadSplitter(&downloadSplitterOptions{ts.blockPool, ts.root, 4, remote, ts.stMgr, ts.locks, true})
 	suite.assert.NoError(err)
 	suite.assert.NotNil(ds)
 
@@ -245,7 +360,7 @@ func (suite *splitterTestSuite) TestSplitterConsistency() {
 	}()
 
 	rl, err := newRemoteLister(&remoteListerOptions{
-		path:              ts.path,
+		root:              ts.root,
 		workerCount:       4,
 		defaultPermission: common.DefaultFilePermissionBits,
 		remote:            remote,
@@ -254,7 +369,7 @@ func (suite *splitterTestSuite) TestSplitterConsistency() {
 	suite.assert.NoError(err)
 	suite.assert.NotNil(rl)
 
-	ds, err := newDownloadSplitter(&downloadSplitterOptions{ts.blockPool, ts.path, 4, remote, ts.stMgr, ts.locks, true})
+	ds, err := newDownloadSplitter(&downloadSplitterOptions{ts.blockPool, ts.root, 4, remote, ts.stMgr, ts.locks, true})
 	suite.assert.NoError(err)
 	suite.assert.NotNil(ds)
 

@@ -5,9 +5,12 @@ package xload
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"os"
+	"path/filepath"
 	"reflect"
+	"syscall"
 
 	"time"
 
@@ -82,11 +85,26 @@ func RoundFloat(val float64, precision int) float64 {
 	return math.Round(val*ratio) / ratio
 }
 
-// returns if the given path is present, if its a directory and its size
-func isFilePresent(localPath string) (bool, bool, int64) {
-	fileInfo, err := os.Stat(localPath)
+// localName validates a remote-relative name and returns the name to use for operations on the xload
+// root. Names come from remote listings, so absolute names, names with ".." segments and other
+// non-canonical names (such as "a/./b" or "a//b") are rejected rather than mapped onto another path.
+func localName(name string) (string, error) {
+	if name == "" {
+		return ".", nil
+	}
+
+	if !filepath.IsLocal(name) || filepath.Clean(name) != name {
+		return "", fmt.Errorf("path %q is not a canonical local path: %w", name, syscall.EINVAL)
+	}
+
+	return name, nil
+}
+
+// returns if the given path is present under root, if its a directory and its size
+func isFilePresent(root *os.Root, name string) (bool, bool, int64) {
+	fileInfo, err := root.Stat(name)
 	if err != nil {
-		log.Debug("utils::isFilePresent : %s is not present in local path [%v]", localPath, err.Error())
+		log.Debug("utils::isFilePresent : %s is not present in local path [%v]", name, err.Error())
 		return false, false, 0
 	} else {
 		return true, fileInfo.IsDir(), fileInfo.Size()
