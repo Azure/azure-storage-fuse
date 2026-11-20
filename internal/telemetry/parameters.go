@@ -52,11 +52,6 @@ var dynamicParameters = map[string][]string{
 	"distributed_cache.async_buffer_bytes": nil,
 }
 
-func startupOnlyProperty(key string) bool {
-	return key == "azstorage.account_name" || key == "config_source" || key == "error_code" ||
-		strings.HasPrefix(key, dynamicPrefix) || strings.Contains(key, customerPrefix)
-}
-
 func validStartupParameter(key, value string) bool {
 	if len(value) > maxPropertyValueBytes {
 		return false
