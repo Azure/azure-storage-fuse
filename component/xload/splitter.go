@@ -94,14 +94,22 @@ func (ds *downloadSplitter) Process(item *WorkItem) (int, error) {
 	log.Debug("downloadSplitter::Process : Splitting data for %s, size %v, mode %v, priority %v, access time %v, modified time %v", item.Path, item.DataLen,
 		item.Mode, item.Priority, item.Atime.Format(time.DateTime), item.Mtime.Format(time.DateTime))
 
+	// The lister counts each listed file once and schedules it for this background download, while OpenFile may
+	// download the same file on priority first. So only the background attempt reports the result of a file.
+	result := func(success bool) {
+		if !item.Priority {
+			ds.GetStatsManager().AddStats(&StatsItem{
+				Component: SPLITTER,
+				Name:      item.Path,
+				Success:   success,
+				Download:  true,
+			})
+		}
+	}
+
 	// report a file that fails before its download starts, so that the progress can complete
 	failed := func(err error) (int, error) {
-		ds.GetStatsManager().AddStats(&StatsItem{
-			Component: SPLITTER,
-			Name:      item.Path,
-			Success:   false,
-			Download:  true,
-		})
+		result(false)
 		return -1, err
 	}
 
@@ -128,6 +136,8 @@ func (ds *downloadSplitter) Process(item *WorkItem) (int, error) {
 			return failed(fmt.Errorf("%s is a directory", item.Path))
 		} else if item.DataLen == uint64(size) {
 			log.Debug("downloadSplitter::Process : %s will be served from local path, priority %v", item.Path, item.Priority)
+			// downloaded already, for example by OpenFile on priority, which does not report it
+			result(true)
 			return int(size), nil
 		}
 	}
@@ -147,13 +157,7 @@ func (ds *downloadSplitter) Process(item *WorkItem) (int, error) {
 
 	if item.DataLen == 0 {
 		log.Debug("downloadSplitter::Process : 0 byte file %s", item.Path)
-		// send the status to stats manager
-		ds.GetStatsManager().AddStats(&StatsItem{
-			Component: SPLITTER,
-			Name:      item.Path,
-			Success:   true,
-			Download:  true,
-		})
+		result(true)
 		return 0, nil
 	}
 
@@ -275,12 +279,7 @@ func (ds *downloadSplitter) Process(item *WorkItem) (int, error) {
 	}
 
 	// send the download status to stats manager
-	ds.GetStatsManager().AddStats(&StatsItem{
-		Component: SPLITTER,
-		Name:      item.Path,
-		Success:   operationSuccess,
-		Download:  true,
-	})
+	result(operationSuccess)
 
 	if !operationSuccess {
 		log.Err("downloadSplitter::Process : Failed to download data for file %s, so deleting it from local path", item.Path)

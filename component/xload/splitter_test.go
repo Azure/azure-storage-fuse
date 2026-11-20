@@ -247,6 +247,56 @@ func (suite *splitterTestSuite) TestProcessStaysWithinPath() {
 	suite.assert.EqualValues(36, info.Size())
 }
 
+func (suite *splitterTestSuite) TestProcessReportsOneResultPerFile() {
+	ts, err := setupTestSplitter()
+	suite.assert.NoError(err)
+	defer func() {
+		suite.assert.NoError(ts.cleanup())
+	}()
+
+	statsMgr, err := NewStatsManager(10, false, nil)
+	suite.assert.NoError(err)
+	statsMgr.Start()
+
+	ds, err := newDownloadSplitter(&downloadSplitterOptions{ts.blockPool, ts.root, 2, remote, statsMgr, ts.locks, false})
+	suite.assert.NoError(err)
+	rdm, err := newRemoteDataManager(&remoteDataManagerOptions{workerCount: 2, remote: remote, statsMgr: statsMgr})
+	suite.assert.NoError(err)
+	ds.SetNext(rdm)
+	rdm.Start(context.TODO())
+	ds.Start(context.TODO())
+
+	// downloaded by OpenFile on priority, then found cached by the background attempt of the lister
+	_, err = ds.Process(&WorkItem{Path: "file_3", DataLen: 27, Mode: 0644, Priority: true})
+	suite.assert.NoError(err)
+	_, err = ds.Process(&WorkItem{Path: "file_3", DataLen: 27, Mode: 0644})
+	suite.assert.NoError(err)
+
+	// failed on priority, then downloaded by the background attempt
+	outsidePath := filepath.Join(os.TempDir(), "xsplitter_outside_"+randomString(8))
+	suite.assert.NoError(os.WriteFile(outsidePath, nil, 0644))
+	defer os.Remove(outsidePath)
+	linkPath := filepath.Join(ts.path, "file_2")
+	suite.assert.NoError(os.Symlink(outsidePath, linkPath))
+	_, err = ds.Process(&WorkItem{Path: "file_2", DataLen: 18, Mode: 0644, Priority: true})
+	suite.assert.Error(err)
+	suite.assert.NoError(os.Remove(linkPath))
+	_, err = ds.Process(&WorkItem{Path: "file_2", DataLen: 18, Mode: 0644})
+	suite.assert.NoError(err)
+
+	// failed in the background attempt
+	suite.assert.NoError(os.Mkdir(filepath.Join(ts.path, "file_1"), 0777))
+	_, err = ds.Process(&WorkItem{Path: "file_1", DataLen: 9, Mode: 0644})
+	suite.assert.Error(err)
+
+	ds.Stop()
+	rdm.Stop()
+	statsMgr.Stop()
+
+	suite.assert.EqualValues(2, statsMgr.success)
+	suite.assert.EqualValues(1, statsMgr.failed)
+}
+
 func (suite *splitterTestSuite) TestSplitterStartStop() {
 	ts, err := setupTestSplitter()
 	suite.assert.NoError(err)
