@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -15,6 +16,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -156,15 +158,19 @@ func (suite *secureConfigTestSuite) TestSecureConfigDecrypt() {
 	_, err = executeCommandSecure(rootCmd, "secure", "encrypt", fmt.Sprintf("--config-file=%s", confFile.Name()), "--passphrase=123123123123123123123123", fmt.Sprintf("--output-file=%s", outFile.Name()))
 	suite.assert.NoError(err)
 
-	_, err = executeCommandSecure(rootCmd, "secure", "decrypt", fmt.Sprintf("--config-file=%s", outFile.Name()), "--passphrase=123123123123123123123123", "--output-file=./tmp.yaml")
+	decrypted := filepath.Join(privateTestDir(suite.T()), "decrypted.yaml")
+	_, err = executeCommandSecure(rootCmd, "secure", "decrypt", fmt.Sprintf("--config-file=%s", outFile.Name()), "--passphrase=123123123123123123123123", "--output-file="+decrypted)
 	suite.assert.NoError(err)
 
-	data, err := os.ReadFile("./tmp.yaml")
+	info, err := os.Stat(decrypted)
+	require.NoError(suite.T(), err)
+	suite.assert.Equal(os.FileMode(0600), info.Mode().Perm())
+
+	data, err := os.ReadFile(decrypted)
 	suite.assert.NoError(err)
 
 	suite.assert.Equal(testPlainTextConfig, string(data))
 
-	os.Remove("./tmp.yaml")
 	os.Remove(confFile.Name() + "." + SecureConfigExtension)
 }
 

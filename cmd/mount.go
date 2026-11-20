@@ -128,16 +128,8 @@ func (opt *mountOptions) validate(skipNonEmptyMount bool) error {
 		common.DefaultLogFilePath = filepath.Join(common.DefaultWorkDir, "blobfuse2.log")
 	}
 
-	f, err := os.Stat(common.ExpandPath(common.DefaultWorkDir))
-	if err == nil && !f.IsDir() {
-		return fmt.Errorf("default work dir '%s' is not a directory", common.DefaultWorkDir)
-	}
-
-	if err != nil && os.IsNotExist(err) {
-		// create the default work dir
-		if err = os.MkdirAll(common.ExpandPath(common.DefaultWorkDir), 0777); err != nil {
-			return fmt.Errorf("failed to create default work dir [%s]", err.Error())
-		}
+	if err := ensureWorkDir(common.ExpandPath(common.DefaultWorkDir)); err != nil {
+		return fmt.Errorf("invalid default work directory: %w", err)
 	}
 
 	opt.Logging.LogFilePath = common.ExpandPath(opt.Logging.LogFilePath)
@@ -521,13 +513,13 @@ var mountCmd = &cobra.Command{
 		log.Info("mount: Mounting blobfuse2 on %s", options.MountPath)
 		if !options.Foreground {
 			pidFile := strings.ReplaceAll(options.MountPath, "/", "_") + ".pid"
-			pidFileName := filepath.Join(os.ExpandEnv(common.DefaultWorkDir), pidFile)
+			pidFileName := filepath.Join(common.ExpandPath(common.DefaultWorkDir), pidFile)
 
 			// Save the stack trace of the mount process in case of any panic
 			pid := os.Getpid()
 			traceFile := fmt.Sprintf("%s.%d.trace", strings.ReplaceAll(options.MountPath, "/", "_"), pid)
 			// we link this file to stderr of child process in daemon mode
-			traceFilePath := filepath.Join(os.ExpandEnv(common.DefaultWorkDir), traceFile)
+			traceFilePath := filepath.Join(common.ExpandPath(common.DefaultWorkDir), traceFile)
 
 			dmnCtx := &daemon.Context{
 				PidFileName: pidFileName,
@@ -574,7 +566,7 @@ var mountCmd = &cobra.Command{
 				ppid := os.Getppid()
 				traceFile = fmt.Sprintf("%s.%d.trace", strings.ReplaceAll(options.MountPath, "/", "_"), ppid)
 				// we link this file to stderr of child process in daemon mode
-				traceFilePath = filepath.Join(os.ExpandEnv(common.DefaultWorkDir), traceFile)
+				traceFilePath = filepath.Join(common.ExpandPath(common.DefaultWorkDir), traceFile)
 
 				defer dmnCtx.Release() // nolint
 				setGOConfig()

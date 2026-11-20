@@ -6,6 +6,7 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -151,7 +152,7 @@ func decryptConfigFile(saveConfig bool) ([]byte, error) {
 	if saveConfig {
 		outputFileName := ""
 		if secOpts.OutputFile == "" {
-			outputFileName = filepath.Join(os.ExpandEnv(common.DefaultWorkDir), filepath.Base(secOpts.ConfigFile))
+			outputFileName = filepath.Join(common.ExpandPath(common.DefaultWorkDir), filepath.Base(secOpts.ConfigFile))
 			extension := filepath.Ext(outputFileName)
 			outputFileName = outputFileName[0 : len(outputFileName)-len(extension)]
 		} else {
@@ -166,7 +167,10 @@ func decryptConfigFile(saveConfig bool) ([]byte, error) {
 
 // saveToFile: Save the newly generated config file and delete the source if requested
 func saveToFile(configFileName string, data []byte, deleteSource bool) error {
-	err := os.WriteFile(configFileName, data, 0777)
+	err := writePrivateConfig(configFileName, func(w io.Writer) error {
+		_, err := w.Write(data)
+		return err
+	})
 	if err != nil {
 		return err
 	}
