@@ -152,6 +152,19 @@ func (s *cacheFSSuite) TestNamesOutsideRootAreRejected() {
 	}
 }
 
+// Traversing a directory only needs search (execute) permission, so a directory without read
+// permission must still be walked to reach a file inside it.
+func (s *cacheFSSuite) TestOpenFileTraversesSearchOnlyDir() {
+	s.Require().NoError(MkdirAll(s.root, "dir"))
+	s.Require().NoError(os.WriteFile(filepath.Join(s.dir, "dir", "file"), nil, 0600))
+	s.Require().NoError(os.Chmod(filepath.Join(s.dir, "dir"), 0111))
+	defer func() { _ = os.Chmod(filepath.Join(s.dir, "dir"), DirPerm) }()
+
+	f, err := OpenFile(s.root, "dir/file", os.O_RDONLY, 0)
+	s.Require().NoError(err)
+	s.NoError(f.Close())
+}
+
 func TestCacheFS(t *testing.T) {
 	suite.Run(t, new(cacheFSSuite))
 }

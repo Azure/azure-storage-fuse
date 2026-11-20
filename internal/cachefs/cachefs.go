@@ -117,6 +117,13 @@ func rootFd(root *os.Root, op, name string) (int, error) {
 	return fd, nil
 }
 
+// openDirTraverse opens directory part relative to dirfd for path traversal only, without following a
+// symbolic link. An O_PATH descriptor needs search permission on the directory, as path lookup does,
+// not read permission.
+func openDirTraverse(dirfd int, part string) (int, error) {
+	return unix.Openat(dirfd, part, unix.O_PATH|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+}
+
 // openDirNoFollow opens directory part relative to dirfd without following a symbolic link.
 func openDirNoFollow(dirfd int, part string) (int, error) {
 	return unix.Openat(dirfd, part, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
@@ -135,7 +142,7 @@ func openParent(root *os.Root, op, name string) (int, string, error) {
 		if part == "" {
 			continue
 		}
-		next, err := openDirNoFollow(fd, part)
+		next, err := openDirTraverse(fd, part)
 		_ = unix.Close(fd)
 		if err != nil {
 			return -1, "", pathError(op, name, err)
@@ -408,7 +415,7 @@ func MkdirAll(root *os.Root, name string) error {
 		err = unix.Mkdirat(fd, part, uint32(DirPerm))
 		if err == nil || errors.Is(err, unix.EEXIST) {
 			var next int
-			next, err = openDirNoFollow(fd, part)
+			next, err = openDirTraverse(fd, part)
 			_ = unix.Close(fd)
 			fd = next
 		}

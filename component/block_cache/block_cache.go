@@ -1071,30 +1071,29 @@ func (bc *BlockCache) download(item *workItem) {
 	}
 
 	if bc.tmpPath != "" {
-		err := cachefs.MkdirAll(bc.root, bc.rootPath(filepath.Dir(localPath)))
-		if err != nil {
+		if err := cachefs.MkdirAll(bc.root, bc.rootPath(filepath.Dir(localPath))); err != nil {
+			// The block is still served from memory, so only the disk copy is skipped.
 			log.Err("BlockCache::download : error creating directory structure for file %s [%s]", localPath, err.Error())
-			return
-		}
-
-		// Dump this block to local disk cache
-		f, err := cachefs.Create(bc.root, bc.rootPath(localPath))
-		if err == nil {
-			_, err := f.Write(item.block.data[:n])
-			if err != nil {
-				log.Err("BlockCache::download : Failed to write %s to disk [%v]", localPath, err.Error())
-				_ = cachefs.Remove(bc.root, bc.rootPath(localPath))
-			}
-
-			f.Close()
-			bc.diskPolicy.Refresh(diskNode.(*list.Element))
-
-			// If user has enabled consistency check then compute the md5sum and save it in xattr
-			if bc.consistency {
-				hash := common.GetCRC64(item.block.data, n)
-				err = bc.setMd5sum(localPath, hash)
+		} else {
+			// Dump this block to local disk cache
+			f, err := cachefs.Create(bc.root, bc.rootPath(localPath))
+			if err == nil {
+				_, err := f.Write(item.block.data[:n])
 				if err != nil {
-					log.Err("BlockCache::download : Failed to set md5sum for file %s [%v]", localPath, err.Error())
+					log.Err("BlockCache::download : Failed to write %s to disk [%v]", localPath, err.Error())
+					_ = cachefs.Remove(bc.root, bc.rootPath(localPath))
+				}
+
+				f.Close()
+				bc.diskPolicy.Refresh(diskNode.(*list.Element))
+
+				// If user has enabled consistency check then compute the md5sum and save it in xattr
+				if bc.consistency {
+					hash := common.GetCRC64(item.block.data, n)
+					err = bc.setMd5sum(localPath, hash)
+					if err != nil {
+						log.Err("BlockCache::download : Failed to set md5sum for file %s [%v]", localPath, err.Error())
+					}
 				}
 			}
 		}
@@ -1867,6 +1866,11 @@ func (bc *BlockCache) DeleteFile(options internal.DeleteFileOptions) error {
 		return err
 	}
 
+	// Without a temp path there is no local cache, and globbing the working directory must not happen.
+	if bc.tmpPath == "" {
+		return nil
+	}
+
 	localPath := filepath.Join(bc.tmpPath, options.Name)
 	files, err := filepath.Glob(localPath + "*")
 	if err == nil {
@@ -1896,6 +1900,11 @@ func (bc *BlockCache) RenameFile(options internal.RenameFileOptions) error {
 	if err != nil {
 		log.Err("BlockCache::RenameFile : %s failed to rename file [%s]", options.Src, err.Error())
 		return err
+	}
+
+	// Without a temp path there is no local cache, and globbing the working directory must not happen.
+	if bc.tmpPath == "" {
+		return nil
 	}
 
 	localSrcPath := filepath.Join(bc.tmpPath, options.Src)

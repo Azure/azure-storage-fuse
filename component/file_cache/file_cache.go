@@ -1696,8 +1696,12 @@ func (fc *FileCache) Chmod(options internal.ChmodOptions) error {
 		}
 	}
 
-	// Update the mode of the file in the local cache
+	// Update the mode of the file in the local cache. The mount root maps to the cache root, which
+	// stays private, so only storage is updated for it.
 	localPath := filepath.Join(fc.tmpPath, options.Name)
+	if fc.rootPath(localPath) == "." {
+		return nil
+	}
 	info, err := cachefs.Lstat(fc.root, fc.rootPath(localPath))
 	if err == nil || os.IsExist(err) {
 		fc.policy.CacheValid(localPath)
@@ -1731,8 +1735,12 @@ func (fc *FileCache) Chown(options internal.ChownOptions) error {
 		return err
 	}
 
-	// Update the owner and group of the file in the local cache
+	// Update the owner and group of the file in the local cache. The mount root maps to the cache root,
+	// which stays private, so only storage is updated for it.
 	localPath := filepath.Join(fc.tmpPath, options.Name)
+	if fc.rootPath(localPath) == "." {
+		return nil
+	}
 	_, err = cachefs.Lstat(fc.root, fc.rootPath(localPath))
 	if err == nil || os.IsExist(err) {
 		fc.policy.CacheValid(localPath)

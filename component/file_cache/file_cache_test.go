@@ -27,6 +27,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/component/loopback"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/cachefs"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 
 	"github.com/golang/mock/gomock"
@@ -1027,6 +1028,17 @@ func (suite *fileCacheTestSuite) TestOpenFileDownloadIgnoresBlobMode() {
 	attr, err := suite.fileCache.GetAttr(internal.GetAttrOptions{Name: path})
 	suite.assert.NoError(err)
 	suite.assert.Equal(os.FileMode(0777), attr.Mode.Perm())
+}
+
+// Chmod on the mount root maps to the cache root and must not loosen its 0700 mode.
+func (suite *fileCacheTestSuite) TestChmodMountRootKeepsCacheRootPrivate() {
+	defer suite.cleanupTest()
+
+	_ = suite.fileCache.Chmod(internal.ChmodOptions{Name: "", Mode: os.FileMode(0777)})
+
+	info, err := os.Stat(suite.cache_path)
+	suite.assert.NoError(err)
+	suite.assert.Equal(cachefs.DirPerm, info.Mode().Perm())
 }
 
 // Tests for GetProperties in OpenFile should be done in E2E tests

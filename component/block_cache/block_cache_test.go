@@ -548,6 +548,73 @@ func (suite *blockCacheTestSuite) TestBlockDownloadDoesNotFollowSymlink() {
 	suite.assert.True(os.IsNotExist(err))
 }
 
+// A cache directory that cannot be created safely must not leave the block waiting forever.
+func (suite *blockCacheTestSuite) TestBlockDownloadSurvivesUnsafeCacheDir() {
+	path := "unsafe_dir/block"
+	tobj, err := setupPipeline("")
+	defer tobj.cleanupPipeline()
+	suite.assert.NoError(err)
+
+	suite.assert.NoError(os.MkdirAll(filepath.Join(tobj.fake_storage_path, "unsafe_dir"), 0755))
+	suite.assert.NoError(os.WriteFile(filepath.Join(tobj.fake_storage_path, path), make([]byte, 1024), 0644))
+
+	outside := suite.T().TempDir()
+	suite.assert.NoError(os.Symlink(outside, filepath.Join(tobj.disk_cache_path, "unsafe_dir")))
+
+	h, err := tobj.blockCache.OpenFile(internal.OpenFileOptions{Name: path})
+	suite.assert.NoError(err)
+
+	type result struct {
+		n   int
+		err error
+	}
+	ch := make(chan result, 1)
+	go func() {
+		n, err := tobj.blockCache.ReadInBuffer(&internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: make([]byte, 10)})
+		ch <- result{n, err}
+	}()
+
+	select {
+	case r := <-ch:
+		suite.assert.NoError(r.err)
+		suite.assert.Equal(10, r.n)
+	case <-time.After(30 * time.Second):
+		suite.FailNow("read hung waiting for a block that never became ready")
+	}
+
+	entries, err := os.ReadDir(outside)
+	suite.assert.NoError(err)
+	suite.assert.Empty(entries)
+}
+
+// Without a temp path there is no local cache, so delete and rename must not touch the working directory.
+func (suite *blockCacheTestSuite) TestDeleteAndRenameWithoutTmpPathIgnoreWorkingDir() {
+	tobj, err := setupPipeline("block_cache:\n  block-size-mb: 1\n  mem-size-mb: 20\n  prefetch: 12\n  parallelism: 10")
+	defer tobj.cleanupPipeline()
+	suite.assert.NoError(err)
+	suite.assert.Empty(tobj.blockCache.tmpPath)
+
+	name := "block_cwd_probe"
+	suite.assert.NoError(os.WriteFile(name, []byte("keep"), 0600))
+	defer func() { _ = os.Remove(name) }()
+	suite.assert.NoError(os.WriteFile(filepath.Join(tobj.fake_storage_path, name), []byte("x"), 0644))
+	suite.assert.NoError(os.WriteFile(filepath.Join(tobj.fake_storage_path, name+"_src"), []byte("x"), 0644))
+
+	suite.assert.NotPanics(func() {
+		err = tobj.blockCache.DeleteFile(internal.DeleteFileOptions{Name: name})
+	})
+	suite.assert.NoError(err)
+	_, statErr := os.Stat(name)
+	suite.assert.NoError(statErr)
+
+	suite.assert.NotPanics(func() {
+		err = tobj.blockCache.RenameFile(internal.RenameFileOptions{Src: name + "_src", Dst: name + "_dst"})
+	})
+	suite.assert.NoError(err)
+	_, statErr = os.Stat(name)
+	suite.assert.NoError(statErr)
+}
+
 func (suite *blockCacheTestSuite) TestFileReadBlockCacheTmpPath() {
 	tobj, err := setupPipeline("")
 	defer tobj.cleanupPipeline()
