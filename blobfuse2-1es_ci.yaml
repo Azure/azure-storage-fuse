@@ -133,7 +133,7 @@ extends:
 
           - script: |
               go test -race -count=1 -v -timeout=5m -tags=$(tags) ./test/telemetry_smoke \
-                -run '^TestBackgroundAttemptOwnedByDaemon$'
+                -run '^TestBackgroundStartupOwnedByDaemon$'
             displayName: 'Telemetry background ownership regression'
             condition: and(succeeded(), eq(variables['distro_version'], 'ubuntu_22_x86'))
             workingDirectory: $(WORK_DIR)
