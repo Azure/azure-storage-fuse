@@ -38,6 +38,9 @@ parameters:
 trigger: none
 pr: none
 
+variables:
+  BLOBFUSE_DISABLE_TELEMETRY: 'true'
+
 stages:
   - stage: BuildArtifacts
     jobs:
