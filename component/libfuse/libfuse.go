@@ -341,10 +341,6 @@ func (lf *Libfuse) Configure(_ bool) error {
 		return fmt.Errorf("%s config error %s", lf.Name(), err.Error())
 	}
 
-	telemetry.Current().Configure(map[string]string{
-		"kernel_attr_timeout_seconds": fmt.Sprint(lf.attributeExpiration),
-	})
-
 	// Disable libfuse logs if the mount is not running in foreground.
 	// Currently as of 01-05-2025, we emit the libfuse logs only to the stdout.
 	if !common.ForegroundMount {

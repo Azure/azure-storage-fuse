@@ -268,13 +268,11 @@ var mountCmd = &cobra.Command{
 
 		mountTelemetry := beginMountTelemetry()
 		defer mountTelemetry.Close()
+		startupParameters := mountTelemetry.ReadCustomerParameters()
 
 		err := config.Unmarshal(&options)
 		if err != nil {
 			return fmt.Errorf("failed to unmarshal config [%s]", err.Error())
-		}
-		if options.Foreground {
-			mountTelemetry.ReportAttempt()
 		}
 
 		// Translate the FUSE-style `-o ro` (also `ro=true`) into the blobfuse2
@@ -358,10 +356,13 @@ var mountCmd = &cobra.Command{
 					config.Set("allow-other", "true")
 				} else if strings.HasPrefix(v, "attr_timeout=") {
 					config.Set("lfuse.attribute-expiration-sec", parameter[1])
+					startupParameters.RecordFuseOption("attribute-expiration-sec", parameter[1])
 				} else if strings.HasPrefix(v, "entry_timeout=") {
 					config.Set("lfuse.entry-expiration-sec", parameter[1])
+					startupParameters.RecordFuseOption("entry-expiration-sec", parameter[1])
 				} else if strings.HasPrefix(v, "negative_timeout=") {
 					config.Set("lfuse.negative-entry-expiration-sec", parameter[1])
+					startupParameters.RecordFuseOption("negative-entry-expiration-sec", parameter[1])
 				} else if isLibfuseReadOnlyOption(v) {
 					config.Set("read-only", "true")
 				} else if v == "allow_root" || v == "allow_root=true" {
@@ -394,6 +395,7 @@ var mountCmd = &cobra.Command{
 					config.Set("lfuse.direct-io", "true")
 					config.Set("direct-io", "true")
 					directIO = true
+					startupParameters.RecordFuseOption("direct-io", "true")
 				} else {
 					return errors.New(common.FuseAllowedFlags)
 				}
@@ -526,6 +528,7 @@ var mountCmd = &cobra.Command{
 
 		telemetry.Stage("pipeline_initialization")
 		telemetryPipeline(options.Components)
+		mountTelemetry.SetCustomerParameters(options.Components, startupParameters)
 		pipeline, err = internal.NewPipeline(options.Components, !daemon.WasReborn())
 		if err != nil {
 			log.Err("mount : failed to initialize new pipeline [%v]", err)

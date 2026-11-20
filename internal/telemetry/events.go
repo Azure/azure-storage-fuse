@@ -15,9 +15,11 @@ import (
 )
 
 const (
-	MaxEventBytes = 32 * 1024
-	SendTimeout   = 5 * time.Second
-	FlushTimeout  = 5 * time.Second
+	schemaVersion         = "1"
+	maxPropertyValueBytes = 1024
+	MaxEventBytes         = 32 * 1024
+	SendTimeout           = 5 * time.Second
+	FlushTimeout          = 5 * time.Second
 )
 
 // Event is the internal, destination-independent contract for one-shot delivery.
@@ -56,21 +58,31 @@ func validID(s string) bool {
 
 func encode(e Event, key string) ([]byte, error) {
 	switch e.Name {
-	case "blobfuse.mount.attempted", "blobfuse.mount.result",
-		"blobfuse.mount.stopped":
+	case "blobfuse.mount.result", "blobfuse.mount.stopped":
 	default:
 		return nil, errors.New("invalid telemetry event")
 	}
-	if e.Properties["schema_version"] != "1" || e.Time.IsZero() ||
+	if e.Properties["schema_version"] != schemaVersion || e.Time.IsZero() ||
 		!validID(e.Properties["event_id"]) || !validID(e.Properties["mount_session_id"]) {
 		return nil, errors.New("invalid telemetry identity")
 	}
 	for k, v := range e.Properties {
-		if len(v) > 1024 {
+		if len(v) > maxPropertyValueBytes {
 			return nil, errors.New("telemetry property exceeds limit")
 		}
-		if !approvedConfig[k] && !approvedProperties[k] {
+		if startupOnlyProperty(k) && e.Name != "blobfuse.mount.result" ||
+			!approvedConfig[k] && !approvedProperties[k] && !validStartupParameter(k, v) {
 			return nil, errors.New("unapproved telemetry property")
+		}
+		switch k {
+		case "azstorage.account_name":
+			if len(v) < 3 || len(v) > 24 || strings.Trim(v, "abcdefghijklmnopqrstuvwxyz0123456789") != "" {
+				return nil, errors.New("invalid storage account name")
+			}
+		case "error_code":
+			if entry, ok := startupFailureCodes[v]; !ok || entry.category != e.Properties["error_category"] {
+				return nil, errors.New("unapproved error code")
+			}
 		}
 	}
 	for k, v := range e.Measurements {
@@ -79,6 +91,14 @@ func encode(e Event, key string) ([]byte, error) {
 		}
 		if math.IsNaN(v) || math.IsInf(v, 0) {
 			return nil, errors.New("invalid telemetry measurement")
+		}
+		if k == "result" && v != 0 && v != 1 {
+			return nil, errors.New("invalid mount result")
+		}
+	}
+	if e.Name == "blobfuse.mount.result" {
+		if _, ok := e.Measurements["result"]; !ok {
+			return nil, errors.New("missing mount result")
 		}
 	}
 	var item envelope
@@ -99,15 +119,13 @@ func encode(e Event, key string) ([]byte, error) {
 var approvedProperties = map[string]bool{
 	"schema_version": true, "event_id": true,
 	"mount_session_id": true, "blobfuse_version": true,
-	"outcome": true, "failure_stage": true,
-	"failure_category": true, "termination_class": true,
+	"failure_stage": true, "error_category": true, "error_code": true, "termination_class": true,
 }
 
 var approvedMeasurements = map[string]map[string]bool{
-	"blobfuse.mount.attempted": nil,
 	"blobfuse.mount.result": {
-		"time_to_mount_ms":   true,
-		"time_to_failure_ms": true,
+		"mount_latency_ms": true,
+		"result":           true,
 	},
 	"blobfuse.mount.stopped": {
 		"final_uptime_seconds":      true,

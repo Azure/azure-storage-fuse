@@ -22,6 +22,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
+	"github.com/Azure/azure-storage-fuse/v2/internal/telemetry"
 
 	"github.com/spf13/cobra"
 )
@@ -257,6 +258,7 @@ func (fc *FileCache) Configure(_ bool) error {
 
 	var stat syscall.Statfs_t
 	err = syscall.Statfs(fc.tmpPath, &stat)
+	calculatedLimit := err == nil && !config.IsSet(compName+".max-size-mb")
 	if err != nil {
 		log.Err("FileCache::Configure : config error %s [%s]. Assigning a default value of 4GB or if any value is assigned to .disk-size-mb in config.", fc.Name(), err.Error())
 		fc.maxCacheSizeMB = 4192
@@ -325,6 +327,9 @@ func (fc *FileCache) Configure(_ bool) error {
 		conf.CleanupOnStart, fc.policyTrace, fc.offloadIO, fc.syncToFlush, fc.syncToDelete, fc.defaultPermission,
 		fc.diskHighWaterMark, fc.maxCacheSizeMB, fc.lazyWrite, fc.mountPath)
 
+	if calculatedLimit {
+		telemetry.Current().DynamicParameter(compName, "max_size_bytes", uint64(fc.maxCacheSizeMB*MB))
+	}
 	return nil
 }
 

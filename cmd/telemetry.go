@@ -11,7 +11,6 @@ import (
 	"strings"
 	"syscall"
 	"testing"
-	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
@@ -71,7 +70,7 @@ func beginMountTelemetry() *telemetry.Session {
 	input := telemetry.Options{
 		Disabled: o.Disabled, ConnectionString: configuredTelemetryConnectionString(
 			os.Getenv("BLOBFUSE_TELEMETRY_CONNECTION_STRING"), telemetryConnectionString, testing.Testing()),
-		Version: common.Blobfuse2Version, DeferAttempt: !daemon.WasReborn(),
+		Version:    common.Blobfuse2Version,
 		Diagnostic: func(message string) { log.Warn("%s", message) },
 	}
 	if daemon.WasReborn() {
@@ -93,7 +92,7 @@ func beginMountTelemetry() *telemetry.Session {
 
 func applyTelemetryHandoff(input *telemetry.Options, value string) error {
 	fields := strings.Split(value, ",")
-	if len(fields) != 4 {
+	if len(fields) != 3 {
 		return fmt.Errorf("invalid telemetry handoff fields")
 	}
 	disabled, err := strconv.ParseBool(fields[2])
@@ -112,20 +111,14 @@ func applyTelemetryHandoff(input *telemetry.Options, value string) error {
 	if err != nil || start <= 0 {
 		return fmt.Errorf("invalid telemetry handoff clock")
 	}
-	attemptTime, err := time.Parse(time.RFC3339Nano, fields[3])
-	if err != nil || attemptTime.IsZero() {
-		return fmt.Errorf("invalid telemetry handoff attempt time")
-	}
-	input.SessionID, input.StartMonotonic, input.AttemptTime = fields[0], start, attemptTime
+	input.SessionID, input.StartMonotonic = fields[0], start
 	return nil
 }
 
 func telemetryDaemonEnvironment(session *telemetry.Session, environment []string) []string {
 	id, start := "", int64(0)
-	attemptTime := ""
 	if session != nil {
 		id, start = session.Identity(), session.StartMonotonic()
-		attemptTime = session.AttemptTime().Format(time.RFC3339Nano)
 	}
 	result := make([]string, 0, len(environment)+1)
 	for _, entry := range environment {
@@ -135,12 +128,15 @@ func telemetryDaemonEnvironment(session *telemetry.Session, environment []string
 		}
 	}
 	return append(result, telemetryHandoff+"="+strings.Join([]string{
-		id, strconv.FormatInt(start, 10), strconv.FormatBool(session == nil), attemptTime,
+		id, strconv.FormatInt(start, 10), strconv.FormatBool(session == nil),
 	}, ","))
 }
 
 func telemetryPlatform() map[string]string {
 	properties := map[string]string{}
+	if os.Getenv("KUBERNETES_SERVICE_HOST") != "" {
+		properties["deployment_environment"] = "kubernetes"
+	}
 	var info syscall.Utsname
 	if syscall.Uname(&info) == nil {
 		var b []byte
