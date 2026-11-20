@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -252,7 +253,7 @@ func mountAllContainers(containerList []string, configFile string, mountPath str
 	viper.Set("mount-all-containers", nil)
 
 	//configFileName := configFile[:(len(configFile) - len(ext))]
-	configFileName := filepath.Join(os.ExpandEnv(common.DefaultWorkDir), "config")
+	configFileName := filepath.Join(common.ExpandPath(common.DefaultWorkDir), "config")
 
 	failCount := 0
 	for _, container := range containerList {
@@ -334,15 +335,23 @@ func writeConfigFile(contConfigFile string) error {
 			return fmt.Errorf("failed to encrypt yaml content [%s]", err.Error())
 		}
 
-		err = os.WriteFile(contConfigFile, cipherText, 0777)
+		err = writePrivateConfig(contConfigFile, func(w io.Writer) error {
+			_, err := w.Write(cipherText)
+			return err
+		})
 		if err != nil {
-			return fmt.Errorf("failed to write encrypted file [%s]", err.Error())
+			return fmt.Errorf("failed to write encrypted file: %w", err)
 		}
 	} else {
-		// Write modified config as per container to a new config file
-		err := viper.WriteConfigAs(contConfigFile)
+		err := writePrivateConfig(contConfigFile, func(w io.Writer) error {
+			// Match WriteConfigAs's use of the output extension to select the format.
+			if ext := filepath.Ext(contConfigFile); ext != "" {
+				viper.SetConfigType(ext[1:])
+			}
+			return viper.WriteConfigTo(w)
+		})
 		if err != nil {
-			return fmt.Errorf("failed to write config file [%s]", err.Error())
+			return fmt.Errorf("failed to write config file: %w", err)
 		}
 	}
 	return nil
