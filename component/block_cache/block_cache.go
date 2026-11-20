@@ -24,6 +24,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
+	"github.com/Azure/azure-storage-fuse/v2/internal/telemetry"
 	"github.com/vibhansa-msft/tlru"
 )
 
@@ -162,7 +163,8 @@ func (bc *BlockCache) GenConfig() string {
 	log.Info("BlockCache::Configure : config generation started")
 
 	prefetch := uint32(math.Max((MIN_PREFETCH*2)+1, (float64)(2*runtime.NumCPU())))
-	memSize := uint32(bc.getDefaultMemSize() / _1MB)
+	memBytes, _ := bc.getDefaultMemSize()
+	memSize := uint32(memBytes / _1MB)
 	if (prefetch * common.DefaultBlockSize) > memSize {
 		prefetch = (MIN_PREFETCH * 2) + 1
 	}
@@ -179,7 +181,8 @@ func (bc *BlockCache) GenConfig() string {
 	_ = config.UnmarshalKey("tmp-path", &tmpPath)
 	if tmpPath != "" {
 		fmt.Fprintf(&sb, "\n  path: %v", tmpPath)
-		fmt.Fprintf(&sb, "\n  disk-size-mb: %v", bc.getDefaultDiskSize(tmpPath))
+		diskBytes, _ := bc.getDefaultDiskSize(tmpPath)
+		fmt.Fprintf(&sb, "\n  disk-size-mb: %v", diskBytes)
 		fmt.Fprintf(&sb, "\n  disk-timeout-sec: %v", defaultTimeout)
 	}
 
@@ -211,10 +214,11 @@ func (bc *BlockCache) Configure(_ bool) error {
 		bc.blockSize = uint64(conf.BlockSize * float64(_1MB))
 	}
 
+	var calculatedMem, calculatedDisk bool
 	if config.IsSet(compName + ".mem-size-mb") {
 		bc.memSize = conf.MemSize * _1MB
 	} else {
-		bc.memSize = bc.getDefaultMemSize()
+		bc.memSize, calculatedMem = bc.getDefaultMemSize()
 	}
 
 	bc.diskTimeout = defaultTimeout
@@ -286,9 +290,10 @@ func (bc *BlockCache) Configure(_ bool) error {
 			return fmt.Errorf("config error in %s [%s]", bc.Name(), "temp directory not empty")
 		}
 
-		bc.diskSize = bc.getDefaultDiskSize(bc.tmpPath)
+		bc.diskSize, calculatedDisk = bc.getDefaultDiskSize(bc.tmpPath)
 		if config.IsSet(compName + ".disk-size-mb") {
 			bc.diskSize = conf.DiskSize * _1MB
+			calculatedDisk = false
 		}
 	}
 
@@ -310,28 +315,41 @@ func (bc *BlockCache) Configure(_ bool) error {
 		bc.blockSize, bc.memSize, bc.workers, bc.prefetch, bc.tmpPath, bc.diskSize,
 		bc.diskTimeout, bc.prefetchOnOpen, bc.maxDiskUsageHit, bc.noPrefetch, bc.consistency, bc.lazyWrite, conf.CleanupOnStart)
 
+	session := telemetry.Current()
+	if calculatedMem {
+		session.DynamicParameter(compName, "mem_size_bytes", bc.memSize)
+	}
+	if calculatedDisk {
+		session.DynamicParameter(compName, "disk_size_bytes", bc.diskSize)
+	}
+	if !config.IsSet(compName + ".prefetch") {
+		session.DynamicParameter(compName, "prefetch", uint64(bc.prefetch))
+	}
+	if !config.IsSet(compName + ".parallelism") {
+		session.DynamicParameter(compName, "parallelism", uint64(bc.workers))
+	}
 	return nil
 }
 
-func (bc *BlockCache) getDefaultDiskSize(path string) uint64 {
+func (bc *BlockCache) getDefaultDiskSize(path string) (uint64, bool) {
 	var stat syscall.Statfs_t
 	err := syscall.Statfs(path, &stat)
 	if err != nil {
 		log.Info("BlockCache::getDefaultDiskSize : config error %s [%s]. Assigning a default value of 4GB or if any value is assigned to .disk-size-mb in config.", bc.Name(), err.Error())
-		return uint64(4192) * _1MB
+		return uint64(4192) * _1MB, false
 	}
 
-	return uint64(0.8 * float64(stat.Bavail) * float64(stat.Bsize))
+	return uint64(0.8 * float64(stat.Bavail) * float64(stat.Bsize)), true
 }
 
-func (bc *BlockCache) getDefaultMemSize() uint64 {
+func (bc *BlockCache) getDefaultMemSize() (uint64, bool) {
 	availableMemory, err := common.GetAvailableMemoryBytes()
 	if err != nil {
 		log.Info("BlockCache::getDefaultMemSize : config error %s [%s]. Assigning a pre-defined value of %d MB.", bc.Name(), err.Error(), common.DefaultMemFallbackBytes/_1MB)
-		return common.DefaultMemFallbackBytes
+		return common.DefaultMemFallbackBytes, false
 	}
 
-	return uint64(common.DefaultMemShareFraction * float64(availableMemory))
+	return uint64(common.DefaultMemShareFraction * float64(availableMemory)), true
 }
 
 // CreateFile: Create a new file

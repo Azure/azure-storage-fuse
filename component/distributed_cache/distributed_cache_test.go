@@ -1127,7 +1127,7 @@ block_cache:
 `)
 
 	dc := &DistCache{chunkSize: 16 * _1MiB}
-	got := dc.resolveMemBudget()
+	got, _ := dc.resolveMemBudget(common.GetAvailableMemoryBytes)
 
 	// bcRef  = 10240 MiB
 	// fair   = 10240 × 10%       = 1024 MiB (≥ floor 64 MiB, pool enabled)
@@ -1146,7 +1146,7 @@ block_cache:
 `)
 
 	dc := &DistCache{chunkSize: 1 * _1MiB}
-	got := dc.resolveMemBudget()
+	got, _ := dc.resolveMemBudget(common.GetAvailableMemoryBytes)
 
 	// bcRef  = 100 MiB
 	// fair   = 100 × 10%         = 10 MiB (≥ floor 4 MiB, pool enabled)
@@ -1167,7 +1167,7 @@ block_cache:
 `)
 
 	dc := &DistCache{chunkSize: 16 * _1MiB}
-	got := dc.resolveMemBudget()
+	got, _ := dc.resolveMemBudget(common.GetAvailableMemoryBytes)
 
 	// bcRef  = 100 MiB
 	// fair   = 100 × 10%         = 10 MiB
@@ -1187,7 +1187,7 @@ block_cache:
 `)
 
 	dc := &DistCache{chunkSize: 1 * _1MiB}
-	got := dc.resolveMemBudget()
+	got, _ := dc.resolveMemBudget(common.GetAvailableMemoryBytes)
 
 	// demand = 4 × 1000 × 1 MiB = 4000 MiB (deliberately large so demand does
 	// not clip the fair share on hosts with a few GiB of free RAM).
@@ -1211,7 +1211,7 @@ block_cache:
 `)
 
 	dc := &DistCache{chunkSize: 1 * _1MiB}
-	got := dc.resolveMemBudget()
+	got, _ := dc.resolveMemBudget(common.GetAvailableMemoryBytes)
 
 	// Same reasoning as the "unset" case: an explicit zero must not silently
 	// disable async populate.

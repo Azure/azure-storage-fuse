@@ -20,6 +20,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/telemetry"
 
 	dcache "github.com/nearora-msft/dist-cache-client-go"
 )
@@ -192,7 +193,11 @@ func validateDNSServer(server string) error {
 	return nil
 }
 
-func (dc *DistCache) Configure(isParent bool) error {
+func (dc *DistCache) Configure(_ bool) error {
+	return dc.configure(common.GetAvailableMemoryBytes)
+}
+
+func (dc *DistCache) configure(readAvailableMemory func() (uint64, error)) error {
 	log.Trace("DistCache::Configure")
 
 	conf := DistCacheOptions{BypassOnError: true, VerifyChecksum: true}
@@ -260,7 +265,7 @@ func (dc *DistCache) Configure(isParent bool) error {
 	// Resolve the async-upload memory budget and preallocate the buffer pool.
 	// Budget 0 means async populate is disabled; ReadInBuffer still services
 	// L2 lookups and falls through to azstorage on miss.
-	budget := dc.resolveMemBudget()
+	budget, calculatedBudget := dc.resolveMemBudget(readAvailableMemory)
 	if budget > 0 {
 		numBuffers := int(budget / dc.chunkSize)
 		dc.bufs = make(chan []byte, numBuffers)
@@ -271,6 +276,9 @@ func (dc *DistCache) Configure(isParent bool) error {
 			numBuffers, dc.chunkSize, int64(numBuffers)*dc.chunkSize/_1MiB)
 	} else {
 		log.Warn("DistCache::Configure : async upload disabled; L2 populate skipped, reads run as passthrough")
+	}
+	if calculatedBudget {
+		telemetry.Current().DynamicParameter(compName, "async_buffer_bytes", uint64(len(dc.bufs))*uint64(dc.chunkSize))
 	}
 
 	log.Info("DistCache::Configure : block-size=%d", dc.chunkSize)
@@ -584,9 +592,9 @@ func getBlockCacheWorkers() int {
 	return 3 * runtime.NumCPU()
 }
 
-// resolveMemBudget returns the total bytes distributed_cache will preallocate for its
-// async-upload buffer pool. Zero means "async populate disabled" (caller
-// should skip buffer allocation and treat the L2 populate as a no-op).
+// resolveMemBudget returns the byte budget for the async-upload buffer pool and
+// whether sizing avoided the fixed memory fallback. A zero budget disables async
+// population.
 //
 // distributed_cache does not expose its own mem-size-mb knob. It sizes the pool as a
 // fraction of block_cache's reference budget so the two caches stay
@@ -611,8 +619,9 @@ func getBlockCacheWorkers() int {
 //     populate disabled). See distCacheMinBuffers for the rationale.
 //     Otherwise both fair and demand are ≥ floor, so min(fair, demand) is
 //     a valid budget with no further clamping.
-func (dc *DistCache) resolveMemBudget() int64 {
+func (dc *DistCache) resolveMemBudget(readAvailableMemory func() (uint64, error)) (int64, bool) {
 	var bcRef int64
+	calculated := true
 	if config.IsSet("block_cache.mem-size-mb") {
 		var n uint64
 		if err := config.UnmarshalKey("block_cache.mem-size-mb", &n); err == nil && n > 0 {
@@ -620,8 +629,9 @@ func (dc *DistCache) resolveMemBudget() int64 {
 		}
 	}
 	if bcRef == 0 {
-		free, err := common.GetAvailableMemoryBytes()
+		free, err := readAvailableMemory()
 		if err != nil {
+			calculated = false
 			free = common.DefaultMemFallbackBytes
 			log.Warn("DistCache::resolveMemBudget : failed to read available memory [%s], using %d MiB fallback", err.Error(), free/_1MiB)
 		}
@@ -634,9 +644,9 @@ func (dc *DistCache) resolveMemBudget() int64 {
 	if fair < floor {
 		log.Warn("DistCache::resolveMemBudget : fair-share %d < floor %d (block=%d, bcRef=%d); async populate disabled",
 			fair, floor, dc.chunkSize, bcRef)
-		return 0
+		return 0, calculated
 	}
-	return min(fair, demand)
+	return min(fair, demand), calculated
 }
 
 // schedulePopulate spawns an async upload for the given chunk. It never

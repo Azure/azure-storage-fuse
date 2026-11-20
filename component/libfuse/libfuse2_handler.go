@@ -266,6 +266,7 @@ func libfuse2_init(conn *C.fuse_conn_info_t) (res unsafe.Pointer) {
 	log.Info("Libfuse::libfuse2_init : want: 0x%x, max_readahead: %d, max_background: %d",
 		conn.want, conn.max_readahead, conn.max_background)
 
+	fuseTelemetryReady(2, C.GoString(C.telemetry_libfuse_version()))
 	return nil
 }
 
