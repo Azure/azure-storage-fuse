@@ -30,14 +30,13 @@ instrumentation key selects.
 
 | Event | Meaning | Measurement |
 |---|---|---|
-| `blobfuse.mount.attempted` | Startup began after configuration policy was readable. | None |
-| `blobfuse.mount.result` | FUSE became ready or startup failed. | `time_to_mount_ms` or `time_to_failure_ms` |
+| `blobfuse.mount.result` | One startup outcome: `1` for FUSE readiness, `0` for startup failure. | `result`, `mount_latency_ms` when timing is available |
 | `blobfuse.mount.stopped` | Shutdown was observed. | `final_uptime_seconds` or `last_known_uptime_seconds` |
 
-Events share a mount session ID. Attempted records the original startup time,
-even when dispatched later by a background child. FUSE readiness does not
-guarantee subsequent Storage access. Startup failures include a bounded stage
-and category, not raw error text.
+Events share a mount session ID. Startup latency includes parent work for
+background mounts. An early process exit can leave no result. FUSE readiness
+does not guarantee subsequent Storage access. Failures include `failure_stage`,
+`error_category` and, when recognized, `error_code`.
 
 Stopped events use `termination_class=clean` after successful pipeline teardown,
 or `unclean_unknown` when successful teardown was not established.
@@ -46,10 +45,19 @@ Dashboards describe observed outcomes, not every mount's final state.
 
 ## Collected data and privacy
 
-Metadata includes BlobFuse version, pipeline/stream mode, authentication method,
-distribution/kernel information, FUSE versions and attribute-cache timeouts.
-No file contents, names/paths, account/container names, credentials, raw
-configuration, diagnostic logs or raw error text are uploaded.
+Metadata includes version, pipeline, platform and Storage classifications.
+Startup results also include approved settings the customer supplied
+(`<component>.customer_provided_parameters.<setting>`) and values sized
+automatically by BlobFuse (`dynamic_parameters.<component>.<setting>`). Fixed
+defaults are omitted, though an automatic value can still land on a fixed floor
+or cap. Values over 1,024 bytes are omitted. `config_source` (`yaml`, `cli`,
+`env`, a combination, or `defaults`) describes only the reported customer
+settings. Legacy `stream`, `lfuse` and `-o` inputs are reported under their
+`stream` and `libfuse` names.
+
+The account name is sent only for recognized Azure Public Storage hostnames.
+No file contents or paths, container names, credentials, endpoint URLs, raw
+configuration, logs or raw error text are sent.
 
 ## Delivery and limitations
 

@@ -17,23 +17,22 @@ The session registers its final event before releasing the mutex and closing the
 reporter exactly once. Concurrent close callers share session completion, not
 potentially late worker cleanup. The reporter needs only a worker wait group and
 completion channel, not separate lifecycle guards or a concurrency-admission
-counter. At most three lifecycle sends exist per foreground/child process.
+counter. At most two lifecycle sends exist per foreground/child process.
 
 ## Initialization and daemon handoff
 
 Startup opt-out creates no collector. Enabled sessions are fully constructed
 before publication; watched-config changes do not alter their policy.
 
-The parent defers attempted dispatch and passes its session ID, monotonic start,
-original attempt timestamp and startup opt-out decision to the child. The launch
-environment is rebuilt for each daemonization attempt. The child combines
-inherited and local startup policy; any disable wins. Missing parent collection
-or invalid enabled handoff metadata cannot create an enabled replacement.
+The parent passes its session ID, monotonic start and opt-out decision to the
+child. The launch environment is rebuilt for each daemonization attempt. The
+child combines inherited and local startup policy; any disable wins. Missing
+parent collection or invalid enabled handoff metadata cannot create an enabled
+replacement.
 
-The child owns attempted/result/stopped reporting. Successful parent exit sends
+The child owns result and stopped reporting. Successful parent exit sends
 nothing and does not wait for or cancel child delivery. A definitive launch
-failure leaves attempted and failure-result reporting with the parent.
-A child dying before telemetry initialization can still lose the attempt.
+failure leaves startup failure reporting with the parent.
 
 ## Payload validation and delivery
 
