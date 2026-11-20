@@ -750,7 +750,6 @@ func runPipeline(pipeline *internal.Pipeline, ctx context.Context) error {
 		return fmt.Errorf("unable to stop pipeline [%s]", err.Error())
 	}
 
-	telemetry.TeardownComplete()
 	return nil
 }
 
