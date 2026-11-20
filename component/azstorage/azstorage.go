@@ -69,7 +69,7 @@ reconfigure:
 		return fmt.Errorf("config error in %s [%s]", az.Name(), err.Error())
 	}
 
-	telemetry.Current().Configure(map[string]string{"auth_mode": az.stConfig.authConfig.AuthMode.String()})
+	observeStorageConfig(az.stConfig.authConfig)
 	telemetry.Stage("storage_initialization")
 	err = az.configureAndTest(isParent)
 	if err != nil {

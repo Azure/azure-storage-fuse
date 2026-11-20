@@ -19,8 +19,6 @@ type Options struct {
 	Version          string
 	SessionID        string
 	StartMonotonic   int64
-	AttemptTime      time.Time
-	DeferAttempt     bool
 	Diagnostic       func(string)
 	HTTPClient       *http.Client
 }
@@ -37,21 +35,21 @@ const (
 // Session owns only this process's measurements. It is not a supervisor.
 type Session struct {
 	// Protect lifecycle and event metadata, never the delivery wait.
-	mu               sync.Mutex
-	state            sessionState
-	closeDone        chan struct{}
-	id               string
-	version          string
-	startMono        int64
-	attemptTime      time.Time
-	attemptReported  bool
-	ready            time.Time
-	teardownComplete bool
-	config           map[string]string
-	stage            string
-	failure          string
-	reporter         *reporter
-	diag             func(string)
+	mu                 sync.Mutex
+	state              sessionState
+	closeDone          chan struct{}
+	id                 string
+	version            string
+	startMono          int64
+	ready              time.Time
+	teardownComplete   bool
+	config             map[string]string
+	explicitParameters map[string]bool
+	stage              string
+	failure            string
+	errorCode          string
+	reporter           *reporter
+	diag               func(string)
 }
 
 var active atomic.Pointer[Session]
@@ -91,12 +89,8 @@ func Start(o Options) (*Session, error) {
 	}
 	s := &Session{
 		id: newID(), version: o.Version,
-		attemptTime: time.Now().UTC(),
-		config:      map[string]string{}, stage: "configuration", diag: diagnostic,
+		config: map[string]string{}, stage: "configuration", diag: diagnostic,
 		state: sessionCollecting, closeDone: make(chan struct{}),
-	}
-	if !o.AttemptTime.IsZero() {
-		s.attemptTime = o.AttemptTime.UTC()
 	}
 	s.startMono, err = monotonicNow()
 	if err != nil {
@@ -110,33 +104,7 @@ func Start(o Options) (*Session, error) {
 	}
 	s.reporter = newReporter(d, o.HTTPClient)
 	active.Store(s)
-	if !o.DeferAttempt {
-		s.ReportAttempt()
-	}
 	return s, nil
-}
-
-// ReportAttempt claims delivery for a foreground invocation once its mode is known.
-func (s *Session) ReportAttempt() {
-	if s == nil {
-		return
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if !s.collectingLocked() {
-		return
-	}
-	s.reportAttemptLocked()
-}
-
-func (s *Session) reportAttemptLocked() {
-	if s.attemptReported {
-		return
-	}
-	s.attemptReported = true
-	e := s.event("attempted")
-	e.Time = s.attemptTime
-	s.reportLocked(e)
 }
 
 func (s *Session) reportLocked(e Event) {
@@ -148,8 +116,6 @@ func (s *Session) reportLocked(e Event) {
 func (s *Session) Identity() string { return s.id }
 
 func (s *Session) StartMonotonic() int64 { return s.startMono }
-
-func (s *Session) AttemptTime() time.Time { return s.attemptTime }
 
 func monotonicNow() (int64, error) {
 	var ts unix.Timespec
@@ -166,7 +132,7 @@ func (s *Session) event(kind string) Event {
 	return Event{
 		Name: "blobfuse.mount." + kind, Time: time.Now().UTC(),
 		Properties: map[string]string{
-			"schema_version": "1", "event_id": newID(),
+			"schema_version": schemaVersion, "event_id": newID(),
 			"mount_session_id": s.id, "blobfuse_version": s.version,
 		},
 		Measurements: map[string]float64{},
@@ -189,7 +155,11 @@ func (s *Session) Configure(properties map[string]string) {
 func (s *Session) configureLocked(properties map[string]string) {
 	for k, v := range properties {
 		if approvedConfig[k] && len(v) <= 256 {
-			s.config[k] = v
+			if v == "" {
+				delete(s.config, k)
+			} else {
+				s.config[k] = v
+			}
 		}
 	}
 }
@@ -198,7 +168,8 @@ var approvedConfig = map[string]bool{
 	"pipeline_components": true, "stream_mode": true, "auth_mode": true,
 	"fuse_api_major": true, "libfuse_runtime_version": true,
 	"distro_name": true, "distro_version": true, "kernel_release": true,
-	"attr_cache_ttl_seconds": true, "kernel_attr_timeout_seconds": true,
+	"config_source": true, "deployment_environment": true,
+	"azstorage.account_type": true, "azstorage.endpoint_type": true, "azstorage.account_name": true,
 }
 
 func Stage(stage string) {
@@ -207,16 +178,22 @@ func Stage(stage string) {
 		if s.collectingLocked() {
 			s.stage = stage
 			s.failure = ""
+			s.errorCode = ""
 		}
 		s.mu.Unlock()
 	}
 }
 
 func Failure(category string) {
+	recordFailure(category, "")
+}
+
+func recordFailure(category, code string) {
 	if s := active.Load(); s != nil {
 		s.mu.Lock()
 		if s.collectingLocked() && s.ready.IsZero() {
 			s.failure = category
+			s.errorCode = code
 		}
 		s.mu.Unlock()
 	}
@@ -238,9 +215,9 @@ func Ready(properties map[string]string) {
 	for k, v := range s.config {
 		e.Properties[k] = v
 	}
-	e.Properties["outcome"] = "success"
+	e.Measurements["result"] = 1
 	if elapsed, ok := s.startupMilliseconds(); ok {
-		e.Measurements["time_to_mount_ms"] = elapsed
+		e.Measurements["mount_latency_ms"] = elapsed
 	} else {
 		s.diag("telemetry: startup duration unavailable")
 	}
@@ -295,10 +272,8 @@ func (s *Session) finish(handoffFailure bool) {
 	previous := s.state
 	s.state = sessionClosing
 	if previous == sessionCollecting || previous == sessionDetached && handoffFailure {
-		// Before ownership transfers, a failed parent owns both startup events.
-		s.reportAttemptLocked()
 		if handoffFailure {
-			s.stage, s.failure = "daemonization", ""
+			s.stage, s.failure, s.errorCode = "daemonization", "", ""
 		}
 		kind := "stopped"
 		if s.ready.IsZero() {
@@ -306,15 +281,18 @@ func (s *Session) finish(handoffFailure bool) {
 		}
 		e := s.event(kind)
 		if s.ready.IsZero() {
-			e.Properties["outcome"] = "failure"
+			e.Measurements["result"] = 0
 			e.Properties["failure_stage"] = s.stage
 			category := s.failure
 			if category == "" {
 				category = "unknown"
 			}
-			e.Properties["failure_category"] = category
+			e.Properties["error_category"] = category
+			if s.errorCode != "" {
+				e.Properties["error_code"] = s.errorCode
+			}
 			if elapsed, ok := s.startupMilliseconds(); ok {
-				e.Measurements["time_to_failure_ms"] = elapsed
+				e.Measurements["mount_latency_ms"] = elapsed
 			} else {
 				s.diag("telemetry: startup duration unavailable")
 			}
@@ -330,6 +308,9 @@ func (s *Session) finish(handoffFailure bool) {
 			e.Measurements[uptimeField] = time.Since(s.ready).Seconds()
 		}
 		for k, v := range s.config {
+			if kind == "stopped" && startupOnlyProperty(k) {
+				continue
+			}
 			e.Properties[k] = v
 		}
 		s.reportLocked(e)
