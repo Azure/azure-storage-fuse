@@ -1007,6 +1007,28 @@ func (suite *fileCacheTestSuite) TestCreateFileDoesNotFollowSymlink() {
 	suite.assert.Equal("keep", string(content))
 }
 
+// A blob's mode must not be applied to the local cache file, which must stay non world-writable.
+// The mount-visible mode still comes from the blob attributes.
+func (suite *fileCacheTestSuite) TestOpenFileDownloadIgnoresBlobMode() {
+	defer suite.cleanupTest()
+	path := "blob_mode_download"
+	storagePath := filepath.Join(suite.fake_storage_path, path)
+	suite.assert.NoError(os.WriteFile(storagePath, []byte("blob-content"), 0644))
+	suite.assert.NoError(os.Chmod(storagePath, 0777))
+
+	handle, err := suite.fileCache.OpenFile(internal.OpenFileOptions{Name: path, Mode: 0644})
+	suite.assert.NoError(err)
+	defer suite.fileCache.ReleaseFile(internal.ReleaseFileOptions{Handle: handle})
+
+	info, err := os.Lstat(filepath.Join(suite.cache_path, path))
+	suite.assert.NoError(err)
+	suite.assert.Equal(common.DefaultFilePermissionBits, info.Mode().Perm())
+
+	attr, err := suite.fileCache.GetAttr(internal.GetAttrOptions{Name: path})
+	suite.assert.NoError(err)
+	suite.assert.Equal(os.FileMode(0777), attr.Mode.Perm())
+}
+
 // Tests for GetProperties in OpenFile should be done in E2E tests
 // - there is no good way to test it here with a loopback FS without a mock component.
 

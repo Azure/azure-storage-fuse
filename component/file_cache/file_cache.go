@@ -42,7 +42,6 @@ type FileCache struct {
 	policyTrace     bool
 	missedChmodList sync.Map
 	mountPath       string
-	allowOther      bool
 	offloadIO       bool
 	syncToFlush     bool
 	syncToDelete    bool
@@ -290,17 +289,8 @@ func (fc *FileCache) Configure(_ bool) error {
 		return fmt.Errorf("config error in %s [%s]", fc.Name(), err.Error())
 	}
 
-	err = config.UnmarshalKey("allow-other", &fc.allowOther)
-	if err != nil {
-		log.Err("FileCache::Configure : config error [unable to obtain allow-other]")
-		return fmt.Errorf("config error in %s [%s]", fc.Name(), err.Error())
-	}
-
-	if fc.allowOther {
-		fc.defaultPermission = common.DefaultAllowOtherPermissionBits
-	} else {
-		fc.defaultPermission = common.DefaultFilePermissionBits
-	}
+	// Local cache files are not world-writable, even with allow-other.
+	fc.defaultPermission = common.DefaultFilePermissionBits
 
 	cacheConfig := fc.GetPolicyConfig(conf)
 	fc.policy = NewLRUPolicy(cacheConfig)
@@ -1068,12 +1058,9 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 		log.Debug("FileCache::OpenFile : Download of %s is complete", options.Name)
 		f.Close()
 
-		// After downloading the file, update the modified times and mode of the file.
-		// The blob supplies only the permission bits; setuid, setgid and sticky are never applied.
+		// After downloading the file, update the modified times and mode of the local file.
+		// The blob's mode is never applied here; mount-visible mode still comes from GetAttr.
 		fileMode := fc.defaultPermission
-		if attr != nil && !attr.IsModeDefault() {
-			fileMode = attr.Mode.Perm()
-		}
 
 		// If user has selected some non default mode in config then every local file shall be created with that mode only
 		err = cachefs.Chmod(fc.root, fc.rootPath(localPath), fileMode)
