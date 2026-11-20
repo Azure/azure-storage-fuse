@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -42,7 +43,6 @@ func (suite *generateConfigTestSuite) SetupTest() {
 
 func (suite *generateConfigTestSuite) cleanupTest() {
 	resetCLIFlags(*generateConfigCmd)
-	resetGenOneOptions()
 	viper.Reset()
 }
 
@@ -83,6 +83,20 @@ func randomString(length int) string {
 
 func generateFileName() string {
 	return "file" + randomString(8)
+}
+
+func (suite *generateConfigTestSuite) TestGen1FlagsRemoved() {
+	for _, flag := range []string{"--enable-gen1=true", "--required-free-space-mb=500"} {
+		suite.Run(flag, func() {
+			defer suite.cleanupTest()
+			outputPath := filepath.Join(suite.T().TempDir(), "config.yaml")
+
+			_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only", "--output-file="+outputPath, flag)
+
+			suite.assert.ErrorContains(err, "unknown flag:")
+			suite.assert.NoFileExists(outputPath)
+		})
+	}
 }
 
 func (suite *generateConfigTestSuite) TestConfigFileInvalid() {
