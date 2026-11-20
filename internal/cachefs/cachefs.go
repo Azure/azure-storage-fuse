@@ -129,6 +129,33 @@ func openDirNoFollow(dirfd int, part string) (int, error) {
 	return unix.Openat(dirfd, part, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
 }
 
+// checkTrustedDir fails unless the directory behind fd is owned by the effective uid and no other
+// user can write to it. Only trusted directories may be walked, so a directory another local user
+// could modify, or move children out of, is never used as a parent.
+func checkTrustedDir(fd int, op, name string) error {
+	var st unix.Stat_t
+	if err := unix.Fstat(fd, &st); err != nil {
+		return pathError(op, name, err)
+	}
+	if int(st.Uid) != os.Geteuid() || st.Mode&(unix.S_IWGRP|unix.S_IWOTH) != 0 {
+		return pathError(op, name, unix.EACCES)
+	}
+	return nil
+}
+
+// openTrustedDirTraverse opens directory part for traversal and checks that it is trusted.
+func openTrustedDirTraverse(dirfd int, part, op, name string) (int, error) {
+	fd, err := openDirTraverse(dirfd, part)
+	if err != nil {
+		return -1, pathError(op, name, err)
+	}
+	if err = checkTrustedDir(fd, op, name); err != nil {
+		_ = unix.Close(fd)
+		return -1, err
+	}
+	return fd, nil
+}
+
 // openParent returns a descriptor for the directory containing name and the final component of
 // name. Every directory on the way is opened with O_NOFOLLOW. The caller closes the descriptor.
 func openParent(root *os.Root, op, name string) (int, string, error) {
@@ -142,10 +169,10 @@ func openParent(root *os.Root, op, name string) (int, string, error) {
 		if part == "" {
 			continue
 		}
-		next, err := openDirTraverse(fd, part)
+		next, err := openTrustedDirTraverse(fd, part, op, name)
 		_ = unix.Close(fd)
 		if err != nil {
-			return -1, "", pathError(op, name, err)
+			return -1, "", err
 		}
 		fd = next
 	}
@@ -361,6 +388,10 @@ func removeAllAt(dirfd int, name string) error {
 	if err != nil {
 		return err
 	}
+	if err = checkTrustedDir(fd, "removeall", name); err != nil {
+		_ = unix.Close(fd)
+		return err
+	}
 	dir := os.NewFile(uintptr(fd), name)
 	names, err := dir.Readdirnames(-1)
 	for _, child := range names {
@@ -415,7 +446,7 @@ func MkdirAll(root *os.Root, name string) error {
 		err = unix.Mkdirat(fd, part, uint32(DirPerm))
 		if err == nil || errors.Is(err, unix.EEXIST) {
 			var next int
-			next, err = openDirTraverse(fd, part)
+			next, err = openTrustedDirTraverse(fd, part, "mkdir", name)
 			_ = unix.Close(fd)
 			fd = next
 		}

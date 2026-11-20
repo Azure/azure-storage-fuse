@@ -165,6 +165,20 @@ func (s *cacheFSSuite) TestOpenFileTraversesSearchOnlyDir() {
 	s.NoError(f.Close())
 }
 
+// A directory that other users can write to must never be walked into, since they could move its
+// children out of the cache between the walk and the operation.
+func (s *cacheFSSuite) TestDirectoriesOtherUsersCanWriteAreRefused() {
+	s.Require().NoError(os.Mkdir(filepath.Join(s.dir, "shared"), 0777))
+	s.Require().NoError(os.Chmod(filepath.Join(s.dir, "shared"), 0777))
+
+	_, err := OpenFile(s.root, "shared/file", os.O_RDWR|os.O_CREATE, 0600)
+	s.ErrorIs(err, unix.EACCES)
+	s.ErrorIs(MkdirAll(s.root, "shared/sub"), unix.EACCES)
+	_, err = os.Lstat(filepath.Join(s.dir, "shared", "file"))
+	s.True(os.IsNotExist(err))
+	s.assertVictimUntouched()
+}
+
 func TestCacheFS(t *testing.T) {
 	suite.Run(t, new(cacheFSSuite))
 }

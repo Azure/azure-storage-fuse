@@ -3034,16 +3034,18 @@ func (suite *fileCacheTestSuite) TestDeleteDirectory() {
 }
 
 func (suite *fileCacheTestSuite) createLocalDirectoryStructure() {
-	err := os.MkdirAll(filepath.Join(suite.cache_path, "a", "b", "c", "d"), 0777)
+	// Cache subdirectories are private (0700) as created by blobfuse; a 0777 mkdir would be
+	// group-writable under common umasks and is refused as untrusted.
+	err := os.MkdirAll(filepath.Join(suite.cache_path, "a", "b", "c", "d"), 0700)
 	suite.assert.NoError(err)
 
-	err = os.MkdirAll(filepath.Join(suite.cache_path, "a", "b", "e", "f"), 0777)
+	err = os.MkdirAll(filepath.Join(suite.cache_path, "a", "b", "e", "f"), 0700)
 	suite.assert.NoError(err)
 
-	err = os.MkdirAll(filepath.Join(suite.cache_path, "a", "b", "e", "g"), 0777)
+	err = os.MkdirAll(filepath.Join(suite.cache_path, "a", "b", "e", "g"), 0700)
 	suite.assert.NoError(err)
 
-	err = os.MkdirAll(filepath.Join(suite.cache_path, "h", "l", "m", "n"), 0777)
+	err = os.MkdirAll(filepath.Join(suite.cache_path, "h", "l", "m", "n"), 0700)
 	suite.assert.NoError(err)
 }
 

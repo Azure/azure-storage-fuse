@@ -1234,7 +1234,7 @@ func (suite *blockCacheTestSuite) TestDeleteAndRenameDirAndFile() {
 	err = tobj.blockCache.DeleteDir(internal.DeleteDirOptions{Name: "testCreateDirNew"})
 	suite.assert.Error(err)
 
-	err = os.MkdirAll(filepath.Join(filepath.Join(tobj.blockCache.tmpPath, "testCreateDirNew")), 0777)
+	err = os.MkdirAll(filepath.Join(filepath.Join(tobj.blockCache.tmpPath, "testCreateDirNew")), 0700)
 	suite.assert.NoError(err)
 	err = os.WriteFile(filepath.Join(tobj.blockCache.tmpPath, "testCreateDirNew/a.txt::0"), []byte("Hello"), 0777)
 	suite.assert.NoError(err)
