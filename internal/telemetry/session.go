@@ -28,21 +28,18 @@ type sessionState uint8
 const (
 	sessionCollecting sessionState = iota
 	sessionDetached
-	sessionClosing
 	sessionClosed
 )
 
 // Session owns only this process's measurements. It is not a supervisor.
 type Session struct {
-	// Protect lifecycle and event metadata, never the delivery wait.
+	// Protect session state and result metadata, never the delivery wait.
 	mu                 sync.Mutex
 	state              sessionState
-	closeDone          chan struct{}
 	id                 string
 	version            string
 	startMono          int64
-	ready              time.Time
-	teardownComplete   bool
+	ready              bool
 	config             map[string]string
 	explicitParameters map[string]bool
 	stage              string
@@ -90,7 +87,7 @@ func Start(o Options) (*Session, error) {
 	s := &Session{
 		id: newID(), version: o.Version,
 		config: map[string]string{}, stage: "configuration", diag: diagnostic,
-		state: sessionCollecting, closeDone: make(chan struct{}),
+		state: sessionCollecting,
 	}
 	s.startMono, err = monotonicNow()
 	if err != nil {
@@ -128,15 +125,24 @@ func (s *Session) startupMilliseconds() (float64, bool) {
 	return float64(now-s.startMono) / float64(time.Millisecond), err == nil && now >= s.startMono
 }
 
-func (s *Session) event(kind string) Event {
-	return Event{
-		Name: "blobfuse.mount." + kind, Time: time.Now().UTC(),
+func (s *Session) resultEvent(result float64) Event {
+	e := Event{
+		Name: mountResultEvent, Time: time.Now().UTC(),
 		Properties: map[string]string{
 			"schema_version": schemaVersion, "event_id": newID(),
 			"mount_session_id": s.id, "blobfuse_version": s.version,
 		},
-		Measurements: map[string]float64{},
+		Measurements: map[string]float64{"result": result},
 	}
+	for k, v := range s.config {
+		e.Properties[k] = v
+	}
+	if elapsed, ok := s.startupMilliseconds(); ok {
+		e.Measurements["mount_latency_ms"] = elapsed
+	} else {
+		s.diag("telemetry: startup duration unavailable")
+	}
+	return e
 }
 
 // Configure takes only reviewed effective metadata, never raw config or errors.
@@ -191,7 +197,7 @@ func Failure(category string) {
 func recordFailure(category, code string) {
 	if s := active.Load(); s != nil {
 		s.mu.Lock()
-		if s.collectingLocked() && s.ready.IsZero() {
+		if s.collectingLocked() && !s.ready {
 			s.failure = category
 			s.errorCode = code
 		}
@@ -206,22 +212,12 @@ func Ready(properties map[string]string) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if !s.collectingLocked() || !s.ready.IsZero() {
+	if !s.collectingLocked() || s.ready {
 		return
 	}
 	s.configureLocked(properties)
-	s.ready = time.Now()
-	e := s.event("result")
-	for k, v := range s.config {
-		e.Properties[k] = v
-	}
-	e.Measurements["result"] = 1
-	if elapsed, ok := s.startupMilliseconds(); ok {
-		e.Measurements["mount_latency_ms"] = elapsed
-	} else {
-		s.diag("telemetry: startup duration unavailable")
-	}
-	s.reportLocked(e)
+	s.ready = true
+	s.reportLocked(s.resultEvent(1))
 }
 
 // Detach stops parent collection but retains its reporter until launch succeeds
@@ -243,75 +239,31 @@ func (s *Session) HandoffFailed() { s.finish(true) }
 
 func (s *Session) Close() { s.finish(false) }
 
-// TeardownComplete must be called only after every pipeline component stopped.
-func TeardownComplete() {
-	if s := active.Load(); s != nil {
-		s.mu.Lock()
-		if s.collectingLocked() && !s.ready.IsZero() {
-			s.teardownComplete = true
-		}
-		s.mu.Unlock()
-	}
-}
-
 func (s *Session) finish(handoffFailure bool) {
 	if s == nil {
 		return
 	}
 	s.mu.Lock()
-	if s.state == sessionClosed {
-		s.mu.Unlock()
-		return
-	}
-	if s.state == sessionClosing {
-		s.mu.Unlock()
-		// Share the bounded session close, not potentially late worker cleanup.
-		<-s.closeDone
-		return
-	}
 	previous := s.state
-	s.state = sessionClosing
-	if previous == sessionCollecting || previous == sessionDetached && handoffFailure {
+	if previous == sessionClosed {
+		s.mu.Unlock()
+		return
+	}
+	s.state = sessionClosed
+	active.CompareAndSwap(s, nil)
+	if !s.ready && (previous == sessionCollecting || handoffFailure) {
 		if handoffFailure {
 			s.stage, s.failure, s.errorCode = "daemonization", "", ""
 		}
-		kind := "stopped"
-		if s.ready.IsZero() {
-			kind = "result"
+		e := s.resultEvent(0)
+		e.Properties["failure_stage"] = s.stage
+		category := s.failure
+		if category == "" {
+			category = "unknown"
 		}
-		e := s.event(kind)
-		if s.ready.IsZero() {
-			e.Measurements["result"] = 0
-			e.Properties["failure_stage"] = s.stage
-			category := s.failure
-			if category == "" {
-				category = "unknown"
-			}
-			e.Properties["error_category"] = category
-			if s.errorCode != "" {
-				e.Properties["error_code"] = s.errorCode
-			}
-			if elapsed, ok := s.startupMilliseconds(); ok {
-				e.Measurements["mount_latency_ms"] = elapsed
-			} else {
-				s.diag("telemetry: startup duration unavailable")
-			}
-		} else {
-			e.Properties["termination_class"] = "unclean_unknown"
-			if s.teardownComplete {
-				e.Properties["termination_class"] = "clean"
-			}
-			uptimeField := "last_known_uptime_seconds"
-			if e.Properties["termination_class"] == "clean" {
-				uptimeField = "final_uptime_seconds"
-			}
-			e.Measurements[uptimeField] = time.Since(s.ready).Seconds()
-		}
-		for k, v := range s.config {
-			if kind == "stopped" && startupOnlyProperty(k) {
-				continue
-			}
-			e.Properties[k] = v
+		e.Properties["error_category"] = category
+		if s.errorCode != "" {
+			e.Properties["error_code"] = s.errorCode
 		}
 		s.reportLocked(e)
 	}
@@ -321,11 +273,6 @@ func (s *Session) finish(handoffFailure bool) {
 	}
 	s.mu.Unlock()
 
+	// Wait outside the mutex so late callbacks never block on delivery.
 	s.reporter.close(budget)
-
-	s.mu.Lock()
-	s.state = sessionClosed
-	active.CompareAndSwap(s, nil)
-	close(s.closeDone)
-	s.mu.Unlock()
 }
