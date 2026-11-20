@@ -75,30 +75,13 @@ func TestBackgroundStartupOwnedByDaemon(t *testing.T) {
 	default:
 	}
 	releaseOnce.Do(func() { close(release) })
-	require.NoError(t, unmount(m.binary, m.mountPath, false))
-	m.await(t, 10*time.Second, func() (bool, error) {
-		mu.Lock()
-		defer mu.Unlock()
-		return len(events) >= 2, nil
-	})
 	mu.Lock()
 	defer mu.Unlock()
-	counts := make(map[string]int)
-	session := events[0].Data.Base.Properties["mount_session_id"]
-	for _, e := range events {
-		counts[e.Data.Base.Name]++
-		require.NotEmpty(t, session)
-		require.Equal(t, session, e.Data.Base.Properties["mount_session_id"])
-		if e.Data.Base.Name == "blobfuse.mount.result" {
-			require.False(t, e.Time.Before(m.started) || e.Time.After(time.Now()), "invalid result observation time")
-			require.EqualValues(t, 1, e.Data.Base.Measurements["result"])
-			require.Positive(t, e.Data.Base.Measurements["mount_latency_ms"])
-		}
-		if e.Data.Base.Name == "blobfuse.mount.stopped" {
-			require.Equal(t, "clean", e.Data.Base.Properties["termination_class"])
-			require.Contains(t, e.Data.Base.Measurements, "final_uptime_seconds")
-			require.NotContains(t, e.Data.Base.Measurements, "last_known_uptime_seconds")
-		}
-	}
-	require.Equal(t, map[string]int{"blobfuse.mount.result": 1, "blobfuse.mount.stopped": 1}, counts)
+	require.Len(t, events, 1)
+	e := events[0]
+	require.Equal(t, "blobfuse.mount.result", e.Data.Base.Name)
+	require.NotEmpty(t, e.Data.Base.Properties["mount_session_id"])
+	require.False(t, e.Time.Before(m.started) || e.Time.After(time.Now()), "invalid result observation time")
+	require.EqualValues(t, 1, e.Data.Base.Measurements["result"])
+	require.Positive(t, e.Data.Base.Measurements["mount_latency_ms"])
 }

@@ -4,7 +4,7 @@ logging:
   level: log_off|log_crit|log_err|log_warning|log_info|log_trace|log_debug <log level. Default - log_warning> <log_debug will also enable sdk-trace logs>
   file-path: <path where log files shall be stored. Default - '$HOME/.blobfuse2/blobfuse2.log'>
 
-# Microsoft lifecycle/error telemetry, separate from diagnostic logs.
+# Microsoft mount startup telemetry, separate from diagnostic logs.
 # The current implementation uses a test destination, not approved for production.
 # The only runtime destination override is BLOBFUSE_TELEMETRY_CONNECTION_STRING.
 # Ingestion requires HTTPS to <region>.in.applicationinsights.azure.com on port 443.

@@ -180,6 +180,10 @@ func normalizedPlatform(value string) string {
 }
 
 func telemetryPipeline(components []string) {
+	session := telemetry.Current()
+	if session == nil {
+		return
+	}
 	approved := map[string]bool{"libfuse": true, "file_cache": true, "block_cache": true,
 		"attr_cache": true, "entry_cache": true, "xload": true, "distributed_cache": true, "azstorage": true}
 	names := make([]string, 0, len(components))
@@ -196,10 +200,10 @@ func telemetryPipeline(components []string) {
 	p := telemetryPlatform()
 	p["pipeline_components"] = strings.Join(names, ",")
 	p["stream_mode"] = strconv.FormatBool(stream)
-	telemetry.Current().Configure(p)
+	session.Configure(p)
 }
 
 func init() {
 	mountCmd.PersistentFlags().BoolVar(&disableMicrosoftTelemetry, "disable-telemetry", false,
-		"Disable Microsoft lifecycle and error telemetry.")
+		"Disable Microsoft mount startup telemetry.")
 }

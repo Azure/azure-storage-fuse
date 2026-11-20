@@ -1,7 +1,7 @@
-# Microsoft mount lifecycle telemetry
+# Microsoft mount startup telemetry
 
-BlobFuse sends mount startup and observed shutdown events to Application Insights.
-It does not collect periodic performance metrics or filesystem operation counters.
+BlobFuse sends mount startup results to Application Insights. It does not report
+shutdown, mount uptime, periodic performance metrics or filesystem operation counters.
 
 ## Configuration and opt-out
 
@@ -26,22 +26,18 @@ An invalid destination leaves telemetry inactive without failing the mount.
 The hostname check does not authenticate publishers or limit which resource the
 instrumentation key selects.
 
-## Events and interpretation
+## Mount result
 
 | Event | Meaning | Measurement |
 |---|---|---|
 | `blobfuse.mount.result` | One startup outcome: `1` for FUSE readiness, `0` for startup failure. | `result`, `mount_latency_ms` when timing is available |
-| `blobfuse.mount.stopped` | Shutdown was observed. | `final_uptime_seconds` or `last_known_uptime_seconds` |
 
-Events share a mount session ID. Startup latency includes parent work for
-background mounts. An early process exit can leave no result. FUSE readiness
+Startup latency includes parent work for background mounts.
+An early process exit can leave no result. FUSE readiness
 does not guarantee subsequent Storage access. Failures include `failure_stage`,
 `error_category` and, when recognized, `error_code`.
 
-Stopped events use `termination_class=clean` after successful pipeline teardown,
-or `unclean_unknown` when successful teardown was not established.
-**Missing stopped events and `unclean_unknown` do not prove a crash or OOM kill.**
-Dashboards describe observed outcomes, not every mount's final state.
+Result counts describe observed outcomes, not total mount attempts.
 
 ## Collected data and privacy
 
@@ -65,10 +61,10 @@ Each event is at most 32 KiB and gets one asynchronous send attempt, with no
 retry, queue or local persistence. Network/HTTP failures are silently discarded;
 invalid payloads or configuration can produce local diagnostics.
 
-Requests have a five-second deadline. Normal shutdown waits at most five seconds
-for sends to finish, then cancels outstanding requests. Successful background
-startup adds no telemetry delivery wait.
+Requests have a five-second deadline. If the startup result is still being sent
+when the mount process exits, BlobFuse waits at most five seconds, then cancels
+it. Successful background startup adds no telemetry delivery wait.
 
-Delivery and ordering are not guaranteed. Process termination can lose events;
+Delivery is not guaranteed. Process termination can lose events;
 later mounts do not recover or resend them. See the
-[implementation notes](microsoft-telemetry-design.md) for lifecycle and test details.
+[implementation notes](microsoft-telemetry-design.md) for implementation and test details.

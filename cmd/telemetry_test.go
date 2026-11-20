@@ -35,14 +35,9 @@ func TestTelemetryPipelineNormalizesComponents(t *testing.T) {
 			defer s.Close()
 			telemetryPipeline(tc.components)
 			telemetry.Ready(nil)
-			telemetry.TeardownComplete()
 			s.Close()
-			var result map[string]string
-			for len(events) > 0 {
-				if e := <-events; e.Data.Base.Name == "blobfuse.mount.result" {
-					result = e.Data.Base.Properties
-				}
-			}
+			require.Len(t, events, 1)
+			result := (<-events).Data.Base.Properties
 			require.Equal(t, tc.pipeline, result["pipeline_components"])
 			require.Equal(t, tc.stream, result["stream_mode"])
 		})
