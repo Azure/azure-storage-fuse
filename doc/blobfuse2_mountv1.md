@@ -6,6 +6,8 @@ Generate a configuration file for Blobfuse2 from Blobfuse configuration file/fla
 
 Generate a configuration file for Blobfuse2 from Blobfuse configuration file/flags
 
+Azure Data Lake Storage Gen1 is no longer supported. Azure Blob Storage and ADLS Gen2 remain supported.
+
 ```
 blobfuse2 mountv1 [flags]
 ```
@@ -27,7 +29,6 @@ blobfuse2 mountv1 [flags]
   -d, --d                                      Mount with foreground and FUSE logs on.
       --debug-libcurl                          Flag to allow users to debug libcurl calls.
       --empty-dir-check                        Disallows remounting using a non-empty tmp-path.
-      --enable-gen1                            To enable Gen1 mount
       --file-cache-timeout-in-seconds uint32   During this time, blobfuse will not check whether the file is up to date or not.
   -h, --help                                   help for mountv1
       --high-disk-threshold uint32             High disk threshold percentage.
@@ -46,7 +47,6 @@ blobfuse2 mountv1 [flags]
   -o, --o strings                              FUSE options.
       --output-file string                     Output Blobfuse configuration file. (default "config.yaml")
       --pre-mount-validate                     Validate blobfuse2 is mounted (default true)
-      --required-free-space-mb int             Required free space in MB
       --retry-delay-factor int32               Retry delay between two tries
       --set-content-type                       Turns on automatic 'content-type' property based on the file extension.
       --stream-cache-mb uint                   Limit total amount of data being cached in memory to conserve memory footprint of blobfuse.

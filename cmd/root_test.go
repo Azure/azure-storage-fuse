@@ -52,6 +52,12 @@ func (suite *rootCmdSuite) TestNoOptionsNoVersionCheck() {
 	suite.assert.Error(err)
 }
 
+func (suite *rootCmdSuite) TestMountGen1Removed() {
+	defer suite.cleanupTest()
+	_, err := executeCommandC(rootCmd, "mountgen1")
+	suite.assert.ErrorContains(err, `unknown command "mountgen1"`)
+}
+
 // TestCheckVersionExistsInvalidURL verifies that a completely invalid URL
 // returns false rather than panicking.
 func (suite *rootCmdSuite) TestCheckVersionExistsInvalidURL() {

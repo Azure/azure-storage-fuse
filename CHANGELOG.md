@@ -1,5 +1,6 @@
 ## 2.5.7 (Unreleased)
 **Breaking Changes**
+- Remove obsolete Azure Data Lake Storage Gen1 support: the `mountgen1` command and the `mountv1 --enable-gen1` and `--required-free-space-mb` options. Azure Blob Storage and ADLS Gen2 mounts and v1 configuration conversion remain supported.
 
 **Features**
 
