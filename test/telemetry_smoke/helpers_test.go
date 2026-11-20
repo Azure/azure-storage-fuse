@@ -25,11 +25,11 @@ import (
 const maxItem = telemetry.MaxEventBytes
 
 type telemetryMount struct {
-	binary, mountPath, outputPath string
-	cmd                           *exec.Cmd
-	done                          chan struct{}
-	exitErr                       error
-	started                       time.Time
+	mountPath string
+	cmd       *exec.Cmd
+	done      chan struct{}
+	exitErr   error
+	started   time.Time
 }
 
 func startTelemetryMount(t *testing.T, handler http.HandlerFunc) *telemetryMount {
@@ -44,8 +44,8 @@ func startTelemetryMount(t *testing.T, handler http.HandlerFunc) *telemetryMount
 	source, work := filepath.Join(dir, "source"), filepath.Join(dir, "work")
 	configPath, logPath := filepath.Join(dir, "mount.yaml"), filepath.Join(dir, "blobfuse.log")
 	m := &telemetryMount{
-		binary: binary, mountPath: filepath.Join(dir, "mount"),
-		outputPath: filepath.Join(dir, "worker.log"), done: make(chan struct{}),
+		mountPath: filepath.Join(dir, "mount"),
+		done:      make(chan struct{}),
 	}
 	for _, path := range []string{m.mountPath, source, work} {
 		require.NoError(t, os.Mkdir(path, 0700))
@@ -62,7 +62,7 @@ func startTelemetryMount(t *testing.T, handler http.HandlerFunc) *telemetryMount
 	body, err := yaml.Marshal(config)
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(configPath, body, 0600))
-	output, err := os.Create(m.outputPath)
+	output, err := os.Create(filepath.Join(dir, "worker.log"))
 	require.NoError(t, err)
 	m.cmd = exec.Command(binary, "mount", m.mountPath, "--config-file="+configPath,
 		"--foreground=false", "--read-only", "--disable-version-check", "--wait-for-mount=1s")
@@ -99,29 +99,6 @@ func startTelemetryMount(t *testing.T, handler http.HandlerFunc) *telemetryMount
 		}
 	})
 	return m
-}
-
-func (m *telemetryMount) await(t *testing.T, timeout time.Duration, condition func() (bool, error)) {
-	t.Helper()
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		ok, err := condition()
-		require.NoError(t, err)
-		if ok {
-			return
-		}
-		select {
-		case <-m.done:
-			if m.exitErr != nil {
-				t.Fatalf("worker stopped early: %v", m.exitErr)
-			}
-		default:
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-	output, err := os.ReadFile(m.outputPath)
-	require.NoError(t, err)
-	t.Fatalf("condition timed out; local worker output:\n%s", output)
 }
 
 func isMounted(path string) (bool, error) {

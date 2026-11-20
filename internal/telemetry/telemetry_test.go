@@ -4,7 +4,6 @@
 package telemetry
 
 import (
-	"bytes"
 	"encoding/json"
 	"maps"
 	"math"
@@ -99,66 +98,31 @@ func TestEncodedEventSizeBoundary(t *testing.T) {
 	}
 }
 
-func TestMeasurementNamesAreEventSpecific(t *testing.T) {
-	for _, tc := range []struct {
-		event   string
-		allowed map[string]bool
-	}{
-		{event: "blobfuse.mount.result", allowed: map[string]bool{
-			"mount_latency_ms": true, "result": true,
-		}},
-		{event: "blobfuse.mount.stopped", allowed: map[string]bool{
-			"final_uptime_seconds": true, "last_known_uptime_seconds": true,
-		}},
-	} {
-		t.Run(tc.event, func(t *testing.T) {
-			e := testEvent()
-			e.Name = tc.event
-			for _, measurements := range []map[string]float64{nil, {}} {
-				e.Measurements = measurements
-				_, err := encode(e, "test-key")
-				if tc.event == "blobfuse.mount.result" {
-					require.Error(t, err)
-				} else {
-					require.NoError(t, err)
-				}
-			}
-			for _, name := range []string{
-				"mount_latency_ms", "result", "final_uptime_seconds", "last_known_uptime_seconds",
-				"counter_0001", "", "time_to_mount_ms", "private/fixture",
-			} {
-				t.Run(name, func(t *testing.T) {
-					value := 12.5
-					if name == "result" {
-						value = 1
-					}
-					e.Measurements = map[string]float64{name: value}
-					if tc.event == "blobfuse.mount.result" {
-						e.Measurements["result"] = 1
-					}
-					before, err := json.Marshal(e)
-					require.NoError(t, err)
-					body, err := encode(e, "test-key")
-					after, marshalErr := json.Marshal(e)
-					require.NoError(t, marshalErr)
-					require.True(t, bytes.Equal(before, after), "encoding mutated the input event")
-					if !tc.allowed[name] {
-						if err == nil || err.Error() != "unapproved telemetry measurement" || body != nil {
-							t.Fatalf("unapproved measurement was not rejected: err=%v body=%s", err, body)
-						}
-						return
-					}
-					require.NoError(t, err)
-					var batch []envelope
-					require.NoError(t, json.Unmarshal(body, &batch))
-					if len(batch) != 1 || batch[0].Data.Data.Name != tc.event ||
-						!maps.Equal(batch[0].Data.Data.Measurements, e.Measurements) {
-						t.Fatalf("approved measurement changed during encoding: %s", body)
-					}
-				})
-			}
-		})
+func TestMountResultMeasurements(t *testing.T) {
+	e := testEvent()
+	e.Measurements = map[string]float64{"mount_latency_ms": 12.5}
+	_, err := encode(e, "test-key")
+	require.EqualError(t, err, "missing mount result")
+	e.Measurements["result"] = 2
+	_, err = encode(e, "test-key")
+	require.EqualError(t, err, "invalid mount result")
+
+	for _, result := range []float64{0, 1} {
+		e.Measurements["result"] = result
+		want := maps.Clone(e.Measurements)
+		body, err := encode(e, "test-key")
+		require.NoError(t, err)
+		var batch []envelope
+		require.NoError(t, json.Unmarshal(body, &batch))
+		require.Len(t, batch, 1)
+		require.Equal(t, want, batch[0].Data.Data.Measurements)
+		require.Equal(t, want, e.Measurements, "encoding mutated the input event")
 	}
+
+	e.Measurements["unexpected_measurement"] = 1
+	body, err := encode(e, "test-key")
+	require.EqualError(t, err, "unapproved telemetry measurement")
+	require.Nil(t, body)
 }
 
 func TestMeasurementValuesMustBeFinite(t *testing.T) {
@@ -166,8 +130,6 @@ func TestMeasurementValuesMustBeFinite(t *testing.T) {
 		event, measurement string
 	}{
 		{"blobfuse.mount.result", "mount_latency_ms"},
-		{"blobfuse.mount.stopped", "final_uptime_seconds"},
-		{"blobfuse.mount.stopped", "last_known_uptime_seconds"},
 	} {
 		t.Run(tc.measurement, func(t *testing.T) {
 			e := testEvent()

@@ -15,6 +15,7 @@ import (
 )
 
 const (
+	mountResultEvent      = "blobfuse.mount.result"
 	schemaVersion         = "1"
 	maxPropertyValueBytes = 1024
 	MaxEventBytes         = 32 * 1024
@@ -57,9 +58,7 @@ func validID(s string) bool {
 }
 
 func encode(e Event, key string) ([]byte, error) {
-	switch e.Name {
-	case "blobfuse.mount.result", "blobfuse.mount.stopped":
-	default:
+	if e.Name != mountResultEvent {
 		return nil, errors.New("invalid telemetry event")
 	}
 	if e.Properties["schema_version"] != schemaVersion || e.Time.IsZero() ||
@@ -70,8 +69,7 @@ func encode(e Event, key string) ([]byte, error) {
 		if len(v) > maxPropertyValueBytes {
 			return nil, errors.New("telemetry property exceeds limit")
 		}
-		if startupOnlyProperty(k) && e.Name != "blobfuse.mount.result" ||
-			!approvedConfig[k] && !approvedProperties[k] && !validStartupParameter(k, v) {
+		if !approvedConfig[k] && !approvedProperties[k] && !validStartupParameter(k, v) {
 			return nil, errors.New("unapproved telemetry property")
 		}
 		switch k {
@@ -86,7 +84,7 @@ func encode(e Event, key string) ([]byte, error) {
 		}
 	}
 	for k, v := range e.Measurements {
-		if !approvedMeasurements[e.Name][k] {
+		if !approvedMeasurements[k] {
 			return nil, errors.New("unapproved telemetry measurement")
 		}
 		if math.IsNaN(v) || math.IsInf(v, 0) {
@@ -96,10 +94,8 @@ func encode(e Event, key string) ([]byte, error) {
 			return nil, errors.New("invalid mount result")
 		}
 	}
-	if e.Name == "blobfuse.mount.result" {
-		if _, ok := e.Measurements["result"]; !ok {
-			return nil, errors.New("missing mount result")
-		}
+	if _, ok := e.Measurements["result"]; !ok {
+		return nil, errors.New("missing mount result")
 	}
 	var item envelope
 	item.Name, item.Time, item.Key = "Microsoft.ApplicationInsights.Event", e.Time, key
@@ -119,16 +115,10 @@ func encode(e Event, key string) ([]byte, error) {
 var approvedProperties = map[string]bool{
 	"schema_version": true, "event_id": true,
 	"mount_session_id": true, "blobfuse_version": true,
-	"failure_stage": true, "error_category": true, "error_code": true, "termination_class": true,
+	"failure_stage": true, "error_category": true, "error_code": true,
 }
 
-var approvedMeasurements = map[string]map[string]bool{
-	"blobfuse.mount.result": {
-		"mount_latency_ms": true,
-		"result":           true,
-	},
-	"blobfuse.mount.stopped": {
-		"final_uptime_seconds":      true,
-		"last_known_uptime_seconds": true,
-	},
+var approvedMeasurements = map[string]bool{
+	"mount_latency_ms": true,
+	"result":           true,
 }

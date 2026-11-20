@@ -117,29 +117,22 @@ azstorage:
 	Ready(nil)
 	s.Close()
 
-	require.Len(t, events, 2)
-	for range 2 {
-		e := (<-events).Data.Data
-		p := e.Properties
-		if e.Name == "blobfuse.mount.result" {
-			require.Equal(t, "both", p["config_source"])
-			require.Equal(t, "0", p["block_cache"+customerPrefix+"prefetch"])
-			require.Equal(t, "false", p["block_cache"+customerPrefix+"cleanup-on-start"])
-			require.Equal(t, "16", p["block_cache"+customerPrefix+"block-size-mb"])
-			require.Equal(t, "24", p["distributed_cache"+customerPrefix+"parallelism"])
-			require.Equal(t, "hot", p["azstorage"+customerPrefix+"tier"])
-			require.Equal(t, "4294967296", p[dynamicPrefix+"block_cache.mem_size_bytes"])
-			require.Equal(t, "fixtureaccount", p["azstorage.account_name"])
-			for _, key := range []string{dynamicPrefix + "block_cache.parallelism", dynamicPrefix + "block_cache.prefetch",
-				"block_cache" + customerPrefix + "disk-timeout-sec", "block_cache" + customerPrefix + "path",
-				"azstorage" + customerPrefix + "sas", "file_cache" + customerPrefix + "refresh-sec"} {
-				require.NotContains(t, p, key)
-			}
-		} else {
-			for key := range p {
-				require.False(t, startupOnlyProperty(key), "shutdown repeated %s", key)
-			}
-		}
+	require.Len(t, events, 1)
+	e := (<-events).Data.Data
+	require.Equal(t, mountResultEvent, e.Name)
+	p := e.Properties
+	require.Equal(t, "both", p["config_source"])
+	require.Equal(t, "0", p["block_cache"+customerPrefix+"prefetch"])
+	require.Equal(t, "false", p["block_cache"+customerPrefix+"cleanup-on-start"])
+	require.Equal(t, "16", p["block_cache"+customerPrefix+"block-size-mb"])
+	require.Equal(t, "24", p["distributed_cache"+customerPrefix+"parallelism"])
+	require.Equal(t, "hot", p["azstorage"+customerPrefix+"tier"])
+	require.Equal(t, "4294967296", p[dynamicPrefix+"block_cache.mem_size_bytes"])
+	require.Equal(t, "fixtureaccount", p["azstorage.account_name"])
+	for _, key := range []string{dynamicPrefix + "block_cache.parallelism", dynamicPrefix + "block_cache.prefetch",
+		"block_cache" + customerPrefix + "disk-timeout-sec", "block_cache" + customerPrefix + "path",
+		"azstorage" + customerPrefix + "sas", "file_cache" + customerPrefix + "refresh-sec"} {
+		require.NotContains(t, p, key)
 	}
 }
 
@@ -168,15 +161,8 @@ libfuse-options: ["attr_timeout=`+oversized+`"]
 	Ready(nil)
 	s.Close()
 
-	require.Len(t, events, 2)
-	var result map[string]string
-	for range 2 {
-		event := (<-events).Data.Data
-		if event.Name == "blobfuse.mount.result" {
-			result = event.Properties
-		}
-	}
-	require.NotNil(t, result)
+	require.Len(t, events, 1)
+	result := (<-events).Data.Data.Properties
 	require.Equal(t, atLimit, result["block_cache"+customerPrefix+"parallelism"])
 	require.NotContains(t, result, "block_cache"+customerPrefix+"prefetch")
 	require.NotContains(t, result, dynamicPrefix+"block_cache.prefetch")
@@ -234,14 +220,8 @@ block_cache:
 	Ready(nil)
 	s.Close()
 
-	require.Len(t, events, 2)
-	var result map[string]string
-	for range 2 {
-		if event := (<-events).Data.Data; event.Name == "blobfuse.mount.result" {
-			result = event.Properties
-		}
-	}
-	require.NotNil(t, result)
+	require.Len(t, events, 1)
+	result := (<-events).Data.Data.Properties
 	require.Equal(t, "16", result["stream"+customerPrefix+"block-size-mb"])
 	require.Equal(t, "16", result["stream"+customerPrefix+"max-blocks-per-file"])
 	require.Equal(t, "1024", result["stream"+customerPrefix+"stream-cache-mb"])

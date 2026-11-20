@@ -11,7 +11,6 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -54,12 +53,11 @@ func parseDestination(connection string) (destination, error) {
 }
 
 type reporter struct {
-	workers sync.WaitGroup
-	done    chan struct{}
-	ctx     context.Context
-	cancel  context.CancelFunc
-	dest    destination
-	client  *http.Client
+	done   chan struct{}
+	ctx    context.Context
+	cancel context.CancelFunc
+	dest   destination
+	client *http.Client
 }
 
 func newReporter(d destination, client *http.Client) *reporter {
@@ -72,11 +70,10 @@ func newReporter(d destination, client *http.Client) *reporter {
 		client = &cloned
 	}
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	r := &reporter{
-		ctx: ctx, cancel: cancel, done: make(chan struct{}),
+	return &reporter{
+		ctx: ctx, cancel: cancel,
 		dest: d, client: client,
 	}
-	return r
 }
 
 func (r *reporter) report(e Event) error {
@@ -84,52 +81,35 @@ func (r *reporter) report(e Event) error {
 	if err != nil {
 		return err
 	}
-	if r.ctx.Err() != nil {
-		return nil
-	}
-	// Session serializes registration and prevents reports once closing starts.
-	r.workers.Add(1)
+	// Session registers at most one result, before closing the reporter.
+	r.done = make(chan struct{})
+	done := r.done
 	go func() {
-		defer r.workers.Done()
-		// Delivery is best-effort. In particular, never call the logger from
-		// a worker that may outlive the bounded shutdown wait.
-		_ = r.send(r.ctx, body)
+		defer close(done)
+		defer r.client.CloseIdleConnections()
+		r.send(body)
 	}()
 	return nil
 }
 
-func (r *reporter) send(parent context.Context, body []byte) error {
-	ctx, cancel := context.WithTimeout(parent, SendTimeout)
+func (r *reporter) send(body []byte) {
+	ctx, cancel := context.WithTimeout(r.ctx, SendTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, r.dest.endpoint, bytes.NewReader(body))
 	if err != nil {
-		return errors.New("invalid telemetry request")
+		return
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := r.client.Do(req)
-	if err != nil {
-		return errors.New("telemetry transport failure")
+	if err == nil {
+		// Best effort: no response body processing, retries, or worker logging.
+		_ = resp.Body.Close()
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusPartialContent {
-		// Each request contains one event; partial acceptance is a failure.
-		return errors.New("telemetry item rejected")
-	}
-	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		return nil
-	}
-	return errors.New("telemetry ingestion rejected request")
 }
 
 func (r *reporter) close(budget time.Duration) {
 	defer r.cancel()
-	// Session calls close once, after registering its final event.
-	go func() {
-		r.workers.Wait()
-		r.client.CloseIdleConnections()
-		close(r.done)
-	}()
-	if budget > 0 {
+	if r.done != nil && budget > 0 {
 		timer := time.NewTimer(budget)
 		defer timer.Stop()
 		select {
