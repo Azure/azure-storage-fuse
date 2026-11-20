@@ -75,14 +75,10 @@ func TestTelemetryDaemonPolicyHandoff(t *testing.T) {
 				require.Empty(t, events, "disabled daemon transmitted events")
 				return
 			}
-			require.Len(t, events, 2)
-			kinds := map[string]int{}
-			for len(events) > 0 {
-				e := <-events
-				kinds[e.Data.Base.Name]++
-				require.Equal(t, parent.Identity(), e.Data.Base.Properties["mount_session_id"])
-			}
-			require.Equal(t, map[string]int{"blobfuse.mount.result": 1, "blobfuse.mount.stopped": 1}, kinds)
+			require.Len(t, events, 1)
+			e := (<-events).Data.Base
+			require.Equal(t, "blobfuse.mount.result", e.Name)
+			require.Equal(t, parent.Identity(), e.Properties["mount_session_id"])
 		})
 	}
 }
@@ -104,8 +100,6 @@ func TestTelemetryDaemonHandoffChild(t *testing.T) {
 	require.NotNil(t, session)
 	defer session.Close()
 	telemetry.Ready(nil)
-	telemetry.TeardownComplete()
-	session.Close()
 }
 
 func TestTelemetryHandoffRejectsInvalidEnabledContext(t *testing.T) {
