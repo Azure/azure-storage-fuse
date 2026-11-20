@@ -6,6 +6,7 @@ package telemetry
 import (
 	"bytes"
 	"encoding/json"
+	"maps"
 	"math"
 	"net/http"
 	"strings"
@@ -17,9 +18,9 @@ import (
 
 func testEvent() Event {
 	return Event{Name: "blobfuse.mount.result", Time: time.Now().UTC(),
-		Properties: map[string]string{"schema_version": "1", "event_id": newID(),
+		Properties: map[string]string{"schema_version": schemaVersion, "event_id": newID(),
 			"mount_session_id": newID()},
-		Measurements: map[string]float64{}}
+		Measurements: map[string]float64{"result": 1}}
 }
 
 func TestEncodeRejectsUnapprovedSchema(t *testing.T) {
@@ -38,10 +39,43 @@ func TestEncodeRejectsUnapprovedSchema(t *testing.T) {
 	}
 }
 
+func TestStartupFailureCodeReporting(t *testing.T) {
+	for _, tc := range []struct {
+		name, category, code string
+		record               func()
+	}{
+		{"storage-code", "container_not_found", "ContainerNotFound", func() { StorageFailureCode("ContainerNotFound") }},
+		{"identity-status", "authentication", "403", func() { IdentityFailureStatus(403) }},
+		{"unknown-storage-code", "unknown", "", func() { StorageFailureCode("InvalidQueryParameterValue") }},
+		{"identity-status-as-storage-code", "unknown", "", func() { StorageFailureCode("403") }},
+		{"unknown-status-preserves-category", "dns_resolution", "", func() {
+			Failure("dns_resolution")
+			IdentityFailureStatus(500)
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, events := recordingSession(t, Options{})
+			tc.record()
+			s.Close()
+
+			require.Len(t, events, 1)
+			e := (<-events).Data.Data
+			require.Equal(t, "blobfuse.mount.result", e.Name)
+			require.Equal(t, float64(0), e.Measurements["result"])
+			require.Equal(t, tc.category, e.Properties["error_category"])
+			if tc.code == "" {
+				require.NotContains(t, e.Properties, "error_code")
+			} else {
+				require.Equal(t, tc.code, e.Properties["error_code"])
+			}
+		})
+	}
+}
+
 func TestEncodedEventSizeBoundary(t *testing.T) {
 	const limit = 32 * 1024
 	e := testEvent()
-	e.Properties["failure_category"] = ""
+	e.Properties["error_category"] = ""
 	// JSON escaping reaches the envelope cap using only approved fields.
 	for _, field := range []string{"pipeline_components", "auth_mode", "distro_name", "distro_version", "kernel_release"} {
 		e.Properties[field] = strings.Repeat("<", 1024)
@@ -54,12 +88,12 @@ func TestEncodedEventSizeBoundary(t *testing.T) {
 	if padding < 0 || padding/6+padding%6 >= 1024 {
 		t.Fatalf("fixture cannot reach size boundary within property limits: padding=%d", padding)
 	}
-	e.Properties["failure_category"] = strings.Repeat("<", padding/6) + strings.Repeat("x", padding%6)
+	e.Properties["error_category"] = strings.Repeat("<", padding/6) + strings.Repeat("x", padding%6)
 	body, err = encode(e, "test-key")
 	if err != nil || len(body) != limit {
 		t.Fatalf("32-KiB encoded event rejected: bytes=%d err=%v", len(body), err)
 	}
-	e.Properties["failure_category"] += "x"
+	e.Properties["error_category"] += "x"
 	if _, err := encode(e, "test-key"); err == nil || err.Error() != "telemetry event exceeds limit" {
 		t.Fatalf("expected event-size rejection above 32 KiB: %v", err)
 	}
@@ -70,9 +104,8 @@ func TestMeasurementNamesAreEventSpecific(t *testing.T) {
 		event   string
 		allowed map[string]bool
 	}{
-		{event: "blobfuse.mount.attempted"},
 		{event: "blobfuse.mount.result", allowed: map[string]bool{
-			"time_to_mount_ms": true, "time_to_failure_ms": true,
+			"mount_latency_ms": true, "result": true,
 		}},
 		{event: "blobfuse.mount.stopped", allowed: map[string]bool{
 			"final_uptime_seconds": true, "last_known_uptime_seconds": true,
@@ -83,17 +116,26 @@ func TestMeasurementNamesAreEventSpecific(t *testing.T) {
 			e.Name = tc.event
 			for _, measurements := range []map[string]float64{nil, {}} {
 				e.Measurements = measurements
-				if _, err := encode(e, "test-key"); err != nil {
-					t.Fatalf("measurement-free event rejected: %v", err)
+				_, err := encode(e, "test-key")
+				if tc.event == "blobfuse.mount.result" {
+					require.Error(t, err)
+				} else {
+					require.NoError(t, err)
 				}
 			}
 			for _, name := range []string{
-				"time_to_mount_ms", "time_to_failure_ms", "final_uptime_seconds", "last_known_uptime_seconds",
-				"counter_0001", "", "Time_to_mount_ms", "private/fixture",
+				"mount_latency_ms", "result", "final_uptime_seconds", "last_known_uptime_seconds",
+				"counter_0001", "", "time_to_mount_ms", "private/fixture",
 			} {
 				t.Run(name, func(t *testing.T) {
-					e.Measurements = map[string]float64{name: 12.5}
-					e.Properties["outcome"] = "success"
+					value := 12.5
+					if name == "result" {
+						value = 1
+					}
+					e.Measurements = map[string]float64{name: value}
+					if tc.event == "blobfuse.mount.result" {
+						e.Measurements["result"] = 1
+					}
 					before, err := json.Marshal(e)
 					require.NoError(t, err)
 					body, err := encode(e, "test-key")
@@ -110,8 +152,7 @@ func TestMeasurementNamesAreEventSpecific(t *testing.T) {
 					var batch []envelope
 					require.NoError(t, json.Unmarshal(body, &batch))
 					if len(batch) != 1 || batch[0].Data.Data.Name != tc.event ||
-						batch[0].Data.Data.Properties["outcome"] != "success" || len(batch[0].Data.Data.Measurements) != 1 ||
-						batch[0].Data.Data.Measurements[name] != 12.5 {
+						!maps.Equal(batch[0].Data.Data.Measurements, e.Measurements) {
 						t.Fatalf("approved measurement changed during encoding: %s", body)
 					}
 				})
@@ -124,8 +165,7 @@ func TestMeasurementValuesMustBeFinite(t *testing.T) {
 	for _, tc := range []struct {
 		event, measurement string
 	}{
-		{"blobfuse.mount.result", "time_to_mount_ms"},
-		{"blobfuse.mount.result", "time_to_failure_ms"},
+		{"blobfuse.mount.result", "mount_latency_ms"},
 		{"blobfuse.mount.stopped", "final_uptime_seconds"},
 		{"blobfuse.mount.stopped", "last_known_uptime_seconds"},
 	} {
@@ -134,6 +174,9 @@ func TestMeasurementValuesMustBeFinite(t *testing.T) {
 			e.Name = tc.event
 			for _, value := range []float64{0, 12.5, math.MaxFloat64, math.NaN(), math.Inf(1), math.Inf(-1)} {
 				e.Measurements = map[string]float64{tc.measurement: value}
+				if tc.event == "blobfuse.mount.result" {
+					e.Measurements["result"] = 1
+				}
 				body, err := encode(e, "test-key")
 				if math.IsNaN(value) || math.IsInf(value, 0) {
 					if err == nil || err.Error() != "invalid telemetry measurement" || body != nil {

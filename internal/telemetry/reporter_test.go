@@ -77,7 +77,6 @@ func TestOneShotFailuresAreSilentAndDoNotStopFutureReports(t *testing.T) {
 func TestSessionRejectsUnapprovedMeasurementsBeforeDelivery(t *testing.T) {
 	var requests, diagnostics atomic.Int64
 	s := testSession(t, Options{
-		DeferAttempt: true,
 		Diagnostic: func(message string) {
 			diagnostics.Add(1)
 			if message != "telemetry: invalid or oversized event dropped" {
@@ -90,7 +89,7 @@ func TestSessionRejectsUnapprovedMeasurementsBeforeDelivery(t *testing.T) {
 		})},
 	})
 	e := testEvent()
-	e.Measurements["time_to_mount_ms"] = 1
+	e.Measurements["mount_latency_ms"] = 1
 	e.Measurements["private/fixture"] = 2
 	s.mu.Lock()
 	for range 2 {

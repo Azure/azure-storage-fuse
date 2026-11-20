@@ -24,7 +24,6 @@ func TestSessionClosingReleasesStateLockAndCoordinatesCallers(t *testing.T) {
 			var startOnce, releaseOnce sync.Once
 			var requests atomic.Int64
 			s := testSession(t, Options{
-				DeferAttempt: tc.handoff,
 				HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 					e, err := requestEvent(req)
 					if err != nil {
@@ -74,7 +73,6 @@ func TestSessionClosingReleasesStateLockAndCoordinatesCallers(t *testing.T) {
 				Ready(map[string]string{"fuse_api_major": "2"})
 				TeardownComplete()
 				s.Detach()
-				s.ReportAttempt()
 				s.mu.Lock()
 				stage := "pipeline_initialization"
 				if tc.handoff {
@@ -115,14 +113,13 @@ func TestSessionClosingReleasesStateLockAndCoordinatesCallers(t *testing.T) {
 			}
 			waitForSends(t, s.reporter)
 			s.Configure(map[string]string{"auth_mode": "SPN"})
-			s.ReportAttempt()
 			s.HandoffFailed()
 			s.mu.Lock()
 			closed := s.state == sessionClosed && s.config["auth_mode"] == "MSI"
 			s.mu.Unlock()
-			want := int64(3)
+			want := int64(2)
 			if tc.handoff {
-				want = 2
+				want = 1
 			}
 			if !closed || Current() != nil || active.Load() != nil || requests.Load() != want {
 				t.Fatalf("shutdown changed state or lifecycle count: closed=%t sends=%d", closed, requests.Load())

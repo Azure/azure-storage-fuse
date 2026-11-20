@@ -9,7 +9,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/internal/telemetry"
 	"github.com/sevlyar/go-daemon"
@@ -34,7 +33,7 @@ func TestTelemetryDaemonPolicyHandoff(t *testing.T) {
 			if scenario != "initially-disabled" {
 				var err error
 				parent, err = telemetry.Start(telemetry.Options{
-					ConnectionString: connection, HTTPClient: server.Client, DeferAttempt: true,
+					ConnectionString: connection, HTTPClient: server.Client,
 				})
 				require.NoError(t, err)
 				require.NotNil(t, parent)
@@ -59,7 +58,7 @@ func TestTelemetryDaemonPolicyHandoff(t *testing.T) {
 			}
 			require.Equal(t, 1, count, "handoff entries")
 			if !inherited.Disabled && (inherited.SessionID != parent.Identity() ||
-				inherited.StartMonotonic != parent.StartMonotonic() || !inherited.AttemptTime.Equal(parent.AttemptTime())) {
+				inherited.StartMonotonic != parent.StartMonotonic()) {
 				t.Fatal("handoff lost identity or original startup timing")
 			}
 			wantDisabled := scenario == "initially-disabled" || scenario == "child-disabled"
@@ -76,17 +75,14 @@ func TestTelemetryDaemonPolicyHandoff(t *testing.T) {
 				require.Empty(t, events, "disabled daemon transmitted events")
 				return
 			}
-			require.Len(t, events, 3)
+			require.Len(t, events, 2)
 			kinds := map[string]int{}
 			for len(events) > 0 {
 				e := <-events
 				kinds[e.Data.Base.Name]++
 				require.Equal(t, parent.Identity(), e.Data.Base.Properties["mount_session_id"])
-				if e.Data.Base.Name == "blobfuse.mount.attempted" {
-					require.True(t, e.Time.Equal(parent.AttemptTime()), "original attempt time lost")
-				}
 			}
-			require.Equal(t, map[string]int{"blobfuse.mount.attempted": 1, "blobfuse.mount.result": 1, "blobfuse.mount.stopped": 1}, kinds)
+			require.Equal(t, map[string]int{"blobfuse.mount.result": 1, "blobfuse.mount.stopped": 1}, kinds)
 		})
 	}
 }
@@ -114,17 +110,14 @@ func TestTelemetryDaemonHandoffChild(t *testing.T) {
 
 func TestTelemetryHandoffRejectsInvalidEnabledContext(t *testing.T) {
 	id := strings.Repeat("a", 32)
-	validTime := time.Now().UTC().Format(time.RFC3339Nano)
 	for _, value := range []string{
-		"", "invalid", "id,1,false," + validTime, id + ",bad,false," + validTime,
-		id + ",0,false," + validTime, id + ",1,invalid," + validTime,
-		id + ",1,false", id + ",1,false,", id + ",1,false,bad",
-		id + ",1,false," + time.Time{}.Format(time.RFC3339Nano),
+		"", "invalid", "id,1,false", id + ",bad,false",
+		id + ",0,false", id + ",1,invalid", id + ",1,false,extra",
 	} {
 		var input telemetry.Options
 		require.Error(t, applyTelemetryHandoff(&input, value), "handoff: %q", value)
 	}
-	for _, value := range []string{",0,true,", id + ",1,true," + validTime} {
+	for _, value := range []string{",0,true", id + ",1,true"} {
 		var input telemetry.Options
 		require.NoError(t, applyTelemetryHandoff(&input, value))
 		require.True(t, input.Disabled)
