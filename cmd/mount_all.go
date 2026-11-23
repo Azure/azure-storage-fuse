@@ -90,7 +90,7 @@ func processCommand() error {
 		options.Logging.LogLevel = "LOG_WARNING"
 	}
 
-	err = options.validate(true)
+	err = options.validateWithWorkDir(true, configFileExists)
 	if err != nil {
 		return err
 	}

@@ -88,6 +88,10 @@ type mountOptions struct {
 var options mountOptions
 
 func (opt *mountOptions) validate(skipNonEmptyMount bool) error {
+	return opt.validateWithWorkDir(skipNonEmptyMount, false)
+}
+
+func (opt *mountOptions) validateWithWorkDir(skipNonEmptyMount, generatesConfigs bool) error {
 	if opt.MountPath == "" {
 		return fmt.Errorf("mount path not provided")
 	}
@@ -128,8 +132,17 @@ func (opt *mountOptions) validate(skipNonEmptyMount bool) error {
 		common.DefaultLogFilePath = filepath.Join(common.DefaultWorkDir, "blobfuse2.log")
 	}
 
-	if err := ensureWorkDir(common.ExpandPath(common.DefaultWorkDir)); err != nil {
-		return fmt.Errorf("invalid default work directory: %w", err)
+	workDir := common.ExpandPath(common.DefaultWorkDir)
+	if generatesConfigs {
+		if err := ensurePrivateConfigDir(workDir); err != nil {
+			return fmt.Errorf("invalid work directory for generated configs: %w", err)
+		}
+	} else if f, err := os.Stat(workDir); err == nil && !f.IsDir() {
+		return fmt.Errorf("default work dir '%s' is not a directory", common.DefaultWorkDir)
+	} else if os.IsNotExist(err) {
+		if err := os.MkdirAll(workDir, 0777); err != nil {
+			return fmt.Errorf("failed to create default work dir [%s]", err.Error())
+		}
 	}
 
 	opt.Logging.LogFilePath = common.ExpandPath(opt.Logging.LogFilePath)
@@ -513,13 +526,13 @@ var mountCmd = &cobra.Command{
 		log.Info("mount: Mounting blobfuse2 on %s", options.MountPath)
 		if !options.Foreground {
 			pidFile := strings.ReplaceAll(options.MountPath, "/", "_") + ".pid"
-			pidFileName := filepath.Join(common.ExpandPath(common.DefaultWorkDir), pidFile)
+			pidFileName := filepath.Join(os.ExpandEnv(common.DefaultWorkDir), pidFile)
 
 			// Save the stack trace of the mount process in case of any panic
 			pid := os.Getpid()
 			traceFile := fmt.Sprintf("%s.%d.trace", strings.ReplaceAll(options.MountPath, "/", "_"), pid)
 			// we link this file to stderr of child process in daemon mode
-			traceFilePath := filepath.Join(common.ExpandPath(common.DefaultWorkDir), traceFile)
+			traceFilePath := filepath.Join(os.ExpandEnv(common.DefaultWorkDir), traceFile)
 
 			dmnCtx := &daemon.Context{
 				PidFileName: pidFileName,
@@ -566,7 +579,7 @@ var mountCmd = &cobra.Command{
 				ppid := os.Getppid()
 				traceFile = fmt.Sprintf("%s.%d.trace", strings.ReplaceAll(options.MountPath, "/", "_"), ppid)
 				// we link this file to stderr of child process in daemon mode
-				traceFilePath = filepath.Join(common.ExpandPath(common.DefaultWorkDir), traceFile)
+				traceFilePath = filepath.Join(os.ExpandEnv(common.DefaultWorkDir), traceFile)
 
 				defer dmnCtx.Release() // nolint
 				setGOConfig()

@@ -578,7 +578,7 @@ func (suite *mountTestSuite) TestUpdateCliParams() {
 
 func (suite *mountTestSuite) TestMountOptionVaildate() {
 	defer suite.cleanupTest()
-	suite.T().Setenv("HOME", privateTestDir(suite.T()))
+	suite.T().Setenv("HOME", suite.T().TempDir())
 	opts := &mountOptions{}
 
 	err := opts.validate(true)
@@ -631,21 +631,28 @@ func TestMountWorkDirPermissions(t *testing.T) {
 		DefaultWorkingDir: filepath.Join(dir, "nested", "work"),
 		Logging:           LogOptions{LogLevel: "LOG_WARNING"},
 	}
-	require.NoError(t, opts.validate(true))
+	require.NoError(t, opts.validateWithWorkDir(true, true))
 	info, err := os.Stat(opts.DefaultWorkingDir)
 	require.NoError(t, err)
 	assert.Equal(t, os.FileMode(0700), info.Mode().Perm())
 
 	require.NoError(t, os.Chmod(opts.DefaultWorkingDir, 0755))
-	require.NoError(t, opts.validate(true))
+	require.NoError(t, opts.validateWithWorkDir(true, true))
 
-	require.NoError(t, os.Chmod(filepath.Dir(opts.DefaultWorkingDir), 0777))
-	require.ErrorContains(t, opts.validate(true), "not writable by group or others")
+	require.NoError(t, os.Chmod(opts.DefaultWorkingDir, 0775))
+	require.NoError(t, opts.validate(false))
+	require.ErrorContains(t, opts.validateWithWorkDir(true, true), "not writable by group or others")
+
+	require.NoError(t, os.Chmod(opts.DefaultWorkingDir, 0755))
+	require.NoError(t, os.Chmod(filepath.Dir(opts.DefaultWorkingDir), 0775))
+	require.NoError(t, opts.validate(false))
+	require.ErrorContains(t, opts.validateWithWorkDir(true, true), "not writable by group or others")
 
 	link := filepath.Join(dir, "work-link")
 	require.NoError(t, os.Symlink(opts.DefaultWorkingDir, link))
 	opts.DefaultWorkingDir = link
-	require.ErrorContains(t, opts.validate(true), "not a symlink")
+	require.NoError(t, opts.validate(false))
+	require.ErrorContains(t, opts.validateWithWorkDir(true, true), "not a symlink")
 }
 
 func (suite *mountTestSuite) TestCleanUpOnStartFlag() {

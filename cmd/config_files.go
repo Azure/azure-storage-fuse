@@ -12,7 +12,7 @@ import (
 	"syscall"
 )
 
-func ensureWorkDir(path string) error {
+func ensurePrivateConfigDir(path string) error {
 	if path == "" {
 		return errors.New("work directory is empty")
 	}
