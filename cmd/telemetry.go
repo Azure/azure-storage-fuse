@@ -4,7 +4,6 @@
 package cmd
 
 import (
-	"encoding/hex"
 	"fmt"
 	"os"
 	"strconv"
@@ -92,10 +91,10 @@ func beginMountTelemetry() *telemetry.Session {
 
 func applyTelemetryHandoff(input *telemetry.Options, value string) error {
 	fields := strings.Split(value, ",")
-	if len(fields) != 3 {
+	if len(fields) != 2 {
 		return fmt.Errorf("invalid telemetry handoff fields")
 	}
-	disabled, err := strconv.ParseBool(fields[2])
+	disabled, err := strconv.ParseBool(fields[1])
 	if err != nil {
 		return fmt.Errorf("invalid telemetry handoff policy")
 	}
@@ -103,22 +102,18 @@ func applyTelemetryHandoff(input *telemetry.Options, value string) error {
 	if input.Disabled {
 		return nil
 	}
-	id, err := hex.DecodeString(fields[0])
-	if err != nil || len(id) != 16 || fields[0] != strings.ToLower(fields[0]) {
-		return fmt.Errorf("invalid telemetry handoff identity")
-	}
-	start, err := strconv.ParseInt(fields[1], 10, 64)
+	start, err := strconv.ParseInt(fields[0], 10, 64)
 	if err != nil || start <= 0 {
 		return fmt.Errorf("invalid telemetry handoff clock")
 	}
-	input.SessionID, input.StartMonotonic = fields[0], start
+	input.StartMonotonic = start
 	return nil
 }
 
 func telemetryDaemonEnvironment(session *telemetry.Session, environment []string) []string {
-	id, start := "", int64(0)
+	var start int64
 	if session != nil {
-		id, start = session.Identity(), session.StartMonotonic()
+		start = session.StartMonotonic()
 	}
 	result := make([]string, 0, len(environment)+1)
 	for _, entry := range environment {
@@ -128,7 +123,7 @@ func telemetryDaemonEnvironment(session *telemetry.Session, environment []string
 		}
 	}
 	return append(result, telemetryHandoff+"="+strings.Join([]string{
-		id, strconv.FormatInt(start, 10), strconv.FormatBool(session == nil),
+		strconv.FormatInt(start, 10), strconv.FormatBool(session == nil),
 	}, ","))
 }
 
