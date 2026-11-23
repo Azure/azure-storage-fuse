@@ -99,6 +99,7 @@ func (p *Pipeline) Start(ctx context.Context) (err error) {
 
 	for i := len(p.components) - 1; i >= 0; i-- {
 		if err = p.components[i].Start(ctx); err != nil {
+			telemetry.PipelineStartFailed()
 			errs = append(errs, err)
 			// stop all the upstream components before returning, f.e., this would prevent the upstream components
 			// to use the logger after it is destroyed.

@@ -17,7 +17,6 @@ type Options struct {
 	Disabled         bool
 	ConnectionString string
 	Version          string
-	SessionID        string
 	StartMonotonic   int64
 	Diagnostic       func(string)
 	HTTPClient       *http.Client
@@ -39,7 +38,7 @@ type Session struct {
 	id                 string
 	version            string
 	startMono          int64
-	ready              bool
+	resultRecorded     bool
 	config             map[string]string
 	explicitParameters map[string]bool
 	stage              string
@@ -96,21 +95,17 @@ func Start(o Options) (*Session, error) {
 	if o.StartMonotonic > 0 && o.StartMonotonic <= s.startMono {
 		s.startMono = o.StartMonotonic
 	}
-	if validID(o.SessionID) {
-		s.id = o.SessionID
-	}
 	s.reporter = newReporter(d, o.HTTPClient)
 	active.Store(s)
 	return s, nil
 }
 
 func (s *Session) reportLocked(e Event) {
+	s.resultRecorded = true
 	if err := s.reporter.report(e); err != nil {
 		s.diag("telemetry: invalid or oversized event dropped")
 	}
 }
-
-func (s *Session) Identity() string { return s.id }
 
 func (s *Session) StartMonotonic() int64 { return s.startMono }
 
@@ -181,7 +176,7 @@ var approvedConfig = map[string]bool{
 func Stage(stage string) {
 	if s := active.Load(); s != nil {
 		s.mu.Lock()
-		if s.collectingLocked() {
+		if s.collectingLocked() && !s.resultRecorded {
 			s.stage = stage
 			s.failure = ""
 			s.errorCode = ""
@@ -197,12 +192,38 @@ func Failure(category string) {
 func recordFailure(category, code string) {
 	if s := active.Load(); s != nil {
 		s.mu.Lock()
-		if s.collectingLocked() && !s.ready {
+		if s.collectingLocked() && !s.resultRecorded {
 			s.failure = category
 			s.errorCode = code
 		}
 		s.mu.Unlock()
 	}
+}
+
+// PipelineStartFailed records failure before the pipeline can continue to FUSE readiness.
+func PipelineStartFailed() {
+	if s := active.Load(); s != nil {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if s.collectingLocked() && !s.resultRecorded {
+			s.stage, s.failure, s.errorCode = "pipeline_start", "component_start_failed", ""
+			s.reportFailureLocked()
+		}
+	}
+}
+
+func (s *Session) reportFailureLocked() {
+	e := s.resultEvent(0)
+	e.Properties["failure_stage"] = s.stage
+	category := s.failure
+	if category == "" {
+		category = "unknown"
+	}
+	e.Properties["error_category"] = category
+	if s.errorCode != "" {
+		e.Properties["error_code"] = s.errorCode
+	}
+	s.reportLocked(e)
 }
 
 func Ready(properties map[string]string) {
@@ -212,11 +233,10 @@ func Ready(properties map[string]string) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if !s.collectingLocked() || s.ready {
+	if !s.collectingLocked() || s.resultRecorded {
 		return
 	}
 	s.configureLocked(properties)
-	s.ready = true
 	s.reportLocked(s.resultEvent(1))
 }
 
@@ -251,21 +271,11 @@ func (s *Session) finish(handoffFailure bool) {
 	}
 	s.state = sessionClosed
 	active.CompareAndSwap(s, nil)
-	if !s.ready && (previous == sessionCollecting || handoffFailure) {
+	if !s.resultRecorded && (previous == sessionCollecting || handoffFailure) {
 		if handoffFailure {
 			s.stage, s.failure, s.errorCode = "daemonization", "", ""
 		}
-		e := s.resultEvent(0)
-		e.Properties["failure_stage"] = s.stage
-		category := s.failure
-		if category == "" {
-			category = "unknown"
-		}
-		e.Properties["error_category"] = category
-		if s.errorCode != "" {
-			e.Properties["error_code"] = s.errorCode
-		}
-		s.reportLocked(e)
+		s.reportFailureLocked()
 	}
 	budget := FlushTimeout
 	if previous == sessionDetached && !handoffFailure {

@@ -13,19 +13,18 @@ readiness and result registration through `collecting -> closed`; a background
 parent can enter `detached` before closing. Callbacks recheck state and
 ownership under the mutex.
 
-The session registers one startup result at readiness or on close before
-readiness. Close marks the session closed under the mutex, then waits for any
-outstanding result outside it, so late callbacks never block on delivery.
-Later close calls return immediately.
+The session records one startup result: success at FUSE readiness, or failure
+at the first component start error or on close before readiness. Close waits
+for an outstanding result outside the mutex; later calls return immediately.
 
 ## Initialization and daemon handoff
 
 Startup opt-out creates no collector. Enabled sessions are fully constructed
 before publication; watched-config changes do not alter their policy.
 
-The parent passes its session ID, monotonic start and opt-out decision to the
-child. The launch environment is rebuilt for each daemonization attempt. The
-child combines inherited and local startup policy; any disable wins. Missing
+The parent passes its monotonic start and opt-out decision to the child, which
+generates its own session ID. The launch environment is rebuilt for each
+daemonization attempt. The child combines inherited and local startup policy; any disable wins. Missing
 parent collection or invalid enabled handoff metadata cannot create an enabled
 replacement.
 

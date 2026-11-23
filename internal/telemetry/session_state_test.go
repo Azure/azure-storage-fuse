@@ -54,7 +54,7 @@ func TestCloseReleasesStateLockDuringDelivery(t *testing.T) {
 
 	s.mu.Lock()
 	ok := s.state == sessionClosed && s.stage == "pipeline_initialization" && s.failure == "" &&
-		s.config["auth_mode"] == "MSI" && s.config["fuse_api_major"] == "" && !s.ready
+		s.config["auth_mode"] == "MSI" && s.config["fuse_api_major"] == "" && s.resultRecorded
 	s.mu.Unlock()
 	if !ok || Current() != nil || active.Load() != nil || requests.Load() != 1 {
 		t.Fatalf("late callbacks changed a closed session: ok=%t sends=%d", ok, requests.Load())

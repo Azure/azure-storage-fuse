@@ -35,7 +35,8 @@ instrumentation key selects.
 Startup latency includes parent work for background mounts.
 An early process exit can leave no result. FUSE readiness
 does not guarantee subsequent Storage access. Failures include `failure_stage`,
-`error_category` and, when recognized, `error_code`.
+`error_category` and, when recognized, `error_code`. A component start error
+is reported as a failure even if FUSE later signals readiness.
 
 Result counts describe observed outcomes, not total mount attempts.
 
