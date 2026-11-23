@@ -501,9 +501,9 @@ class BenchmarkRunner:
                 f"--config-file={self.config}",
                 f"--log-file-path={self.blobfuse_log_path}",
                 f"--default-working-dir={self.blobfuse_work_dir}",
-                "--disable-telemetry",
             ],
             cwd=self.output_dir,
+            env={**os.environ, "BLOBFUSE_DISABLE_TELEMETRY": "true"},
             timeout=120,
             check=False,
         )
