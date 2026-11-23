@@ -18,7 +18,7 @@ func TestSessionReportsOneMountResult(t *testing.T) {
 			if scenario == "child-mounted" {
 				parent, parentEvents = recordingSession(t, Options{})
 				parent.Detach()
-				options.SessionID, options.StartMonotonic = parent.Identity(), parent.StartMonotonic()
+				options.StartMonotonic = parent.StartMonotonic()
 			}
 			s, received := recordingSession(t, options)
 			s.Configure(map[string]string{"auth_mode": "MSI", "account_name": "MUST-NOT-BE-SENT"})
@@ -30,6 +30,8 @@ func TestSessionReportsOneMountResult(t *testing.T) {
 				require.Equal(t, "authentication", s.failure, "failure after readiness changed startup category")
 			}
 			if parent != nil {
+				require.NotEqual(t, parent.id, s.id)
+				require.Equal(t, parent.StartMonotonic(), s.StartMonotonic())
 				parent.Close()
 				require.Empty(t, parentEvents)
 				require.Same(t, s, Current())
@@ -58,7 +60,7 @@ func TestSessionReportsOneMountResult(t *testing.T) {
 			require.Equal(t, "1", properties["schema_version"])
 			require.Equal(t, 2, e.Version)
 			require.NotContains(t, properties, "account_name")
-			require.Equal(t, s.Identity(), properties["mount_session_id"])
+			require.Equal(t, s.id, properties["mount_session_id"])
 			require.Equal(t, "MSI", properties["auth_mode"])
 			require.Contains(t, e.Measurements, "result")
 			require.Equal(t, want, e.Measurements["result"])
@@ -71,4 +73,18 @@ func TestSessionReportsOneMountResult(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestPipelineStartFailureCannotBecomeSuccess(t *testing.T) {
+	s, events := recordingSession(t, Options{})
+	PipelineStartFailed()
+	Stage("fuse_initialization")
+	Ready(nil)
+	s.Close()
+
+	require.Len(t, events, 1)
+	e := (<-events).Data.Data
+	require.Zero(t, e.Measurements["result"])
+	require.Equal(t, "pipeline_start", e.Properties["failure_stage"])
+	require.Equal(t, "component_start_failed", e.Properties["error_category"])
 }

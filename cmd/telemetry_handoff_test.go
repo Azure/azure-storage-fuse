@@ -57,9 +57,9 @@ func TestTelemetryDaemonPolicyHandoff(t *testing.T) {
 				}
 			}
 			require.Equal(t, 1, count, "handoff entries")
-			if !inherited.Disabled && (inherited.SessionID != parent.Identity() ||
-				inherited.StartMonotonic != parent.StartMonotonic()) {
-				t.Fatal("handoff lost identity or original startup timing")
+			require.Equal(t, parent == nil, inherited.Disabled)
+			if parent != nil {
+				require.Equal(t, parent.StartMonotonic(), inherited.StartMonotonic, "handoff lost original startup timing")
 			}
 			wantDisabled := scenario == "initially-disabled" || scenario == "child-disabled"
 			child := exec.Command(os.Args[0], "-test.run=^TestTelemetryDaemonHandoffChild$")
@@ -78,7 +78,7 @@ func TestTelemetryDaemonPolicyHandoff(t *testing.T) {
 			require.Len(t, events, 1)
 			e := (<-events).Data.Base
 			require.Equal(t, "blobfuse.mount.result", e.Name)
-			require.Equal(t, parent.Identity(), e.Properties["mount_session_id"])
+			require.Regexp(t, `^[0-9a-f]{32}$`, e.Properties["mount_session_id"])
 		})
 	}
 }
@@ -103,15 +103,14 @@ func TestTelemetryDaemonHandoffChild(t *testing.T) {
 }
 
 func TestTelemetryHandoffRejectsInvalidEnabledContext(t *testing.T) {
-	id := strings.Repeat("a", 32)
 	for _, value := range []string{
-		"", "invalid", "id,1,false", id + ",bad,false",
-		id + ",0,false", id + ",1,invalid", id + ",1,false,extra",
+		"", "invalid", "bad,false", "0,false", "-1,false",
+		"1,invalid", "1,false,extra",
 	} {
 		var input telemetry.Options
 		require.Error(t, applyTelemetryHandoff(&input, value), "handoff: %q", value)
 	}
-	for _, value := range []string{",0,true", id + ",1,true"} {
+	for _, value := range []string{"0,true", "1,true"} {
 		var input telemetry.Options
 		require.NoError(t, applyTelemetryHandoff(&input, value))
 		require.True(t, input.Disabled)
