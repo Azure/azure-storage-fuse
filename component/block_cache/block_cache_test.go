@@ -2338,9 +2338,11 @@ func (suite *blockCacheTestSuite) TestReleaseFileUploadFailure() {
 	suite.assert.NoError(err)
 	suite.assert.Greater(tobj.blockCache.blockPool.Usage(), usage)
 
-	// Deleting the directory will make the upload fail since loopback's StageData writes each block as a file next to dir/file
-	err = os.RemoveAll(filepath.Join(tobj.fake_storage_path, "dir"))
-	suite.assert.NoError(err)
+	// Make the upload of the file fail, whether its block was staged already or not
+	for _, op := range []loopback.Op{loopback.OpStageData, loopback.OpCommitData} {
+		_, err = tobj.loopback.(*loopback.LoopbackFS).InjectFault(loopback.Fault{Op: op, Path: "dir/file", Err: syscall.EIO})
+		suite.assert.NoError(err)
+	}
 
 	err = tobj.blockCache.ReleaseFile(internal.ReleaseFileOptions{Handle: h})
 	suite.assert.Error(err)
