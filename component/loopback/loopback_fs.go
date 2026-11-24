@@ -39,6 +39,7 @@ type LoopbackFS struct {
 
 	locks    objectLocks
 	versions versions
+	faults   faultInjector
 }
 
 var _ internal.Component = &LoopbackFS{}
@@ -52,6 +53,8 @@ type LoopbackFSOptions struct {
 	ListPageSize uint32 `config:"list-page-size" yaml:"list-page-size,omitempty"`
 	// ContentMD5 reports the MD5 of the content of files in GetAttr and in listings.
 	ContentMD5 bool `config:"content-md5" yaml:"content-md5,omitempty"`
+	// Faults are the faults to inject into the operations of the component.
+	Faults []FaultOptions `config:"faults" yaml:"faults,omitempty"`
 }
 
 // Name returns the name of the component.
@@ -102,7 +105,8 @@ func (lfs *LoopbackFS) Configure(_ bool) error {
 	return nil
 }
 
-// OnConfigChange applies the options that can change while the component runs, which are all but path.
+// OnConfigChange applies the options that can change while the component runs, which are all but path. Faults can
+// thus be added to, or removed from, a mount by editing its configuration file.
 func (lfs *LoopbackFS) OnConfigChange() {
 	log.Trace("LoopbackFS::OnConfigChange : %s", lfs.Name())
 
@@ -131,15 +135,29 @@ func (lfs *LoopbackFS) applyOptions(conf LoopbackFSOptions) error {
 		pageSize = int32(conf.ListPageSize)
 	}
 
+	rules := make([]*faultRule, 0, len(conf.Faults))
+	for i, opts := range conf.Faults {
+		f, err := opts.fault()
+		if err != nil {
+			return fmt.Errorf("invalid fault %d: %w", i+1, err)
+		}
+		rules = append(rules, newFaultRule(f))
+	}
+
 	lfs.listPageSize.Store(pageSize)
 	lfs.contentMD5.Store(conf.ContentMD5)
+	lfs.faults.setConfigured(rules)
 
 	return nil
 }
 
 func (lfs *LoopbackFS) logOptions(caller string) {
-	log.Crit("%s : path %s, list-page-size %d, content-md5 %t", caller, lfs.path, lfs.listPageSize.Load(),
-		lfs.contentMD5.Load())
+	lfs.faults.mu.Lock()
+	faults := len(lfs.faults.configured)
+	lfs.faults.mu.Unlock()
+
+	log.Crit("%s : path %s, list-page-size %d, content-md5 %t, faults %d", caller, lfs.path,
+		lfs.listPageSize.Load(), lfs.contentMD5.Load(), faults)
 }
 
 // isWithin reports whether the path p is the directory dir or is inside it.
@@ -190,6 +208,21 @@ func (lfs *LoopbackFS) openRoot() (*os.Root, error) {
 	return root, nil
 }
 
+// begin starts the operation op on the object rawName: it returns the name of the file of the object and applies the
+// faults of the operation.
+func (lfs *LoopbackFS) begin(op Op, rawName string) (string, error) {
+	name, err := objectName(rawName)
+	if err != nil {
+		return "", err
+	}
+
+	if err := lfs.faults.check(op, objectPath(name)); err != nil {
+		return "", err
+	}
+
+	return name, nil
+}
+
 // changed records a change of the object name.
 func (lfs *LoopbackFS) changed(root *os.Root, name string) {
 	if info, err := root.Lstat(name); err == nil {
@@ -237,7 +270,7 @@ func (lfs *LoopbackFS) attr(root *os.Root, name string, info fs.FileInfo) *inter
 func (lfs *LoopbackFS) CreateDir(options internal.CreateDirOptions) error {
 	log.Trace("LoopbackFS::CreateDir : name=%s, mode=%v", options.Name, options.Mode)
 
-	name, err := objectName(options.Name)
+	name, err := lfs.begin(OpCreateDir, options.Name)
 	if err != nil {
 		return err
 	}
@@ -270,7 +303,7 @@ func (lfs *LoopbackFS) CreateDir(options internal.CreateDirOptions) error {
 func (lfs *LoopbackFS) DeleteDir(options internal.DeleteDirOptions) error {
 	log.Trace("LoopbackFS::DeleteDir : name=%s", options.Name)
 
-	name, err := objectName(options.Name)
+	name, err := lfs.begin(OpDeleteDir, options.Name)
 	if err != nil {
 		return err
 	}
@@ -308,7 +341,7 @@ func (lfs *LoopbackFS) DeleteDir(options internal.DeleteDirOptions) error {
 func (lfs *LoopbackFS) IsDirEmpty(options internal.IsDirEmptyOptions) bool {
 	log.Trace("LoopbackFS::IsDirEmpty : name=%s", options.Name)
 
-	name, err := objectName(options.Name)
+	name, err := lfs.begin(OpIsDirEmpty, options.Name)
 	if err != nil {
 		log.Err("LoopbackFS::IsDirEmpty : %s [%v]", options.Name, err)
 		return false
@@ -427,7 +460,7 @@ func (lfs *LoopbackFS) listAttrs(root *os.Root, dir string, entries []listEntry)
 func (lfs *LoopbackFS) ReadDir(options internal.ReadDirOptions) ([]*internal.ObjAttr, error) {
 	log.Trace("LoopbackFS::ReadDir : name=%s", options.Name)
 
-	name, err := objectName(options.Name)
+	name, err := lfs.begin(OpReadDir, options.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -456,7 +489,7 @@ func (lfs *LoopbackFS) ReadDir(options internal.ReadDirOptions) ([]*internal.Obj
 func (lfs *LoopbackFS) StreamDir(options internal.StreamDirOptions) ([]*internal.ObjAttr, string, error) {
 	log.Trace("LoopbackFS::StreamDir : name=%s, token=%s, count=%d", options.Name, options.Token, options.Count)
 
-	name, err := objectName(options.Name)
+	name, err := lfs.begin(OpStreamDir, options.Name)
 	if err != nil {
 		return nil, "", err
 	}
@@ -512,7 +545,7 @@ func (lfs *LoopbackFS) StreamDir(options internal.StreamDirOptions) ([]*internal
 func (lfs *LoopbackFS) RenameDir(options internal.RenameDirOptions) error {
 	log.Trace("LoopbackFS::RenameDir : %s -> %s", options.Src, options.Dst)
 
-	src, err := objectName(options.Src)
+	src, err := lfs.begin(OpRenameDir, options.Src)
 	if err != nil {
 		return err
 	}
@@ -562,11 +595,7 @@ func (lfs *LoopbackFS) RenameDir(options internal.RenameDirOptions) error {
 func (lfs *LoopbackFS) CreateFile(options internal.CreateFileOptions) (*handlemap.Handle, error) {
 	log.Trace("LoopbackFS::CreateFile : name=%s, mode=%v", options.Name, options.Mode)
 
-	if options.Name == "FailThis" {
-		return nil, fmt.Errorf("LoopbackFS::CreateFile : Failed to create file %s", options.Name)
-	}
-
-	name, err := objectName(options.Name)
+	name, err := lfs.begin(OpCreateFile, options.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -624,7 +653,7 @@ func (lfs *LoopbackFS) CreateFile(options internal.CreateFileOptions) (*handlema
 func (lfs *LoopbackFS) DeleteFile(options internal.DeleteFileOptions) error {
 	log.Trace("LoopbackFS::DeleteFile : name=%s", options.Name)
 
-	name, err := objectName(options.Name)
+	name, err := lfs.begin(OpDeleteFile, options.Name)
 	if err != nil {
 		return err
 	}
@@ -667,7 +696,7 @@ func (lfs *LoopbackFS) DeleteFile(options internal.DeleteFileOptions) error {
 func (lfs *LoopbackFS) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, error) {
 	log.Trace("LoopbackFS::OpenFile : name=%s, flags=%s", options.Name, common.PrettyOpenFlags(options.Flags))
 
-	name, err := objectName(options.Name)
+	name, err := lfs.begin(OpOpenFile, options.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -733,6 +762,15 @@ func (lfs *LoopbackFS) truncateWhole(root *os.Root, name string) (fs.FileInfo, e
 	return info, nil
 }
 
+// faultName returns the name that faults match for the object rawName of a handle.
+func faultName(rawName string) string {
+	name, err := objectName(rawName)
+	if err != nil {
+		return strings.Trim(rawName, "/")
+	}
+	return objectPath(name)
+}
+
 // ReleaseFile releases a handle. Handles hold no resources, like the handles of azstorage.
 func (lfs *LoopbackFS) ReleaseFile(options internal.ReleaseFileOptions) error {
 	if options.Handle == nil {
@@ -740,7 +778,7 @@ func (lfs *LoopbackFS) ReleaseFile(options internal.ReleaseFileOptions) error {
 	}
 
 	log.Trace("LoopbackFS::ReleaseFile : name=%s", options.Handle.Path)
-	return nil
+	return lfs.faults.check(OpReleaseFile, faultName(options.Handle.Path))
 }
 
 // FlushFile flushes a handle. Writes reach the object at once, so there is nothing to flush.
@@ -750,7 +788,7 @@ func (lfs *LoopbackFS) FlushFile(options internal.FlushFileOptions) error {
 	}
 
 	log.Trace("LoopbackFS::FlushFile : name=%s", options.Handle.Path)
-	return nil
+	return lfs.faults.check(OpFlushFile, faultName(options.Handle.Path))
 }
 
 // RenameFile renames the object options.Src to options.Dst, replacing an object at options.Dst and creating its
@@ -759,7 +797,7 @@ func (lfs *LoopbackFS) FlushFile(options internal.FlushFileOptions) error {
 func (lfs *LoopbackFS) RenameFile(options internal.RenameFileOptions) error {
 	log.Trace("LoopbackFS::RenameFile : %s -> %s", options.Src, options.Dst)
 
-	src, err := objectName(options.Src)
+	src, err := lfs.begin(OpRenameFile, options.Src)
 	if err != nil {
 		return err
 	}
@@ -839,7 +877,7 @@ func (lfs *LoopbackFS) ReadFile(options internal.ReadFileOptions) ([]byte, error
 
 	log.Trace("LoopbackFS::ReadFile : name=%s", options.Handle.Path)
 
-	name, err := objectName(options.Handle.Path)
+	name, err := lfs.begin(OpReadFile, options.Handle.Path)
 	if err != nil {
 		return nil, err
 	}
@@ -883,7 +921,7 @@ func (lfs *LoopbackFS) ReadInBuffer(options *internal.ReadInBufferOptions) (int,
 		return 0, syscall.EINVAL
 	}
 
-	name, err := objectName(rawName)
+	name, err := lfs.begin(OpReadInBuffer, rawName)
 	if err != nil {
 		return 0, err
 	}
@@ -947,7 +985,7 @@ func (lfs *LoopbackFS) WriteFile(options *internal.WriteFileOptions) (int, error
 		return 0, syscall.EINVAL
 	}
 
-	name, err := objectName(options.Handle.Path)
+	name, err := lfs.begin(OpWriteFile, options.Handle.Path)
 	if err != nil {
 		return 0, err
 	}
@@ -1005,7 +1043,7 @@ func (lfs *LoopbackFS) WriteFile(options *internal.WriteFileOptions) (int, error
 func (lfs *LoopbackFS) TruncateFile(options internal.TruncateFileOptions) error {
 	log.Trace("LoopbackFS::TruncateFile : name=%s, size=%d", options.Name, options.NewSize)
 
-	name, err := objectName(options.Name)
+	name, err := lfs.begin(OpTruncateFile, options.Name)
 	if err != nil {
 		return err
 	}
@@ -1072,7 +1110,7 @@ func (lfs *LoopbackFS) TruncateFile(options internal.TruncateFileOptions) error 
 func (lfs *LoopbackFS) CopyToFile(options internal.CopyToFileOptions) error {
 	log.Trace("LoopbackFS::CopyToFile : name=%s, offset=%d, count=%d", options.Name, options.Offset, options.Count)
 
-	name, err := objectName(options.Name)
+	name, err := lfs.begin(OpCopyToFile, options.Name)
 	if err != nil {
 		return err
 	}
@@ -1121,7 +1159,7 @@ func (lfs *LoopbackFS) CopyToFile(options internal.CopyToFileOptions) error {
 func (lfs *LoopbackFS) CopyFromFile(options internal.CopyFromFileOptions) error {
 	log.Trace("LoopbackFS::CopyFromFile : name=%s", options.Name)
 
-	name, err := objectName(options.Name)
+	name, err := lfs.begin(OpCopyFromFile, options.Name)
 	if err != nil {
 		return err
 	}
@@ -1167,7 +1205,7 @@ func (lfs *LoopbackFS) CopyFromFile(options internal.CopyFromFileOptions) error 
 func (lfs *LoopbackFS) CreateLink(options internal.CreateLinkOptions) error {
 	log.Trace("LoopbackFS::CreateLink : %s -> %s", options.Name, options.Target)
 
-	name, err := objectName(options.Name)
+	name, err := lfs.begin(OpCreateLink, options.Name)
 	if err != nil {
 		return err
 	}
@@ -1230,7 +1268,7 @@ func (lfs *LoopbackFS) CreateLink(options internal.CreateLinkOptions) error {
 func (lfs *LoopbackFS) ReadLink(options internal.ReadLinkOptions) (string, error) {
 	log.Trace("LoopbackFS::ReadLink : name=%s, size=%d", options.Name, options.Size)
 
-	name, err := objectName(options.Name)
+	name, err := lfs.begin(OpReadLink, options.Name)
 	if err != nil {
 		return "", err
 	}
@@ -1269,6 +1307,10 @@ func (lfs *LoopbackFS) GetAttr(options internal.GetAttrOptions) (*internal.ObjAt
 		return nil, syscall.ENOENT
 	}
 
+	if err := lfs.faults.check(OpGetAttr, objectPath(name)); err != nil {
+		return nil, err
+	}
+
 	root, err := lfs.openRoot()
 	if err != nil {
 		return nil, err
@@ -1293,7 +1335,7 @@ func (lfs *LoopbackFS) GetAttr(options internal.GetAttrOptions) (*internal.ObjAt
 func (lfs *LoopbackFS) Chmod(options internal.ChmodOptions) error {
 	log.Trace("LoopbackFS::Chmod : name=%s, mode=%v", options.Name, options.Mode)
 
-	name, err := objectName(options.Name)
+	name, err := lfs.begin(OpChmod, options.Name)
 	if err != nil {
 		return err
 	}
@@ -1332,7 +1374,7 @@ func (lfs *LoopbackFS) Chmod(options internal.ChmodOptions) error {
 func (lfs *LoopbackFS) Chown(options internal.ChownOptions) error {
 	log.Trace("LoopbackFS::Chown : name=%s, owner=%d, group=%d", options.Name, options.Owner, options.Group)
 
-	name, err := objectName(options.Name)
+	name, err := lfs.begin(OpChown, options.Name)
 	if err != nil {
 		return err
 	}
@@ -1367,6 +1409,10 @@ func (lfs *LoopbackFS) Chown(options internal.ChownOptions) error {
 func (lfs *LoopbackFS) StageData(options internal.StageDataOptions) error {
 	log.Trace("LoopbackFS::StageData : name=%s, id=%s", options.Name, options.Id)
 
+	if err := lfs.faults.check(OpStageData, faultName(options.Name)); err != nil {
+		return err
+	}
+
 	path := fmt.Sprintf("%s_%s", filepath.Join(lfs.path, options.Name), strings.ReplaceAll(options.Id, "/", "_"))
 	return os.WriteFile(path, options.Data, 0777)
 }
@@ -1375,6 +1421,10 @@ func (lfs *LoopbackFS) StageData(options internal.StageDataOptions) error {
 // options.BlockSize, and removes them. The blocks of the list that are not staged must be in the blob already.
 func (lfs *LoopbackFS) CommitData(options internal.CommitDataOptions) error {
 	log.Trace("LoopbackFS::CommitData : name=%s", options.Name)
+
+	if err := lfs.faults.check(OpCommitData, faultName(options.Name)); err != nil {
+		return err
+	}
 
 	mainFilepath := filepath.Join(lfs.path, options.Name)
 
@@ -1452,6 +1502,10 @@ func (lfs *LoopbackFS) CommitData(options internal.CommitDataOptions) error {
 // GetCommittedBlockList presents the blob name as committed in blocks of 1 MB.
 func (lfs *LoopbackFS) GetCommittedBlockList(name string) (*internal.CommittedBlockList, error) {
 	log.Trace("LoopbackFS::GetCommittedBlockList : name=%s", name)
+
+	if err := lfs.faults.check(OpGetCommittedBlockList, faultName(name)); err != nil {
+		return nil, err
+	}
 
 	mainFilepath := filepath.Join(lfs.path, name)
 
