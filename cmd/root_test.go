@@ -54,8 +54,11 @@ func (suite *rootCmdSuite) TestNoOptionsNoVersionCheck() {
 
 func (suite *rootCmdSuite) TestMountGen1Removed() {
 	defer suite.cleanupTest()
-	_, err := executeCommandC(rootCmd, "mountgen1")
-	suite.assert.ErrorContains(err, `unknown command "mountgen1"`)
+	for _, input := range []string{"mountgen1", "mountgen1 /tmp/mntdir"} {
+		args := parseArgs(strings.Split("blobfuse2 "+input, " "))
+		_, err := executeCommandC(rootCmd, args...)
+		suite.assert.ErrorContains(err, `unknown command "mountgen1"`)
+	}
 }
 
 // TestCheckVersionExistsInvalidURL verifies that a completely invalid URL
@@ -171,6 +174,9 @@ func (suite *rootCmdSuite) TestParseArgs() {
 		{input: "version --check=true", output: "version --check=true"},
 		{input: "mount abc --config-file=./config.yaml -o ro", output: "mount abc --config-file=./config.yaml -o ro"},
 		{input: "abc", output: "mount abc"},
+		{input: "mountgen1", output: "mountgen1"},
+		{input: "mountgen1 /tmp/mntdir", output: "mountgen1 /tmp/mntdir"},
+		{input: "./mountgen1", output: "mount ./mountgen1"},
 		{input: "-o", output: ""},
 		{input: "", output: ""},
 
