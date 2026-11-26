@@ -92,8 +92,6 @@ var useAttrCache bool
 var useStream bool
 var useFileCache bool = true
 var convertConfigOnly bool
-var enableGen1 bool
-var reqFreeSpaceMB int
 
 func resetOptions() {
 	bfv2StorageConfigOptions = azstorage.AzStorageOptions{}
@@ -233,11 +231,7 @@ var generateConfigCmd = &cobra.Command{
 			buf := new(bytes.Buffer)
 			rootCmd.SetOut(buf)
 			rootCmd.SetErr(buf)
-			if enableGen1 {
-				rootCmd.SetArgs([]string{"mountgen1", mountPath, fmt.Sprintf("--config-file=%s", outputFilePath), fmt.Sprintf("--required-free-space-mb=%v", reqFreeSpaceMB)})
-			} else {
-				rootCmd.SetArgs([]string{"mount", mountPath, fmt.Sprintf("--config-file=%s", outputFilePath), "--disable-version-check=true"})
-			}
+			rootCmd.SetArgs([]string{"mount", mountPath, fmt.Sprintf("--config-file=%s", outputFilePath), "--disable-version-check=true"})
 			err := rootCmd.Execute()
 			if err != nil {
 				return fmt.Errorf("failed to execute command [%s]", err.Error())
@@ -526,8 +520,4 @@ func init() {
 	generateConfigCmd.Flags().Uint64("cache-poll-timeout-msec", 0, "Time in milliseconds in order to poll for possible expired files awaiting cache eviction.")
 	generateConfigCmd.Flags().Bool("upload-modified-only", false, "Flag to turn off unnecessary uploads to storage.")
 	generateConfigCmd.Flags().Bool("debug-libcurl", false, "Flag to allow users to debug libcurl calls.")
-
-	// flags for gen1 mount
-	generateConfigCmd.Flags().BoolVar(&enableGen1, "enable-gen1", false, "To enable Gen1 mount")
-	generateConfigCmd.Flags().IntVar(&reqFreeSpaceMB, "required-free-space-mb", 0, "Required free space in MB")
 }

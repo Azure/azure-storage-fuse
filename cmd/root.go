@@ -162,9 +162,9 @@ func VersionCheck() error {
 	return nil
 }
 
-// ignoreCommand : There are command implicitly added by cobra itself, while parsing we need to ignore these commands
+// ignoreCommand keeps Cobra's implicit commands and retired commands out of implicit-mount dispatch.
 func ignoreCommand(cmdArgs []string) bool {
-	ignoreCmds := []string{"completion", "help"}
+	ignoreCmds := []string{"completion", "help", "mountgen1"}
 	if len(cmdArgs) > 0 {
 		if slices.Contains(ignoreCmds, cmdArgs[0]) {
 			return true
