@@ -7,14 +7,50 @@ package libfuse
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/config"
 
 	"github.com/stretchr/testify/suite"
 )
+
+func (suite *libfuseTestSuite) TestRootOwnership() {
+	defer suite.cleanupTest()
+	originalUID, originalGID := rootOwnership(suite)
+	mountPath := filepath.Join(suite.T().TempDir(), "missing")
+	configure := func(configuration string) {
+		suite.Require().NoError(config.ReadConfigFromReader(strings.NewReader(fmt.Sprintf("mount-path: %s\n%s", mountPath, configuration))))
+		suite.Require().NoError(suite.libfuse.Configure(true))
+		// A missing mountpoint exercises production initialization without mounting
+		// or requiring /dev/fuse. Ownership must be ready before start_fuse runs.
+		suite.Require().ErrorContains(suite.libfuse.initFuse(), "failed to mount fuse")
+	}
+	defer configure(fmt.Sprintf("libfuse:\n  uid: %d\n  gid: %d\n", originalUID, originalGID))
+	suite.stubCurrentUser(4321, 8765, nil)
+	for _, test := range []struct {
+		name          string
+		configuration string
+		uid           uint32
+		gid           uint32
+	}{
+		{"configured", "libfuse:\n  uid: 1234\n  gid: 5678\n", 1234, 5678},
+		{"current-user", "", 4321, 8765},
+		{"explicit-root", "libfuse:\n  uid: 0\n  gid: 0\n", 0, 0},
+	} {
+		suite.Run(test.name, func() {
+			configure(test.configuration)
+			uid, gid := rootOwnership(suite)
+			suite.Require().Equal(test.uid, uid)
+			suite.Require().Equal(test.gid, gid)
+		})
+	}
+}
 
 // Tests the default configuration of libfuse
 func (suite *libfuseTestSuite) TestDefault() {
@@ -383,6 +419,10 @@ func (suite *libfuseTestSuite) TestRenameAttrError() {
 
 func (suite *libfuseTestSuite) TestRenameChecks() {
 	testRenameChecks(suite)
+}
+
+func (suite *libfuseTestSuite) TestRenameSamePath() {
+	testRenameSamePath(suite)
 }
 
 func (suite *libfuseTestSuite) TestBackslashNameRejected() {

@@ -134,6 +134,7 @@ func (lf *Libfuse) initFuse() error {
 		log.Err("Libfuse::initFuse : Failed to parse fuse arguments")
 		return errors.New("failed to parse fuse arguments")
 	}
+	C.set_root_uid_gid(opts.uid, opts.gid)
 
 	log.Info("Libfuse::initFuse : Mounting with fuse2 library")
 	ret = C.start_fuse(&args, &operations)
@@ -227,8 +228,6 @@ func libfuse2_init(conn *C.fuse_conn_info_t) (res unsafe.Pointer) {
 	if err := common.NotifyMountToParent(); err != nil {
 		log.Err("Libfuse::NotifyMountToParent : Failed to notify parent, error: [%v]", err)
 	}
-
-	C.populate_uid_gid()
 
 	log.Info("Libfuse::libfuse2_init : Kernel FUSE version: %d.%d, Kernel Caps : 0x%x", conn.proto_major, conn.proto_minor, conn.capable)
 
@@ -926,6 +925,12 @@ func libfuse2_rename(src *C.char, dst *C.char) C.int {
 	if err != nil || srcAttr == nil {
 		log.Err("Libfuse::libfuse2_rename : Failed to get attributes of %s [%v]", srcPath, err)
 		return -C.int(errnoOf(err, syscall.ENOENT, syscall.EACCES, syscall.EINVAL))
+	}
+
+	// Linux VFS normally handles self-renames before FUSE. Guard direct callback
+	// invocations here so identical paths never reach cache or storage renames.
+	if srcPath == dstPath {
+		return 0
 	}
 
 	// Whether dst exists decides which checks apply, so do not rename if that is unknown

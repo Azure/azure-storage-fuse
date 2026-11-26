@@ -334,11 +334,18 @@ func (suite *xloadTestSuite) TestCreateDownloader() {
 
 	xl := &Xload{}
 	err := xl.createDownloader()
+	suite.assert.ErrorIs(err, os.ErrNotExist)
+	suite.assert.Empty(xl.comps)
+	suite.assert.Nil(xl.root)
+
+	suite.assert.NoError(os.MkdirAll(suite.local_path, 0777))
+	xl.path = suite.local_path
+	err = xl.createDownloader()
 	suite.assert.Error(err)
 	suite.assert.Contains(err.Error(), "invalid parameters sent to create remote lister")
 	suite.assert.Empty(xl.comps)
+	suite.assert.Nil(xl.root)
 
-	xl.path = suite.local_path
 	xl.workerCount = 4
 	xl.SetNextComponent(xl)
 	xl.statsMgr = &StatsManager{}
@@ -352,11 +359,14 @@ func (suite *xloadTestSuite) TestCreateDownloader() {
 	err = xl.createDownloader()
 	suite.assert.NoError(err)
 	suite.assert.Len(xl.comps, 3)
+	suite.assert.NotNil(xl.root)
+	suite.assert.NoError(xl.root.Close())
 }
 
 func (suite *xloadTestSuite) TestCreateChain() {
 	defer suite.cleanupTest(false)
 	suite.cleanupTest(false) // teardown the default xload generated
+	suite.assert.NoError(os.MkdirAll(suite.local_path, 0777))
 
 	xl := &Xload{
 		path:        suite.local_path,
@@ -396,6 +406,7 @@ func (suite *xloadTestSuite) TestDownloadFileError() {
 func (suite *xloadTestSuite) TestDownloadFileGetAttrError() {
 	defer suite.cleanupTest(false)
 	suite.cleanupTest(false) // teardown the default xload generated
+	suite.assert.NoError(os.MkdirAll(suite.local_path, 0777))
 
 	xl := &Xload{
 		path:        suite.local_path,
@@ -507,7 +518,8 @@ func (suite *xloadTestSuite) TestOpenFileWithDownload() {
 	err = suite.xload.ReleaseFile(internal.ReleaseFileOptions{Handle: fh1})
 	suite.assert.NoError(err)
 
-	fh2, err := suite.xload.OpenFile(internal.OpenFileOptions{Name: "dir_0/file_3", Flags: os.O_RDONLY, Mode: common.DefaultFilePermissionBits})
+	// libfuse passes default-permission as the mode, which may include special bits such as sticky
+	fh2, err := suite.xload.OpenFile(internal.OpenFileOptions{Name: "dir_0/file_3", Flags: os.O_RDONLY, Mode: os.ModeSticky | 0777})
 	suite.assert.NoError(err)
 	suite.assert.NotNil(fh2)
 	suite.assert.Equal((int64)(27), fh2.Size)

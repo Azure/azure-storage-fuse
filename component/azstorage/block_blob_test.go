@@ -23,6 +23,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -45,6 +46,38 @@ import (
 )
 
 var ctx = context.Background()
+
+func TestReadToFileKeepsSharedDownloadOptions(t *testing.T) {
+	require.NoError(t, log.SetDefaultLogger("silent", common.LogConfig{}))
+	monitoring, disabled := common.EnableMonitoring, common.BfsDisabled
+	common.EnableMonitoring, common.BfsDisabled = true, false
+	t.Cleanup(func() {
+		common.EnableMonitoring, common.BfsDisabled = monitoring, disabled
+	})
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("x-ms-error-code", "BlobNotFound")
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	t.Cleanup(server.Close)
+	client, err := container.NewClientWithNoCredential(server.URL+"/container", nil)
+	require.NoError(t, err)
+	options := &blob.DownloadFileOptions{}
+	backend := &BlockBlob{Container: client, downloadOptions: options}
+	var group sync.WaitGroup
+	for index := range 16 {
+		file, err := os.CreateTemp(t.TempDir(), "download-")
+		require.NoError(t, err)
+		group.Go(func() {
+			defer file.Close()
+			if err := backend.ReadToFile(fmt.Sprintf("file-%d", index), 0, 1, file); err != syscall.ENOENT {
+				t.Errorf("download error = %v, want ENOENT", err)
+			}
+		})
+	}
+	group.Wait()
+	assert.Nil(t, options.Progress, "request callbacks must not modify shared download options")
+}
 
 const MB = 1024 * 1024
 const GB = 1024 * MB
