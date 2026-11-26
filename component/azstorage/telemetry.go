@@ -24,32 +24,28 @@ type storageValidationError struct {
 func (e *storageValidationError) Error() string { return e.message }
 func (e *storageValidationError) Unwrap() error { return e.cause }
 
-var publicStorageHost = regexp.MustCompile(`^([a-z0-9]{3,24})\.(?:(privatelink)\.)?(?:blob|dfs)\.core\.windows\.net$|^([a-z0-9]{3,24})\.z[0-9]+\.(?:blob|dfs)\.storage\.azure\.net$`)
+var publicStorageHost = regexp.MustCompile(`^[a-z0-9]{3,24}\.(?:(privatelink)\.)?(?:blob|dfs)\.core\.windows\.net$|^[a-z0-9]{3,24}\.z[0-9]+\.(?:blob|dfs)\.storage\.azure\.net$`)
 
-func storageTelemetryIdentity(endpoint, account string) (string, string) {
+func storageTelemetryEndpointType(endpoint string) string {
 	u, err := url.Parse(endpoint)
 	if err != nil || u.User != nil || (u.Scheme != "https" && u.Scheme != "http") {
-		return "other", ""
+		return "other"
 	}
 	m := publicStorageHost.FindStringSubmatch(strings.TrimSuffix(strings.ToLower(u.Hostname()), "."))
 	if m == nil {
-		return "other", ""
+		return "other"
 	}
-	name, kind := m[1]+m[3], "public"
-	if m[2] != "" {
-		kind = "private_link"
+	if m[1] != "" {
+		return "private_link"
 	}
-	if name != strings.ToLower(account) {
-		return kind, ""
-	}
-	return kind, name
+	return "public"
 }
 
 func observeStorageConfig(auth azAuthConfig) {
-	kind, name := storageTelemetryIdentity(auth.Endpoint, auth.AccountName)
 	telemetry.Current().Configure(map[string]string{
 		"auth_mode": auth.AuthMode.String(), "azstorage.account_type": auth.AccountType.String(),
-		"azstorage.endpoint_type": kind, "azstorage.account_name": name,
+		"azstorage.endpoint_type": storageTelemetryEndpointType(auth.Endpoint),
+		"azstorage.account_name":  strings.ToLower(auth.AccountName),
 	})
 }
 

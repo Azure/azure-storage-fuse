@@ -21,19 +21,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestTelemetryStorageIdentity(t *testing.T) {
-	for _, tc := range []struct{ endpoint, kind, name string }{
-		{"https://fixtureaccount.blob.core.windows.net/path?token=private", "public", "fixtureaccount"},
-		{"https://fixtureaccount.privatelink.dfs.core.windows.net", "private_link", "fixtureaccount"},
-		{"https://fixtureaccount.z12.blob.storage.azure.net", "public", "fixtureaccount"},
-		{"https://anotheraccount.blob.core.windows.net", "public", ""},
-		{"https://fixtureaccount.blob.core.windows.net.example.invalid", "other", ""},
-		{"https://fixtureaccount.blob.core.usgovcloudapi.net", "other", ""},
-		{"https://127.0.0.1:10000", "other", ""},
+func TestTelemetryStorageEndpointType(t *testing.T) {
+	for _, tc := range []struct{ endpoint, kind string }{
+		{"https://fixtureaccount.blob.core.windows.net/path?token=private", "public"},
+		{"https://fixtureaccount.privatelink.dfs.core.windows.net", "private_link"},
+		{"https://fixtureaccount.z12.blob.storage.azure.net", "public"},
+		{"https://fixtureaccount.blob.core.windows.net.example.invalid", "other"},
+		{"https://fixtureaccount.blob.core.usgovcloudapi.net", "other"},
+		{"https://127.0.0.1:10000", "other"},
 	} {
-		kind, name := storageTelemetryIdentity(tc.endpoint, "fixtureaccount")
-		require.Equal(t, tc.kind, kind, tc.endpoint)
-		require.Equal(t, tc.name, name, tc.endpoint)
+		require.Equal(t, tc.kind, storageTelemetryEndpointType(tc.endpoint), tc.endpoint)
 	}
 }
 
@@ -158,6 +155,10 @@ func TestTelemetryValidationUsesSelectedFailure(t *testing.T) {
 			got := <-events
 			require.Equal(t, tc.category, got["error_category"])
 			require.Equal(t, "storage_initialization", got["failure_stage"])
+			if tc.name == "block-auth" {
+				require.Equal(t, "other", got["azstorage.endpoint_type"])
+				require.Equal(t, "account", got["azstorage.account_name"])
+			}
 			for _, value := range got {
 				require.NotContains(t, value, "private")
 				require.NotContains(t, value, "127.0.0.1")
