@@ -52,7 +52,8 @@ or cap. Values over 1,024 bytes are omitted. `config_source` (`yaml`, `cli`,
 settings. Legacy `stream`, `lfuse` and `-o` inputs are reported under their
 `stream` and `libfuse` names.
 
-The account name is sent only for recognized Azure Public Storage hostnames.
+The configured account name is sent if it has a valid Storage account name
+format, regardless of the endpoint hostname.
 No file contents or paths, container names, credentials, endpoint URLs, raw
 configuration, logs or raw error text are sent.
 

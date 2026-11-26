@@ -155,6 +155,11 @@ func (s *Session) Configure(properties map[string]string) {
 
 func (s *Session) configureLocked(properties map[string]string) {
 	for k, v := range properties {
+		if k == "azstorage.account_name" && v != "" && !validStorageAccountName(v) {
+			s.diag("telemetry: invalid storage account name omitted")
+			delete(s.config, k)
+			continue
+		}
 		if approvedConfig[k] && len(v) <= 256 {
 			if v == "" {
 				delete(s.config, k)

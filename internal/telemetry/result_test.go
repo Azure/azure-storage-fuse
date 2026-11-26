@@ -88,3 +88,14 @@ func TestPipelineStartFailureCannotBecomeSuccess(t *testing.T) {
 	require.Equal(t, "pipeline_start", e.Properties["failure_stage"])
 	require.Equal(t, "component_start_failed", e.Properties["error_category"])
 }
+
+func TestInvalidStorageAccountNameDoesNotDropResult(t *testing.T) {
+	s, events := recordingSession(t, Options{})
+	s.Configure(map[string]string{"azstorage.account_name": "fixtureaccount"})
+	s.Configure(map[string]string{"azstorage.account_name": "not/an/account"})
+	Ready(nil)
+	s.Close()
+
+	require.Len(t, events, 1)
+	require.NotContains(t, (<-events).Data.Data.Properties, "azstorage.account_name")
+}
