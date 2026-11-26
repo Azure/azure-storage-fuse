@@ -57,6 +57,10 @@ func validID(s string) bool {
 	return err == nil && len(b) == 16 && s == strings.ToLower(s)
 }
 
+func validStorageAccountName(s string) bool {
+	return len(s) >= 3 && len(s) <= 24 && strings.Trim(s, "abcdefghijklmnopqrstuvwxyz0123456789") == ""
+}
+
 func encode(e Event, key string) ([]byte, error) {
 	if e.Name != mountResultEvent {
 		return nil, errors.New("invalid telemetry event")
@@ -74,7 +78,7 @@ func encode(e Event, key string) ([]byte, error) {
 		}
 		switch k {
 		case "azstorage.account_name":
-			if len(v) < 3 || len(v) > 24 || strings.Trim(v, "abcdefghijklmnopqrstuvwxyz0123456789") != "" {
+			if !validStorageAccountName(v) {
 				return nil, errors.New("invalid storage account name")
 			}
 		case "error_code":
