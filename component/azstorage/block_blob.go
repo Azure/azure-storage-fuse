@@ -915,15 +915,14 @@ func (bb *BlockBlob) ReadToFile(name string, offset int64, count int64, fi *os.F
 
 	downloadPtr := to.Ptr(int64(1))
 
-	if common.MonitorBfs() {
-		bb.downloadOptions.Progress = func(bytesTransferred int64) {
-			trackDownload(name, bytesTransferred, count, downloadPtr)
-		}
-	}
-
 	defer log.TimeTrack(time.Now(), "BlockBlob::ReadToFile", name)
 
 	dlOpts := *bb.downloadOptions
+	if common.MonitorBfs() {
+		dlOpts.Progress = func(bytesTransferred int64) {
+			trackDownload(name, bytesTransferred, count, downloadPtr)
+		}
+	}
 	dlOpts.Range = blob.HTTPRange{
 		Offset: offset,
 		Count:  count,
