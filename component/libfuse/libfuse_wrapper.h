@@ -101,7 +101,6 @@ static int populate_callbacks(fuse_operations_t *opt)
 }
 
 static fuse_options_t fuse_opts;
-static bool context_populated = false;
 
 // Main method to start fuse loop which will fork and send us callbacks
 static int start_fuse(fuse_args_t *args, fuse_operations_t *opt)
@@ -121,15 +120,11 @@ static int populate_statfs(const char *path, struct statvfs *stbuf)
     return 0;
 }
 
-// Get uid and gid from fuse context
-static void populate_uid_gid()
+// Use the ownership resolved from BlobFuse configuration for the synthetic root.
+static void set_root_uid_gid(uid_t uid, gid_t gid)
 {
-    if (!context_populated)
-    {
-        fuse_opts.uid = fuse_get_context()->uid;
-        fuse_opts.gid = fuse_get_context()->gid;
-        context_populated = true;
-    }
+    fuse_opts.uid = uid;
+    fuse_opts.gid = gid;
 }
 
 // Stable mtime for root (/), set once at mount time so AUTO_INVAL_DATA does not
@@ -142,8 +137,6 @@ static void set_root_mtime() {
 // Properties for root (/) are static so just hardcoding them here
 static int get_root_properties(stat_t *stbuf)
 {
-    populate_uid_gid();
-
     stbuf->st_mode = S_IFDIR | 0777;
     stbuf->st_uid = fuse_opts.uid;
     stbuf->st_gid = fuse_opts.gid;

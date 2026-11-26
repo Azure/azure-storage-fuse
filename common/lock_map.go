@@ -11,7 +11,7 @@ import (
 
 // Lock item for each file
 type LockMapItem struct {
-	handleCount  uint32
+	handleCount  atomic.Uint32
 	exLocked     atomic.Bool
 	mtx          sync.Mutex
 	downloadTime time.Time
@@ -75,17 +75,17 @@ func (l *LockMapItem) Unlock() {
 
 // Increment the handle count
 func (l *LockMapItem) Inc() {
-	l.handleCount++
+	l.handleCount.Add(1)
 }
 
 // Decrement the handle count
 func (l *LockMapItem) Dec() {
-	l.handleCount--
+	l.handleCount.Add(^uint32(0))
 }
 
 // Get the current handle count
 func (l *LockMapItem) Count() uint32 {
-	return l.handleCount
+	return l.handleCount.Load()
 }
 
 // Set the download time of the file
