@@ -724,6 +724,14 @@ func testGetAttrInvalidArgument(suite *libfuseTestSuite) {
 	suite.assert.Equal(C.int(-C.EINVAL), result)
 }
 
+func rootOwnership(suite *libfuseTestSuite) (uint32, uint32) {
+	path := C.CString("/")
+	defer C.free(unsafe.Pointer(path))
+	var stat C.stat_t
+	suite.Require().Equal(C.int(0), libfuse_getattr(path, &stat, nil))
+	return uint32(stat.st_uid), uint32(stat.st_gid)
+}
+
 func testOpen(suite *libfuseTestSuite) {
 	defer suite.cleanupTest()
 	name := "path"

@@ -133,6 +133,7 @@ func (lf *Libfuse) initFuse() error {
 		log.Err("Libfuse::initFuse : Failed to parse fuse arguments")
 		return errors.New("failed to parse fuse arguments")
 	}
+	C.set_root_uid_gid(opts.uid, opts.gid)
 
 	log.Info("Libfuse::initFuse : Mounting with fuse3 library")
 	ret = C.start_fuse(&args, &operations)
@@ -216,7 +217,6 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 		log.Err("Libfuse::NotifyMountToParent : Failed to notify parent, error: [%v]", err)
 	}
 
-	C.populate_uid_gid()
 	C.set_root_mtime()
 
 	log.Info("Libfuse::libfuse_init : Kernel FUSE version: %d.%d, Kernel Caps : 0x%x", conn.proto_major, conn.proto_minor, conn.capable)
