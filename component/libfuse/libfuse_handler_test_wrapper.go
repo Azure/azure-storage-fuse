@@ -1017,6 +1017,7 @@ func testRenameInvalidPath(suite *libfuseTestSuite) {
 	// The mock fails the test if any component method is called.
 	suite.assert.Equal(C.int(-C.EINVAL), libfuse_rename(invalid, valid, 0))
 	suite.assert.Equal(C.int(-C.EINVAL), libfuse_rename(valid, invalid, 0))
+	suite.assert.Equal(C.int(-C.EINVAL), libfuse_rename(invalid, invalid, 0))
 }
 
 func testRenameBackslashName(suite *libfuseTestSuite) {
@@ -1111,6 +1112,40 @@ func testRenameChecks(suite *libfuseTestSuite) {
 	suite.mock.EXPECT().GetAttr(dstOptions).Return(nil, syscall.ENOENT)
 	suite.mock.EXPECT().RenameFile(internal.RenameFileOptions{Src: "src", Dst: "dst", SrcAttr: file}).Return(nil)
 	suite.assert.Equal(C.int(0), libfuse_rename(src, dst, 0))
+}
+
+func testRenameSamePath(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	path := C.CString("/file")
+	defer C.free(unsafe.Pointer(path))
+	file := &internal.ObjAttr{Name: "file"}
+	dir := &internal.ObjAttr{Name: "file"}
+	dir.Flags.Set(internal.PropFlagIsDir)
+
+	for _, test := range []struct {
+		name  string
+		attr  *internal.ObjAttr
+		flags C.uint
+		err   error
+		want  C.int
+	}{
+		{"file", file, 0, nil, 0},
+		{"directory", dir, 0, nil, 0},
+		{"no-replace", file, C.RENAME_NOREPLACE, nil, -C.EEXIST},
+		{"directory-no-replace", dir, C.RENAME_NOREPLACE, nil, -C.EEXIST},
+		{"missing", nil, 0, syscall.ENOENT, -C.ENOENT},
+		{"missing-no-replace", nil, C.RENAME_NOREPLACE, syscall.ENOENT, -C.ENOENT},
+		{"permission-denied", nil, 0, syscall.EACCES, -C.EACCES},
+		{"lookup-failure", nil, 0, errors.New("failed to get attributes"), -C.EIO},
+		{"missing-attributes", nil, 0, nil, -C.EIO},
+	} {
+		suite.mock.EXPECT().GetAttr(internal.GetAttrOptions{Name: "file"}).Return(test.attr, test.err)
+		suite.assert.Equal(test.want, libfuse_rename(path, path, test.flags), test.name)
+	}
+
+	suite.assert.Equal(C.int(-C.ENOTSUP), libfuse_rename(path, path, C.RENAME_EXCHANGE))
+	suite.assert.Equal(C.int(-C.EINVAL), libfuse_rename(path, path, C.RENAME_WHITEOUT))
+	suite.assert.Equal(C.int(-C.EINVAL), libfuse_rename(path, path, C.uint(1<<31)))
 }
 
 // testBackslashNameRejected verifies that no callback passes a name containing a backslash to

@@ -927,6 +927,12 @@ func libfuse2_rename(src *C.char, dst *C.char) C.int {
 		return -C.int(errnoOf(err, syscall.ENOENT, syscall.EACCES, syscall.EINVAL))
 	}
 
+	// Linux VFS normally handles self-renames before FUSE. Guard direct callback
+	// invocations here so identical paths never reach cache or storage renames.
+	if srcPath == dstPath {
+		return 0
+	}
+
 	// Whether dst exists decides which checks apply, so do not rename if that is unknown
 	dstAttr, err := fuseFS.NextComponent().GetAttr(internal.GetAttrOptions{Name: dstPath})
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {

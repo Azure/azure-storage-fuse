@@ -991,6 +991,7 @@ func testRenameInvalidPath(suite *libfuseTestSuite) {
 	// The mock fails the test if any component method is called.
 	suite.assert.Equal(C.int(-C.EINVAL), libfuse2_rename(invalid, valid))
 	suite.assert.Equal(C.int(-C.EINVAL), libfuse2_rename(valid, invalid))
+	suite.assert.Equal(C.int(-C.EINVAL), libfuse2_rename(invalid, invalid))
 }
 
 func testRenameBackslashName(suite *libfuseTestSuite) {
@@ -1083,6 +1084,32 @@ func testRenameChecks(suite *libfuseTestSuite) {
 	suite.mock.EXPECT().GetAttr(dstOptions).Return(nil, syscall.ENOENT)
 	suite.mock.EXPECT().RenameFile(internal.RenameFileOptions{Src: "src", Dst: "dst", SrcAttr: file}).Return(nil)
 	suite.assert.Equal(C.int(0), libfuse2_rename(src, dst))
+}
+
+func testRenameSamePath(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	path := C.CString("/file")
+	defer C.free(unsafe.Pointer(path))
+	file := &internal.ObjAttr{Name: "file"}
+	dir := &internal.ObjAttr{Name: "file"}
+	dir.Flags.Set(internal.PropFlagIsDir)
+
+	for _, test := range []struct {
+		name string
+		attr *internal.ObjAttr
+		err  error
+		want C.int
+	}{
+		{"file", file, nil, 0},
+		{"directory", dir, nil, 0},
+		{"missing", nil, syscall.ENOENT, -C.ENOENT},
+		{"permission-denied", nil, syscall.EACCES, -C.EACCES},
+		{"lookup-failure", nil, errors.New("failed to get attributes"), -C.EIO},
+		{"missing-attributes", nil, nil, -C.EIO},
+	} {
+		suite.mock.EXPECT().GetAttr(internal.GetAttrOptions{Name: "file"}).Return(test.attr, test.err)
+		suite.assert.Equal(test.want, libfuse2_rename(path, path), test.name)
+	}
 }
 
 // testBackslashNameRejected verifies that no callback passes a name containing a backslash to
