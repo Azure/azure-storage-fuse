@@ -385,6 +385,10 @@ func (suite *libfuseTestSuite) TestRenameChecks() {
 	testRenameChecks(suite)
 }
 
+func (suite *libfuseTestSuite) TestRenameSamePath() {
+	testRenameSamePath(suite)
+}
+
 func (suite *libfuseTestSuite) TestBackslashNameRejected() {
 	testBackslashNameRejected(suite)
 }

@@ -1023,6 +1023,10 @@ func libfuse_rename(src *C.char, dst *C.char, flags C.uint) C.int {
 	if flags&C.RENAME_EXCHANGE != 0 {
 		return -C.ENOTSUP
 	}
+	if flags&^C.uint(C.RENAME_NOREPLACE) != 0 {
+		log.Err("Libfuse::libfuse_rename : invalid rename flags 0x%x", flags)
+		return -C.EINVAL
+	}
 
 	// ENOENT. Not covered: a directory component in dst does not exist
 	if srcPath == "" || dstPath == "" {
@@ -1042,6 +1046,15 @@ func libfuse_rename(src *C.char, dst *C.char, flags C.uint) C.int {
 	if err != nil || srcAttr == nil {
 		log.Err("Libfuse::libfuse_rename : Failed to get attributes of %s [%v]", srcPath, err)
 		return -C.int(errnoOf(err, syscall.ENOENT, syscall.EACCES, syscall.EINVAL))
+	}
+
+	// Linux VFS normally handles self-renames before FUSE. Guard direct callback
+	// invocations here so identical paths never reach cache or storage renames.
+	if srcPath == dstPath {
+		if flags&C.RENAME_NOREPLACE != 0 {
+			return -C.EEXIST
+		}
+		return 0
 	}
 
 	// Whether dst exists decides which checks apply, so do not rename if that is unknown
