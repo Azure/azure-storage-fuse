@@ -1,6 +1,6 @@
 //go:build integration && !fuse2
 
-// Copyright (c) 2026 Microsoft Corporation.
+// Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
 package libfuse
@@ -54,10 +54,14 @@ func TestDefaultPermissionsIntegration(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			storage := t.TempDir()
 			require.NoError(t, os.Chmod(storage, 0755))
-			require.NoError(t, os.WriteFile(filepath.Join(storage, "private"), []byte("private data"), 0600))
-			require.NoError(t, os.WriteFile(filepath.Join(storage, "public"), []byte("public data"), 0644))
+			privateFixture := filepath.Join(storage, "private")
+			publicFixture := filepath.Join(storage, "public")
+			require.NoError(t, os.WriteFile(privateFixture, []byte("private data"), 0600))
+			require.NoError(t, os.Chmod(privateFixture, 0600))
+			require.NoError(t, os.WriteFile(publicFixture, []byte("public data"), 0644))
+			require.NoError(t, os.Chmod(publicFixture, 0644))
 			backend := &nativeModeBackend{Component: loopback.NewLoopbackFSComponent()}
-			cfg := fmt.Sprintf("allow-other: true\nloopbackfs:\n  path: %q\nlibfuse:\n  uid: %d\n  default-permissions: %t\n", storage, tt.owner, tt.enforce)
+			cfg := fmt.Sprintf("loopbackfs:\n  path: %q\nlibfuse:\n  uid: %d\n  default-permissions: %t\n", storage, tt.owner, tt.enforce)
 			h := newIntegrationHarness(t, backend, cfg)
 			require.NoError(t, backend.Configure(true))
 			require.NoError(t, backend.Start(context.Background()))

@@ -472,13 +472,13 @@ func (suite *mountTestSuite) TestDefaultPermissionsOption() {
 			out, err := executeCommandC(rootCmd, args...)
 			suite.Require().Error(err)
 			if tt.invalid {
-				suite.Assert().Contains(out, "Invalid FUSE options")
+				suite.Contains(out, "Invalid FUSE options")
 				return
 			}
-			suite.Assert().Contains(out, "invalid log level")
+			suite.Contains(out, "invalid log level")
 			var enabled bool
 			suite.Require().NoError(config.UnmarshalKey("lfuse.default-permissions", &enabled))
-			suite.Assert().Equal(tt.enabled, enabled)
+			suite.Equal(tt.enabled, enabled)
 		})
 	}
 }

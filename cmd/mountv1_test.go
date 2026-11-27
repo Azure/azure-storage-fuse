@@ -918,7 +918,7 @@ func (suite *generateConfigTestSuite) TestDefaultPermissionsConversion() {
 			suite.Require().NoError(config.ReadFromConfigFile(output))
 			var enabled bool
 			suite.Require().NoError(config.UnmarshalKey("libfuse.default-permissions", &enabled))
-			suite.Assert().Equal(tt.enabled, enabled)
+			suite.Equal(tt.enabled, enabled)
 		})
 	}
 }

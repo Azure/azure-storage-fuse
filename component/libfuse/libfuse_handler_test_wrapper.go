@@ -51,6 +51,7 @@ import (
 	"math"
 	"os"
 	"runtime"
+	"slices"
 	"strings"
 	"syscall"
 	"unsafe"
@@ -136,12 +137,13 @@ func testDefaultPermissionsArgs(suite *libfuseTestSuite, enabled bool) {
 	opts := suite.libfuse.convertConfig()
 	defer C.free(unsafe.Pointer(opts.mount_path))
 	args := C.fuse_args_t{}
-	_, ret := populateFuseArgs(opts, &args)
+	ret := populateFuseArgs(opts, &args)
 	defer C.fuse_opt_free_args(&args)
 	suite.Require().Zero(ret)
 	suite.Require().Greater(int(args.argc), 3)
 	argv := unsafe.Slice(args.argv, int(args.argc))
-	suite.assert.Equal(enabled, strings.Contains(C.GoString(argv[3]), ",default_permissions"))
+	suite.Require().Equal("-o", C.GoString(argv[2]))
+	suite.assert.Equal(enabled, slices.Contains(strings.Split(C.GoString(argv[3]), ","), "default_permissions"))
 }
 
 func testMkDir(suite *libfuseTestSuite) {

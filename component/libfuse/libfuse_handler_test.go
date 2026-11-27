@@ -149,7 +149,7 @@ func (suite *libfuseTestSuite) TestConfigDefaultPermissions() {
 func (suite *libfuseTestSuite) TestLegacyConfigDefaultPermissions() {
 	defer suite.cleanupTest()
 	suite.cleanupTest()
-	suite.setupTestHelper("lfuse:\n  default-permissions: true\n")
+	suite.setupTestHelper("libfuse:\n  default-permissions: false\nlfuse:\n  default-permissions: \"true\"\n")
 	testDefaultPermissionsArgs(suite, true)
 }
 
