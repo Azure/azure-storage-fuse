@@ -1,0 +1,47 @@
+# Prepares the environment that GitHub Copilot cloud agent and Copilot code review work in, so that
+# the commands in AGENTS.md (make build, check, test, lint, test-loopback) work from the first try.
+# https://docs.github.com/en/copilot/how-tos/use-copilot-agents/coding-agent/customize-the-agent-environment
+name: "Copilot Setup Steps"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+  pull_request:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+
+jobs:
+  # The job must be named copilot-setup-steps for Copilot to use it.
+  copilot-setup-steps:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+
+      # libfuse-dev provides the fuse2 headers that `make check` and `make build FUSE=fuse2` need.
+      - name: Install FUSE packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gcc libfuse3-dev fuse3 libfuse-dev
+
+      - name: Download Go modules
+        run: go mod download
+
+      - name: Install the pinned golangci-lint and benchstat
+        run: make tools
+
+      - name: Build and compile tests for both FUSE variants
+        run: |
+          make build
+          make check

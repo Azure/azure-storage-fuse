@@ -126,6 +126,9 @@ func (suite *hmonTestSuite) TestHmonInvalidConfigFile() {
 func (suite *hmonTestSuite) TestHmonWithConfigFailure() {
 	defer suite.cleanupTest()
 
+	// Hide any installed bfusemon so that starting the health monitor fails on every machine.
+	suite.T().Setenv("PATH", suite.T().TempDir())
+
 	confFile, err := os.CreateTemp("", "conf*.yaml")
 	suite.assert.NoError(err)
 	cfgFileHmonTest := confFile.Name()
