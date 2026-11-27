@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -89,7 +90,7 @@ func processCommand() error {
 		options.Logging.LogLevel = "LOG_WARNING"
 	}
 
-	err = options.validate(true)
+	err = options.validateWithWorkDir(true, configFileExists)
 	if err != nil {
 		return err
 	}
@@ -251,8 +252,14 @@ func mountAllContainers(containerList []string, configFile string, mountPath str
 	// During mount all some extra config were set, we need to reset those now
 	viper.Set("mount-all-containers", nil)
 
-	//configFileName := configFile[:(len(configFile) - len(ext))]
-	configFileName := filepath.Join(os.ExpandEnv(common.DefaultWorkDir), "config")
+	var configFileName string
+	if configFileExists {
+		workDir, err := expandConfigWorkDir(common.DefaultWorkDir)
+		if err != nil {
+			return fmt.Errorf("invalid work directory for generated configs: %w", err)
+		}
+		configFileName = filepath.Join(workDir, "config")
+	}
 
 	failCount := 0
 	for _, container := range containerList {
@@ -334,15 +341,23 @@ func writeConfigFile(contConfigFile string) error {
 			return fmt.Errorf("failed to encrypt yaml content [%s]", err.Error())
 		}
 
-		err = os.WriteFile(contConfigFile, cipherText, 0777)
+		err = writePrivateConfig(contConfigFile, false, func(w io.Writer) error {
+			_, err := w.Write(cipherText)
+			return err
+		})
 		if err != nil {
-			return fmt.Errorf("failed to write encrypted file [%s]", err.Error())
+			return fmt.Errorf("failed to write encrypted file: %w", err)
 		}
 	} else {
-		// Write modified config as per container to a new config file
-		err := viper.WriteConfigAs(contConfigFile)
+		err := writePrivateConfig(contConfigFile, false, func(w io.Writer) error {
+			// Match WriteConfigAs's use of the output extension to select the format.
+			if ext := filepath.Ext(contConfigFile); ext != "" {
+				viper.SetConfigType(ext[1:])
+			}
+			return viper.WriteConfigTo(w)
+		})
 		if err != nil {
-			return fmt.Errorf("failed to write config file [%s]", err.Error())
+			return fmt.Errorf("failed to write config file: %w", err)
 		}
 	}
 	return nil

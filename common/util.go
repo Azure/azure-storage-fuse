@@ -371,15 +371,18 @@ func ExpandPath(path string) string {
 		path = filepath.Join(homeDir, path[2:])
 	}
 
-	path = os.Expand(path, func(key string) string {
+	path, _ = filepath.Abs(ExpandPathEnv(path))
+	return path
+}
+
+// ExpandPathEnv substitutes environment variables without cleaning the path.
+func ExpandPathEnv(path string) string {
+	return os.Expand(path, func(key string) string {
 		if azureSpecialContainers[key] {
 			return "$" + key // Keep it as is
 		}
 		return os.Getenv(key) // Expand normally
 	})
-
-	path, _ = filepath.Abs(path)
-	return path
 }
 
 // NotifyMountToParent : Send a signal to parent process about successful mount

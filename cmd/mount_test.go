@@ -16,6 +16,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -577,6 +578,7 @@ func (suite *mountTestSuite) TestUpdateCliParams() {
 
 func (suite *mountTestSuite) TestMountOptionVaildate() {
 	defer suite.cleanupTest()
+	suite.T().Setenv("HOME", suite.T().TempDir())
 	opts := &mountOptions{}
 
 	err := opts.validate(true)
@@ -610,6 +612,52 @@ func (suite *mountTestSuite) TestMountOptionVaildate() {
 	suite.assert.Contains(opts.Logging.LogFilePath, opts.DefaultWorkingDir)
 	suite.assert.Equal(common.DefaultWorkDir, opts.DefaultWorkingDir)
 	suite.assert.Equal(common.DefaultLogFilePath, opts.Logging.LogFilePath)
+}
+
+func privateTestDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	require.NoError(t, os.Chmod(dir, 0700))
+	return dir
+}
+
+func TestMountWorkDirPermissions(t *testing.T) {
+	oldWorkDir, oldLogPath := common.DefaultWorkDir, common.DefaultLogFilePath
+	t.Cleanup(func() { common.DefaultWorkDir, common.DefaultLogFilePath = oldWorkDir, oldLogPath })
+
+	dir := privateTestDir(t)
+	opts := mountOptions{
+		MountPath:         t.TempDir(),
+		DefaultWorkingDir: filepath.Join(dir, "nested", "work"),
+		Logging:           LogOptions{LogLevel: "LOG_WARNING"},
+	}
+	require.NoError(t, opts.validateWithWorkDir(true, true))
+	info, err := os.Stat(opts.DefaultWorkingDir)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0700), info.Mode().Perm())
+
+	require.NoError(t, os.Chmod(opts.DefaultWorkingDir, 0755))
+	require.NoError(t, opts.validateWithWorkDir(true, true))
+
+	require.NoError(t, os.Chmod(opts.DefaultWorkingDir, 0775))
+	require.NoError(t, opts.validate(false))
+	require.ErrorContains(t, opts.validateWithWorkDir(true, true), "not writable by group or others")
+
+	require.NoError(t, os.Chmod(opts.DefaultWorkingDir, 0755))
+	require.NoError(t, os.Chmod(filepath.Dir(opts.DefaultWorkingDir), 0775))
+	require.NoError(t, opts.validate(false))
+	require.ErrorContains(t, opts.validateWithWorkDir(true, true), "not writable by group or others")
+
+	link := filepath.Join(dir, "work-link")
+	require.NoError(t, os.Symlink(opts.DefaultWorkingDir, link))
+	opts.DefaultWorkingDir = link
+	require.NoError(t, opts.validate(false))
+	require.ErrorContains(t, opts.validateWithWorkDir(true, true), "not a symlink")
+
+	t.Setenv("BLOBFUSE_TEST_WORKDIR", dir+"/nested/../configs")
+	opts.DefaultWorkingDir = "$BLOBFUSE_TEST_WORKDIR"
+	require.NoError(t, opts.validate(false))
+	require.ErrorContains(t, opts.validateWithWorkDir(true, true), "must not contain a '..' component")
 }
 
 func (suite *mountTestSuite) TestCleanUpOnStartFlag() {

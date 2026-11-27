@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -15,6 +16,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -98,6 +100,53 @@ func (suite *secureConfigTestSuite) TestSecureConfigEncrypt() {
 
 	_, err = executeCommandSecure(rootCmd, "secure", "encrypt", fmt.Sprintf("--config-file=%s", confFile.Name()), "--passphrase=123123123123123123123123", fmt.Sprintf("--output-file=%s", outFile.Name()))
 	suite.assert.NoError(err)
+	suite.assert.NoFileExists(confFile.Name())
+}
+
+func (suite *secureConfigTestSuite) TestSecureConfigEncryptRejectsParentComponent() {
+	defer suite.cleanupTest()
+	t := suite.T()
+	dir := privateTestDir(t)
+	source := filepath.Join(dir, "plain.yaml")
+	destination := filepath.Join(dir, "encrypted.azsec")
+	require.NoError(t, os.WriteFile(source, []byte(testPlainTextConfig), 0600))
+	require.NoError(t, os.WriteFile(destination, []byte("unchanged"), 0600))
+	require.NoError(t, os.Mkdir(filepath.Join(dir, "nested"), 0700))
+
+	_, err := executeCommandSecure(rootCmd, "secure", "encrypt", "--config-file="+source,
+		"--passphrase=123123123123123123123123", "--output-file="+dir+"/nested/../encrypted.azsec")
+	require.ErrorContains(t, err, "must not contain a '..' component")
+	for path, want := range map[string]string{source: testPlainTextConfig, destination: "unchanged"} {
+		data, err := os.ReadFile(path)
+		require.NoError(t, err)
+		assert.Equal(t, want, string(data))
+	}
+}
+
+func (suite *secureConfigTestSuite) TestSecureConfigEncryptPreservesFilesWhenOutputDirCannotBeOpened() {
+	defer suite.cleanupTest()
+	if os.Geteuid() == 0 {
+		suite.T().Skip("requires an unprivileged user")
+	}
+
+	dir := privateTestDir(suite.T())
+	outputDir := filepath.Join(dir, "output")
+	source := filepath.Join(dir, "plain.yaml")
+	destination := filepath.Join(outputDir, "encrypted.azsec")
+	suite.Require().NoError(os.Mkdir(outputDir, 0700))
+	suite.Require().NoError(os.WriteFile(source, []byte(testPlainTextConfig), 0600))
+	suite.Require().NoError(os.WriteFile(destination, []byte("previous output"), 0600))
+	suite.Require().NoError(os.Chmod(outputDir, 0300))
+	suite.T().Cleanup(func() { suite.NoError(os.Chmod(outputDir, 0700)) })
+
+	_, err := executeCommandSecure(rootCmd, "secure", "encrypt", "--config-file="+source,
+		"--passphrase=123123123123123123123123", "--output-file="+destination)
+	suite.Require().ErrorContains(err, "cannot open config output directory")
+	for path, want := range map[string]string{source: testPlainTextConfig, destination: "previous output"} {
+		data, err := os.ReadFile(path)
+		suite.Require().NoError(err)
+		suite.Equal(want, string(data))
+	}
 }
 
 func (suite *secureConfigTestSuite) TestSecureConfigEncryptNotExistent() {
@@ -156,15 +205,19 @@ func (suite *secureConfigTestSuite) TestSecureConfigDecrypt() {
 	_, err = executeCommandSecure(rootCmd, "secure", "encrypt", fmt.Sprintf("--config-file=%s", confFile.Name()), "--passphrase=123123123123123123123123", fmt.Sprintf("--output-file=%s", outFile.Name()))
 	suite.assert.NoError(err)
 
-	_, err = executeCommandSecure(rootCmd, "secure", "decrypt", fmt.Sprintf("--config-file=%s", outFile.Name()), "--passphrase=123123123123123123123123", "--output-file=./tmp.yaml")
+	decrypted := filepath.Join(privateTestDir(suite.T()), "decrypted.yaml")
+	_, err = executeCommandSecure(rootCmd, "secure", "decrypt", fmt.Sprintf("--config-file=%s", outFile.Name()), "--passphrase=123123123123123123123123", "--output-file="+decrypted)
 	suite.assert.NoError(err)
 
-	data, err := os.ReadFile("./tmp.yaml")
+	info, err := os.Stat(decrypted)
+	suite.Require().NoError(err)
+	suite.assert.Equal(os.FileMode(0600), info.Mode().Perm())
+
+	data, err := os.ReadFile(decrypted)
 	suite.assert.NoError(err)
 
 	suite.assert.Equal(testPlainTextConfig, string(data))
 
-	os.Remove("./tmp.yaml")
 	os.Remove(confFile.Name() + "." + SecureConfigExtension)
 }
 
@@ -246,4 +299,14 @@ func (suite *secureConfigTestSuite) TestSecureConfigSet() {
 
 	_, err = executeCommandSecure(rootCmd, "secure", "get", fmt.Sprintf("--config-file=%s", outFile.Name()), "--passphrase=123123123123123123123123", "--key=logging.level")
 	suite.assert.NoError(err)
+
+	t := suite.T()
+	before, err := os.ReadFile(outFile.Name())
+	require.NoError(t, err)
+	require.NoError(t, os.Chmod(outFile.Name(), 0400))
+	_, err = executeCommandSecure(rootCmd, "secure", "set", fmt.Sprintf("--config-file=%s", outFile.Name()), "--passphrase=123123123123123123123123", "--key=logging.level", "--value=log_debug")
+	require.ErrorContains(t, err, "owner write permission is not set")
+	after, err := os.ReadFile(outFile.Name())
+	require.NoError(t, err)
+	assert.Equal(t, before, after)
 }
