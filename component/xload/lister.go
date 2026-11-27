@@ -1,35 +1,5 @@
-/*
-    _____           _____   _____   ____          ______  _____  ------
-   |     |  |      |     | |     | |     |     | |       |            |
-   |     |  |      |     | |     | |     |     | |       |            |
-   | --- |  |      |     | |-----| |---- |     | |-----| |-----  ------
-   |     |  |      |     | |     | |     |     |       | |       |
-   | ____|  |_____ | ____| | ____| |     |_____|  _____| |_____  |_____
-
-
-   Licensed under the MIT License <http://opensource.org/licenses/MIT>.
-
-   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
-   Author : <blobfusedev@microsoft.com>
-
-   Permission is hereby granted, free of charge, to any person obtaining a copy
-   of this software and associated documentation files (the "Software"), to deal
-   in the Software without restriction, including without limitation the rights
-   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-   copies of the Software, and to permit persons to whom the Software is
-   furnished to do so, subject to the following conditions:
-
-   The above copyright notice and this permission notice shall be included in all
-   copies or substantial portions of the Software.
-
-   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-   SOFTWARE
-*/
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 
 package xload
 
@@ -37,7 +7,7 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
@@ -54,7 +24,7 @@ var _ enumerator = &remoteLister{}
 
 type lister struct {
 	XBase
-	path              string      // base path of the directory to be listed
+	root              *os.Root    // base path of the directory to be listed; all file operations stay within it
 	defaultPermission os.FileMode // default permission of files and directories in the local path
 }
 
@@ -70,7 +40,7 @@ type remoteLister struct {
 }
 
 type remoteListerOptions struct {
-	path              string
+	root              *os.Root
 	workerCount       uint32
 	defaultPermission os.FileMode
 	remote            internal.Component
@@ -78,16 +48,16 @@ type remoteListerOptions struct {
 }
 
 func newRemoteLister(opts *remoteListerOptions) (*remoteLister, error) {
-	if opts == nil || opts.path == "" || opts.remote == nil || opts.statsMgr == nil || opts.workerCount == 0 {
+	if opts == nil || opts.root == nil || opts.remote == nil || opts.statsMgr == nil || opts.workerCount == 0 {
 		log.Err("lister::NewRemoteLister : invalid parameters sent to create remote lister")
 		return nil, fmt.Errorf("invalid parameters sent to create remote lister")
 	}
 
-	log.Debug("lister::NewRemoteLister : create new remote lister for %s, default permission %v, workers %v", opts.path, opts.defaultPermission, opts.workerCount)
+	log.Debug("lister::NewRemoteLister : create new remote lister for %s, default permission %v, workers %v", opts.root.Name(), opts.defaultPermission, opts.workerCount)
 
 	rl := &remoteLister{
 		lister: lister{
-			path:              opts.path,
+			root:              opts.root,
 			defaultPermission: opts.defaultPermission,
 		},
 		listBlocked: false,
@@ -109,13 +79,13 @@ func (rl *remoteLister) Init() {
 }
 
 func (rl *remoteLister) Start(ctx context.Context) {
-	log.Debug("remoteLister::Start : start remote lister for %s", rl.path)
+	log.Debug("remoteLister::Start : start remote lister for %s", rl.root.Name())
 	rl.GetThreadPool().Start(ctx)
 	_ = rl.Schedule(&WorkItem{CompName: rl.GetName()})
 }
 
 func (rl *remoteLister) Stop() {
-	log.Debug("remoteLister::Stop : stop remote lister for %s", rl.path)
+	log.Debug("remoteLister::Stop : stop remote lister for %s", rl.root.Name())
 	if rl.GetThreadPool() != nil {
 		rl.GetThreadPool().Stop()
 	}
@@ -177,14 +147,36 @@ func (rl *remoteLister) Process(item *WorkItem) (int, error) {
 		for _, entry := range entries {
 			log.Debug("remoteLister::Process : Iterating: %s, Is directory: %v", entry.Path, entry.IsDir())
 
+			name, err := localName(entry.Path)
+			if err == nil && name == "." {
+				err = fmt.Errorf("path %q names the xload path itself: %w", entry.Path, syscall.EINVAL)
+			}
+			if err != nil {
+				log.Err("remoteLister::Process : Skipping remote entry [%s]", err.Error())
+
+				// the entry is already counted in ListerCount, so report it as failed the same way as a directory
+				// that cannot be created or a file that cannot be downloaded, to let the progress complete
+				component := SPLITTER
+				if entry.IsDir() {
+					component = LISTER
+				}
+				rl.GetStatsManager().AddStats(&StatsItem{
+					Component: component,
+					Name:      entry.Path,
+					Dir:       entry.IsDir(),
+					Success:   false,
+					Download:  true,
+				})
+				continue
+			}
+
 			if entry.IsDir() {
 				// create directory in local
 				// spawn go routine for directory creation and then
 				// adding to the input channel of the listing component
 				// TODO:: xload : check how many threads can we spawn
 				go func(name string) {
-					localPath := filepath.Join(rl.path, name)
-					err = rl.mkdir(localPath)
+					err := rl.mkdir(name)
 					// TODO:: xload : handle error
 					if err != nil {
 						log.Err("remoteLister::Process : Failed to create directory [%s]", err.Error())
@@ -192,7 +184,7 @@ func (rl *remoteLister) Process(item *WorkItem) (int, error) {
 					}
 
 					// push the directory to input pool for its listing
-					err := rl.Schedule(&WorkItem{
+					err = rl.Schedule(&WorkItem{
 						CompName: rl.GetName(),
 						Path:     name,
 					})
@@ -200,7 +192,7 @@ func (rl *remoteLister) Process(item *WorkItem) (int, error) {
 						log.Err("remoteLister::Process : Failed to schedule directory listing for %s [%s]", name, err.Error())
 						return
 					}
-				}(entry.Path)
+				}(name)
 			} else {
 				fileMode := rl.defaultPermission
 				if !entry.IsModeDefault() {
@@ -233,9 +225,10 @@ func (rl *remoteLister) Process(item *WorkItem) (int, error) {
 	return cnt, nil
 }
 
+// mkdir creates the directory, given relative to the xload path, and any missing parents
 func (rl *remoteLister) mkdir(name string) error {
 	log.Debug("remoteLister::mkdir : Creating local path: %s, mode %v", name, rl.defaultPermission)
-	err := os.MkdirAll(name, rl.defaultPermission)
+	err := rl.root.MkdirAll(name, rl.defaultPermission)
 
 	// send stats for dir creation
 	rl.GetStatsManager().AddStats(&StatsItem{

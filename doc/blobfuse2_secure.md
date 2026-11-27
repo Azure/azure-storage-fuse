@@ -10,6 +10,22 @@ Encrypt / Decrypt your config file
 blobfuse2 secure [flags]
 ```
 
+### Output paths
+
+`secure encrypt` and `secure decrypt` write to `--output-file` when specified.
+`secure set` rewrites the file specified by `--config-file`. Use an existing
+directory whose path has no symlinks or `..` components. Directories in the
+path must be owned by the invoking user or root. Group- or world-writable
+directories must have the sticky bit set (for example, `/tmp`).
+
+An existing destination must be a regular file owned by the invoking user
+with owner write permission. New and rewritten configs have owner-only
+permissions (`0600`), so services that relied on group-read access will lose
+that access. `secure encrypt` requires read access to the output directory so
+it can sync the directory after replacing the output. It removes the
+plaintext source only after the encrypted output and its directory have
+been synced.
+
 ### Examples
 
 ```

@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) Microsoft Corporation.
+ * Licensed under the MIT License
+ */
+
 #ifndef BLOBFUSE_LIBFUSE_COMPAT_H
 #define BLOBFUSE_LIBFUSE_COMPAT_H
 

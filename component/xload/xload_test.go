@@ -1,35 +1,5 @@
-/*
-    _____           _____   _____   ____          ______  _____  ------
-   |     |  |      |     | |     | |     |     | |       |            |
-   |     |  |      |     | |     | |     |     | |       |            |
-   | --- |  |      |     | |-----| |---- |     | |-----| |-----  ------
-   |     |  |      |     | |     | |     |     |       | |       |
-   | ____|  |_____ | ____| | ____| |     |_____|  _____| |_____  |_____
-
-
-   Licensed under the MIT License <http://opensource.org/licenses/MIT>.
-
-   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
-   Author : <blobfusedev@microsoft.com>
-
-   Permission is hereby granted, free of charge, to any person obtaining a copy
-   of this software and associated documentation files (the "Software"), to deal
-   in the Software without restriction, including without limitation the rights
-   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-   copies of the Software, and to permit persons to whom the Software is
-   furnished to do so, subject to the following conditions:
-
-   The above copyright notice and this permission notice shall be included in all
-   copies or substantial portions of the Software.
-
-   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-   SOFTWARE
-*/
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 
 package xload
 
@@ -364,11 +334,18 @@ func (suite *xloadTestSuite) TestCreateDownloader() {
 
 	xl := &Xload{}
 	err := xl.createDownloader()
+	suite.assert.ErrorIs(err, os.ErrNotExist)
+	suite.assert.Empty(xl.comps)
+	suite.assert.Nil(xl.root)
+
+	suite.assert.NoError(os.MkdirAll(suite.local_path, 0777))
+	xl.path = suite.local_path
+	err = xl.createDownloader()
 	suite.assert.Error(err)
 	suite.assert.Contains(err.Error(), "invalid parameters sent to create remote lister")
 	suite.assert.Empty(xl.comps)
+	suite.assert.Nil(xl.root)
 
-	xl.path = suite.local_path
 	xl.workerCount = 4
 	xl.SetNextComponent(xl)
 	xl.statsMgr = &StatsManager{}
@@ -382,11 +359,14 @@ func (suite *xloadTestSuite) TestCreateDownloader() {
 	err = xl.createDownloader()
 	suite.assert.NoError(err)
 	suite.assert.Len(xl.comps, 3)
+	suite.assert.NotNil(xl.root)
+	suite.assert.NoError(xl.root.Close())
 }
 
 func (suite *xloadTestSuite) TestCreateChain() {
 	defer suite.cleanupTest(false)
 	suite.cleanupTest(false) // teardown the default xload generated
+	suite.assert.NoError(os.MkdirAll(suite.local_path, 0777))
 
 	xl := &Xload{
 		path:        suite.local_path,
@@ -426,6 +406,7 @@ func (suite *xloadTestSuite) TestDownloadFileError() {
 func (suite *xloadTestSuite) TestDownloadFileGetAttrError() {
 	defer suite.cleanupTest(false)
 	suite.cleanupTest(false) // teardown the default xload generated
+	suite.assert.NoError(os.MkdirAll(suite.local_path, 0777))
 
 	xl := &Xload{
 		path:        suite.local_path,
@@ -537,7 +518,8 @@ func (suite *xloadTestSuite) TestOpenFileWithDownload() {
 	err = suite.xload.ReleaseFile(internal.ReleaseFileOptions{Handle: fh1})
 	suite.assert.NoError(err)
 
-	fh2, err := suite.xload.OpenFile(internal.OpenFileOptions{Name: "dir_0/file_3", Flags: os.O_RDONLY, Mode: common.DefaultFilePermissionBits})
+	// libfuse passes default-permission as the mode, which may include special bits such as sticky
+	fh2, err := suite.xload.OpenFile(internal.OpenFileOptions{Name: "dir_0/file_3", Flags: os.O_RDONLY, Mode: os.ModeSticky | 0777})
 	suite.assert.NoError(err)
 	suite.assert.NotNil(fh2)
 	suite.assert.Equal((int64)(27), fh2.Size)

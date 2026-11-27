@@ -1,35 +1,5 @@
-/*
-    _____           _____   _____   ____          ______  _____  ------
-   |     |  |      |     | |     | |     |     | |       |            |
-   |     |  |      |     | |     | |     |     | |       |            |
-   | --- |  |      |     | |-----| |---- |     | |-----| |-----  ------
-   |     |  |      |     | |     | |     |     |       | |       |
-   | ____|  |_____ | ____| | ____| |     |_____|  _____| |_____  |_____
-
-
-   Licensed under the MIT License <http://opensource.org/licenses/MIT>.
-
-   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
-   Author : <blobfusedev@microsoft.com>
-
-   Permission is hereby granted, free of charge, to any person obtaining a copy
-   of this software and associated documentation files (the "Software"), to deal
-   in the Software without restriction, including without limitation the rights
-   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-   copies of the Software, and to permit persons to whom the Software is
-   furnished to do so, subject to the following conditions:
-
-   The above copyright notice and this permission notice shall be included in all
-   copies or substantial portions of the Software.
-
-   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-   SOFTWARE
-*/
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 
 package azstorage
 
@@ -248,15 +218,23 @@ func formatListDirName(path string) string {
 
 func (az *AzStorage) IsDirEmpty(options internal.IsDirEmptyOptions) bool {
 	log.Trace("AzStorage::IsDirEmpty : %s", options.Name)
-	list, _, err := az.storage.List(formatListDirName(options.Name), nil, 1)
-	if err != nil {
-		log.Err("AzStorage::IsDirEmpty : error listing [%s]", err)
-		return false
+	path := formatListDirName(options.Name)
+	var marker *string
+	for {
+		list, nextMarker, err := az.storage.List(path, marker, 1)
+		if err != nil {
+			log.Err("AzStorage::IsDirEmpty : error listing [%s]", err)
+			return false
+		}
+		if len(list) != 0 {
+			return false
+		}
+		// An empty page is not the end of the listing if it has a continuation token.
+		if nextMarker == nil || *nextMarker == "" {
+			return true
+		}
+		marker = nextMarker
 	}
-	if len(list) == 0 {
-		return true
-	}
-	return false
 }
 
 func (az *AzStorage) ReadDir(options internal.ReadDirOptions) ([]*internal.ObjAttr, error) {

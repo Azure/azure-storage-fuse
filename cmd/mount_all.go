@@ -1,35 +1,5 @@
-/*
-    _____           _____   _____   ____          ______  _____  ------
-   |     |  |      |     | |     | |     |     | |       |            |
-   |     |  |      |     | |     | |     |     | |       |            |
-   | --- |  |      |     | |-----| |---- |     | |-----| |-----  ------
-   |     |  |      |     | |     | |     |     |       | |       |
-   | ____|  |_____ | ____| | ____| |     |_____|  _____| |_____  |_____
-
-
-   Licensed under the MIT License <http://opensource.org/licenses/MIT>.
-
-   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
-   Author : <blobfusedev@microsoft.com>
-
-   Permission is hereby granted, free of charge, to any person obtaining a copy
-   of this software and associated documentation files (the "Software"), to deal
-   in the Software without restriction, including without limitation the rights
-   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-   copies of the Software, and to permit persons to whom the Software is
-   furnished to do so, subject to the following conditions:
-
-   The above copyright notice and this permission notice shall be included in all
-   copies or substantial portions of the Software.
-
-   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-   SOFTWARE
-*/
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 
 package cmd
 
@@ -37,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -119,7 +90,7 @@ func processCommand() error {
 		options.Logging.LogLevel = "LOG_WARNING"
 	}
 
-	err = options.validate(true)
+	err = options.validateWithWorkDir(true, configFileExists)
 	if err != nil {
 		return err
 	}
@@ -281,8 +252,14 @@ func mountAllContainers(containerList []string, configFile string, mountPath str
 	// During mount all some extra config were set, we need to reset those now
 	viper.Set("mount-all-containers", nil)
 
-	//configFileName := configFile[:(len(configFile) - len(ext))]
-	configFileName := filepath.Join(os.ExpandEnv(common.DefaultWorkDir), "config")
+	var configFileName string
+	if configFileExists {
+		workDir, err := expandConfigWorkDir(common.DefaultWorkDir)
+		if err != nil {
+			return fmt.Errorf("invalid work directory for generated configs: %w", err)
+		}
+		configFileName = filepath.Join(workDir, "config")
+	}
 
 	failCount := 0
 	for _, container := range containerList {
@@ -364,15 +341,23 @@ func writeConfigFile(contConfigFile string) error {
 			return fmt.Errorf("failed to encrypt yaml content [%s]", err.Error())
 		}
 
-		err = os.WriteFile(contConfigFile, cipherText, 0777)
+		err = writePrivateConfig(contConfigFile, false, func(w io.Writer) error {
+			_, err := w.Write(cipherText)
+			return err
+		})
 		if err != nil {
-			return fmt.Errorf("failed to write encrypted file [%s]", err.Error())
+			return fmt.Errorf("failed to write encrypted file: %w", err)
 		}
 	} else {
-		// Write modified config as per container to a new config file
-		err := viper.WriteConfigAs(contConfigFile)
+		err := writePrivateConfig(contConfigFile, false, func(w io.Writer) error {
+			// Match WriteConfigAs's use of the output extension to select the format.
+			if ext := filepath.Ext(contConfigFile); ext != "" {
+				viper.SetConfigType(ext[1:])
+			}
+			return viper.WriteConfigTo(w)
+		})
 		if err != nil {
-			return fmt.Errorf("failed to write config file [%s]", err.Error())
+			return fmt.Errorf("failed to write config file: %w", err)
 		}
 	}
 	return nil

@@ -1,38 +1,8 @@
 //go:build !unittest
 // +build !unittest
 
-/*
-    _____           _____   _____   ____          ______  _____  ------
-   |     |  |      |     | |     | |     |     | |       |            |
-   |     |  |      |     | |     | |     |     | |       |            |
-   | --- |  |      |     | |-----| |---- |     | |-----| |-----  ------
-   |     |  |      |     | |     | |     |     |       | |       |
-   | ____|  |_____ | ____| | ____| |     |_____|  _____| |_____  |_____
-
-
-   Licensed under the MIT License <http://opensource.org/licenses/MIT>.
-
-   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
-   Author : <blobfusedev@microsoft.com>
-
-   Permission is hereby granted, free of charge, to any person obtaining a copy
-   of this software and associated documentation files (the "Software"), to deal
-   in the Software without restriction, including without limitation the rights
-   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-   copies of the Software, and to permit persons to whom the Software is
-   furnished to do so, subject to the following conditions:
-
-   The above copyright notice and this permission notice shall be included in all
-   copies or substantial portions of the Software.
-
-   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-   SOFTWARE
-*/
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 
 package e2e_tests
 
@@ -241,17 +211,18 @@ func (suite *dirTestSuite) TestDirDeleteEmpty() {
 func (suite *dirTestSuite) TestDirDeleteNonEmpty() {
 	dir3Name := suite.testPath + "/test3NE"
 	err := os.Mkdir(dir3Name, 0777)
-	suite.NoError(err)
+	suite.Require().NoError(err)
+	defer suite.dirTestCleanup([]string{dir3Name})
 
 	err = os.Mkdir(dir3Name+"/abcdTest", 0777)
-	suite.NoError(err)
+	suite.Require().NoError(err)
 
 	err = os.Remove(dir3Name)
-	suite.Error(err)
-	suite.Contains(err.Error(), "directory not empty")
+	suite.ErrorIs(err, syscall.ENOTEMPTY)
 
-	// cleanup
-	suite.dirTestCleanup([]string{dir3Name})
+	info, err := os.Stat(dir3Name + "/abcdTest")
+	suite.Require().NoError(err)
+	suite.True(info.IsDir())
 }
 
 // // # Delete non-empty directory recursively
