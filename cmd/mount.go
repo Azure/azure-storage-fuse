@@ -29,6 +29,7 @@ import (
 
 	"github.com/sevlyar/go-daemon"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 type LogOptions struct {
@@ -243,7 +244,7 @@ var mountCmd = &cobra.Command{
 	Long:       "Mounts the azure container as a filesystem",
 	SuggestFor: []string{"mnt", "mout"},
 	Args:       cobra.ExactArgs(1),
-	RunE: func(_ *cobra.Command, args []string) error {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		options.inputMountPath = args[0]
 		options.MountPath = common.ExpandPath(args[0])
 		common.MountPath = options.MountPath
@@ -487,7 +488,7 @@ var mountCmd = &cobra.Command{
 		var pipeline *internal.Pipeline
 
 		log.Crit("Starting Blobfuse2 Mount : %s on [%s]", common.Blobfuse2Version, common.GetCurrentDistro())
-		log.Info("Mount Command: %s", os.Args)
+		log.Info("Mount CLI options: %s", mountCLIFlagsForLog(cmd.Flags()))
 		log.Crit("Logging level set to : %s", logLevel.String())
 		log.Crit("Log options: %+v", options.Logging)
 		log.Debug("Mount allowed on nonempty path : %v", options.NonEmpty)
@@ -701,6 +702,65 @@ func monitorChild(pid int, done chan struct{}) {
 			}
 		}
 	}
+}
+
+func mountCLIFlagsForLog(flags *pflag.FlagSet) string {
+	var summary strings.Builder
+	flags.Visit(func(flag *pflag.Flag) {
+		// Newly added flags must be reviewed before their values can be logged.
+		value := "[REDACTED]"
+		safeType := ""
+		switch flag.Name {
+		case "foreground", "read-only", "secure-config", "cleanup-on-start",
+			"block-cache", "streaming", "preload", "use-attr-cache",
+			"disable-kernel-cache", "allow-other", "disable-writeback-cache",
+			"ignore-open-flags", "d", "lazy-write", "disable-version-check",
+			"log-goroutine-id", "log-compress", "empty-dir-check", "background-download",
+			"upload-modified-only", "sync-to-flush", "ignore-sync", "hard-limit",
+			"block-cache-prefetch-on-open", "block-cache-strong-consistency",
+			"no-symlinks", "cache-on-list", "use-https", "use-adls",
+			"set-content-type", "virtual-directory", "disable-compression",
+			"honour-acl", "cpk-enabled", "preserve-acl", "skip-mount-validation":
+			safeType = "bool"
+		case "wait-for-mount":
+			safeType = "duration"
+		case "max-concurrency", "max-retry", "max-retry-interval-in-seconds", "retry-delay-factor":
+			safeType = "uint16"
+		case "attr-timeout", "entry-timeout", "negative-timeout", "kernel-list-cache-timeout",
+			"attr-cache-timeout", "attr-cache-max-size-mb", "file-cache-timeout",
+			"file-cache-timeout-in-seconds", "cache-size-mb", "high-disk-threshold",
+			"low-disk-threshold", "max-eviction", "block-cache-disk-timeout",
+			"block-cache-prefetch", "block-cache-parallelism", "distributed-cache-ttl",
+			"distributed-cache-block-size", "distributed-cache-node-memory",
+			"distributed-cache-prefetch", "distributed-cache-parallelism":
+			safeType = "uint32"
+		case "block-cache-pool-size", "block-cache-disk-size", "cache-poll-timeout-msec":
+			safeType = "uint64"
+		case "block-cache-block-size":
+			safeType = "float64"
+		case "cancel-list-on-mount-seconds":
+			safeType = "int32"
+		case "cap-mbps-read", "cap-iops":
+			safeType = "int64"
+		case "log-type":
+			if flag.Value.Type() == "string" && slices.Contains([]string{"base", "syslog", "silent"}, flag.Value.String()) {
+				value = flag.Value.String()
+			}
+		case "log-level":
+			var level common.LogLevel
+			if flag.Value.Type() == "string" && level.Parse(flag.Value.String()) == nil {
+				value = level.String()
+			}
+		}
+		if safeType != "" && flag.Value.Type() == safeType {
+			value = flag.Value.String()
+		}
+		if summary.Len() != 0 {
+			summary.WriteByte(' ')
+		}
+		fmt.Fprintf(&summary, "--%s=%q", flag.Name, value)
+	})
+	return summary.String()
 }
 
 func ignoreFuseOptions(opt string) bool {
@@ -982,7 +1042,7 @@ func init() {
 		"Encrypt auto generated config file for each container")
 
 	mountCmd.PersistentFlags().StringVar(&options.PassPhrase, "passphrase", "",
-		"Key to decrypt config file. Can also be specified by env-variable BLOBFUSE2_SECURE_CONFIG_PASSPHRASE.\nKey length shall be 16 (AES-128), 24 (AES-192), or 32 (AES-256) bytes in length.")
+		"Key to decrypt config file. Prefer env-variable BLOBFUSE2_SECURE_CONFIG_PASSPHRASE to keep the key out of process arguments.\nKey length shall be 16 (AES-128), 24 (AES-192), or 32 (AES-256) bytes in length.")
 
 	mountCmd.PersistentFlags().String("log-type", "syslog", "Type of logger to be used by the system. Set to syslog by default. Allowed values are silent|syslog|base.")
 	config.BindPFlag("logging.type", mountCmd.PersistentFlags().Lookup("log-type"))

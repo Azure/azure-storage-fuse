@@ -45,6 +45,8 @@ profiler-port: <port number for dynamic-profiler to listen for REST calls. Defau
 profiler-ip: <IP address for dynamic-profiler to listen for REST calls. Default - localhost>
 
 # Logger configuration
+# Info/Debug mount logs summarize parsed CLI flags. Only reviewed operational values
+# are shown; credentials, other strings, and unclassified flag values are redacted.
 logging:
   type: syslog|silent|base <type of logger to be used by the system. silent = no logger, base = file based logger. Default - syslog>
   level: log_off|log_crit|log_err|log_warning|log_info|log_trace|log_debug <log level. Default - log_warning> <log_debug will also enable sdk-trace logs>

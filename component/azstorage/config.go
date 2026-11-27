@@ -396,7 +396,7 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		}
 	}
 	az.stConfig.proxyAddress = formatEndpointProtocol(az.stConfig.proxyAddress, opt.UseHTTP)
-	log.Info("ParseAndValidateConfig : using the following proxy address from the config file: %s", az.stConfig.proxyAddress)
+	log.Info("ParseAndValidateConfig : proxy configured %t", az.stConfig.proxyAddress != "")
 
 	err = ParseAndReadDynamicConfig(az, opt, false)
 	if err != nil {

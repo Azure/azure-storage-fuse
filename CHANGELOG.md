@@ -5,6 +5,7 @@
 **Features**
 
 **Bug Fixes**
+- Replace raw mount command-line logging with a parsed CLI summary that retains reviewed operational values and redacts credentials and unclassified values. Proxy diagnostics and invalid-proxy errors no longer expose credentials. Prefer `BLOBFUSE2_SECURE_CONFIG_PASSPHRASE` over `--passphrase` to avoid exposing the key in process arguments.
 - Fix xload/preload writing outside its local path. Remote files and directories whose names contain `.` or `..` segments, repeated slashes or a leading `/` are now skipped, and all files are created, written and removed through a handle on the configured `xload.path` so that symlinks in it cannot redirect them elsewhere. ([PR #2480](https://github.com/Azure/azure-storage-fuse/pull/2480))
 - Fix blobfuse2 crashing when a rename cannot read the attributes of its source for a reason other than the source not existing, such as a permission error or a network failure. The rename now fails with that error (`EACCES`, `EINVAL` or `EIO`), also when the attributes of an existing destination cannot be read. ([PR #2450](https://github.com/Azure/azure-storage-fuse/pull/2450))
 - Fix directory listings of more than 5,000 entries that skipped entries or ended early after `rewinddir()` or `seekdir()`. Listing a directory again from its start no longer continues with the next page, and seeking back no longer ends the listing. ([PR #2451](https://github.com/Azure/azure-storage-fuse/pull/2451))

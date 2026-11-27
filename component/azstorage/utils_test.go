@@ -4,6 +4,7 @@
 package azstorage
 
 import (
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -267,6 +268,50 @@ func (s *utilsTestSuite) TestBlockProxyOptions() {
 	opt, err = getAzBlobServiceClientOptions(&AzStorageConfig{proxyAddress: "https://128.0.0.1:8080", maxRetries: 3})
 	assert.NoError(err)
 	assert.EqualValues(3, opt.Retry.MaxRetries)
+}
+
+func (s *utilsTestSuite) TestProxyCredentialsAndParseErrors() {
+	for _, tt := range []struct {
+		name    string
+		proxy   string
+		invalid bool
+	}{
+		{name: "valid", proxy: "http://synthetic-user:synthetic-password@proxy.invalid:8080/?token=synthetic-token"},
+		{name: "invalid escape", proxy: "http://synthetic-user:synthetic-password@proxy.invalid/%zz?token=synthetic-token", invalid: true},
+		{name: "invalid port", proxy: "http://synthetic-user:synthetic-password@proxy.invalid:synthetic-token", invalid: true},
+	} {
+		s.Run(tt.name, func() {
+			logFile := filepath.Join(s.T().TempDir(), "proxy.log")
+			s.Require().NoError(log.SetDefaultLogger("base", common.LogConfig{
+				FilePath: logFile,
+				Level:    common.ELogLevel.LOG_INFO(),
+			}))
+			defer func() {
+				s.NoError(log.SetDefaultLogger("silent", common.LogConfig{}))
+			}()
+			client, err := newBlobfuse2HttpClient(&AzStorageConfig{proxyAddress: tt.proxy})
+			s.Require().NoError(log.Destroy())
+			if tt.invalid {
+				s.Require().ErrorContains(err, "failed to parse proxy URL")
+				s.Nil(client)
+				for _, secret := range []string{"synthetic-user", "synthetic-password", "synthetic-token"} {
+					s.NotContains(err.Error(), secret)
+				}
+			} else {
+				s.Require().NoError(err)
+				transport, ok := client.Transport.(*http.Transport)
+				s.Require().True(ok)
+				proxyURL, err := transport.Proxy(&http.Request{})
+				s.Require().NoError(err)
+				s.Equal(tt.proxy, proxyURL.String(), "redaction must not change connection credentials")
+			}
+			data, err := os.ReadFile(logFile)
+			s.Require().NoError(err)
+			for _, secret := range []string{"synthetic-user", "synthetic-password", "synthetic-token"} {
+				s.NotContains(string(data), secret)
+			}
+		})
+	}
 }
 
 func (s *utilsTestSuite) TestBfsNonProxyOptions() {

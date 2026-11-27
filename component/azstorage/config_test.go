@@ -4,6 +4,8 @@
 package azstorage
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -188,6 +190,38 @@ func (s *configTestSuite) TestProxyConfig() {
 	err = ParseAndValidateConfig(az, opt)
 	assert.NoError(err)
 	assert.Equal(az.stConfig.proxyAddress, formatEndpointProtocol(opt.HttpsProxyAddress, !opt.UseHTTPS))
+}
+
+func (s *configTestSuite) TestProxyLoggingRedactsCredentials() {
+	defer config.ResetConfig()
+	const proxy = "http://synthetic-user:synthetic-password@proxy.invalid:8080/?token=synthetic-token"
+	logFile := filepath.Join(s.T().TempDir(), "config.log")
+	s.Require().NoError(log.SetDefaultLogger("base", common.LogConfig{
+		FilePath: logFile,
+		Level:    common.ELogLevel.LOG_INFO(),
+	}))
+	defer func() {
+		s.NoError(log.SetDefaultLogger("silent", common.LogConfig{}))
+	}()
+	az := &AzStorage{}
+	err := ParseAndValidateConfig(az, AzStorageOptions{
+		AccountName:      "syntheticaccount",
+		Container:        "syntheticcontainer",
+		AccountType:      "block",
+		AuthMode:         "key",
+		AccountKey:       "synthetic-account-key",
+		UseHTTP:          true,
+		HttpProxyAddress: proxy,
+	})
+	s.Require().NoError(log.Destroy())
+	s.Require().NoError(err)
+	s.Equal(formatEndpointProtocol(proxy, true), az.stConfig.proxyAddress)
+	data, err := os.ReadFile(logFile)
+	s.Require().NoError(err)
+	s.Contains(string(data), "proxy configured true")
+	for _, secret := range []string{"synthetic-user", "synthetic-password", "synthetic-token", "synthetic-account-key"} {
+		s.NotContains(string(data), secret)
+	}
 }
 
 func (s *configTestSuite) TestMaxResultsForList() {

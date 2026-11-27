@@ -161,7 +161,9 @@ func newBlobfuse2HttpClient(conf *AzStorageConfig) (*http.Client, error) {
 	} else {
 		u, err := url.Parse(conf.proxyAddress)
 		if err != nil {
-			log.Err("utils::newBlobfuse2HttpClient : Failed to parse proxy : %s [%s]", conf.proxyAddress, err.Error())
+			// URL parse errors include the input, which may contain credentials.
+			err = errors.New("failed to parse proxy URL; check scheme, host and URL escaping")
+			log.Err("utils::newBlobfuse2HttpClient : %s", err.Error())
 			return nil, err
 		}
 		ProxyURL = http.ProxyURL(u)

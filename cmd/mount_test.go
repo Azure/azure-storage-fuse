@@ -10,10 +10,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -405,6 +407,131 @@ func (suite *mountTestSuite) TestDirectIODisableKernelCacheCombo() {
 	op, err := executeCommandC(rootCmd, "mount", mntDir, "-o", "direct_io", "--disable-kernel-cache")
 	suite.assert.Error(err)
 	suite.assert.Contains(op, "direct-io and disable-kernel-cache cannot be enabled together")
+}
+
+func TestMountCLIFlagsRedaction(t *testing.T) {
+	for _, form := range []string{"equals", "separate"} {
+		t.Run(form, func(t *testing.T) {
+			flags := pflag.NewFlagSet("mount", pflag.ContinueOnError)
+			flags.BoolP("foreground", "f", false, "")
+			flags.Bool("read-only", false, "")
+			flags.Duration("wait-for-mount", time.Second, "")
+			flags.Uint16("max-concurrency", 0, "")
+			flags.Float64("block-cache-block-size", 0, "")
+			flags.String("log-type", "", "")
+			flags.String("log-level", "", "")
+			flags.String("unused-secret", "unused-secret-value", "")
+			flags.Uint64("numeric-credential", 0, "")
+			args := []string{"-f", "--read-only", "--wait-for-mount=7s", "--max-concurrency=9",
+				"--block-cache-block-size=1.5", "--log-type=base", "--log-level=log_info", "--numeric-credential=123456789"}
+			secretFlags := []string{"passphrase", "http-proxy", "https-proxy", "account-key", "sas",
+				"clientsecret", "cpk-encryption-key", "workload-identity-token", "endpoint",
+				"telemetry", "filter", "future-credential", "config-file"}
+			for _, name := range secretFlags {
+				flags.String(name, "", "")
+				secret := name + "-synthetic-secret"
+				if form == "equals" {
+					args = append(args, "--"+name+"="+secret)
+				} else {
+					args = append(args, "--"+name, secret)
+				}
+			}
+			args = append(args, "--passphrase=last-passphrase-secret")
+			require.NoError(t, flags.Parse(args))
+			summary := mountCLIFlagsForLog(flags)
+			for _, name := range secretFlags {
+				assert.Contains(t, summary, "--"+name+"=\"[REDACTED]\"")
+				assert.NotContains(t, summary, name+"-synthetic-secret")
+			}
+			assert.NotContains(t, summary, "last-passphrase-secret")
+			assert.NotContains(t, summary, "123456789")
+			assert.NotContains(t, summary, "unused-secret")
+			for _, option := range []string{`--foreground="true"`, `--read-only="true"`,
+				`--wait-for-mount="7s"`, `--max-concurrency="9"`, `--block-cache-block-size="1.5"`,
+				`--log-type="base"`, `--log-level="LOG_INFO"`} {
+				assert.Contains(t, summary, option)
+			}
+		})
+	}
+
+	t.Run("unreviewed types and logging enum values", func(t *testing.T) {
+		flags := pflag.NewFlagSet("mount", pflag.ContinueOnError)
+		for _, name := range []string{"read-only", "max-concurrency", "log-type", "log-level"} {
+			flags.String(name, "", "")
+			require.NoError(t, flags.Set(name, "synthetic-secret\nforged log line"))
+		}
+		summary := mountCLIFlagsForLog(flags)
+		assert.NotContains(t, summary, "synthetic-secret")
+		assert.NotContains(t, summary, "\n")
+		assert.Equal(t, `--log-level="[REDACTED]" --log-type="[REDACTED]" --max-concurrency="[REDACTED]" --read-only="[REDACTED]"`, summary)
+	})
+}
+
+func (suite *mountTestSuite) TestMountCLISecretsAreRedacted() {
+	const passphrase = "synthetic-key-01"
+	const proxySecret = "synthetic-proxy-secret"
+	for _, level := range []string{"LOG_INFO", "LOG_DEBUG", "LOG_WARNING"} {
+		for _, form := range []string{"equals", "separate", "environment"} {
+			suite.Run(level+"/"+form, func() {
+				defer suite.cleanupTest()
+				options = mountOptions{}
+				dir := suite.T().TempDir()
+				mountDir := filepath.Join(dir, "mount")
+				suite.Require().NoError(os.Mkdir(mountDir, 0700))
+				configFile := filepath.Join(dir, "config"+SecureConfigExtension)
+				ciphertext, err := common.EncryptData([]byte("components:\n  - log_test_missing_component\n"), []byte(passphrase))
+				suite.Require().NoError(err)
+				suite.Require().NoError(os.WriteFile(configFile, ciphertext, 0600))
+				logFile := filepath.Join(dir, "mount.log")
+				args := []string{
+					"mount", mountDir, "--config-file=" + configFile,
+					"--log-type=base", "--log-level=" + level,
+					"--log-file-path=" + logFile, "--default-working-dir=" + dir,
+					"--disable-version-check", "--read-only", "--wait-for-mount=7s",
+					"--max-concurrency=9",
+				}
+				switch form {
+				case "equals":
+					args = append(args, "--passphrase="+passphrase,
+						"--http-proxy=http://user:"+proxySecret+"@proxy.invalid:8080",
+						"--https-proxy=http://user:"+proxySecret+"@proxy.invalid:8080")
+				case "separate":
+					args = append(args, "--passphrase", passphrase,
+						"--http-proxy", "http://user:"+proxySecret+"@proxy.invalid:8080",
+						"--https-proxy", "http://user:"+proxySecret+"@proxy.invalid:8080")
+				case "environment":
+					suite.T().Setenv(SecureConfigEnvName, passphrase)
+					suite.T().Setenv("HTTP_PROXY", "http://user:"+proxySecret+"@proxy.invalid:8080")
+					suite.T().Setenv("HTTPS_PROXY", "http://user:"+proxySecret+"@proxy.invalid:8080")
+				}
+				oldArgs := os.Args
+				os.Args = append([]string{"blobfuse2"}, args...)
+				defer func() { os.Args = oldArgs }()
+
+				out, err := executeCommandC(rootCmd, args...)
+				suite.Require().ErrorContains(err, "component log_test_missing_component not registered")
+				suite.NotContains(out, passphrase)
+				logged, err := os.ReadFile(logFile)
+				suite.Require().NoError(err)
+				suite.Contains(string(logged), "Starting Blobfuse2 Mount")
+				suite.NotContains(string(logged), passphrase)
+				suite.NotContains(string(logged), proxySecret)
+				suite.NotContains(string(logged), "Mount Command:")
+				if level == "LOG_WARNING" {
+					suite.NotContains(string(logged), "Mount CLI options:")
+				} else {
+					suite.Contains(string(logged), "Mount CLI options:")
+					suite.Contains(string(logged), `--wait-for-mount="7s"`)
+					suite.Contains(string(logged), `--max-concurrency="9"`)
+					if form != "environment" {
+						suite.Contains(string(logged), `--passphrase="[REDACTED]"`)
+						suite.Contains(string(logged), `--http-proxy="[REDACTED]"`)
+						suite.Contains(string(logged), `--https-proxy="[REDACTED]"`)
+					}
+				}
+			})
+		}
+	}
 }
 
 // mount failure test where a libfuse option is incorrect
