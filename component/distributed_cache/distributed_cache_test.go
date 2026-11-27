@@ -7,9 +7,11 @@ package distributed_cache
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,6 +26,8 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
+	"github.com/Azure/azure-storage-fuse/v2/internal/telemetry"
+	"github.com/Azure/azure-storage-fuse/v2/internal/telemetry/telemetrytest"
 	dcache "github.com/nearora-msft/dist-cache-client-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -944,30 +948,74 @@ distributed_cache:
 	assert.Equal(t, "tenantB/shared", dcB.cachePrefix)
 }
 
-// TestConfigure_TinyFairShare_DisablesPool verifies the wiring from
-// resolveMemBudget → Configure: when the fair-share signal is below
-// distCacheMinBuffers × chunkSize, Configure must succeed but leave dc.bufs
-// nil so the L2 populate path is inert for the mount.
-func TestConfigure_TinyFairShare_DisablesPool(t *testing.T) {
-	// bcRef  = 100 MiB → fair = 10 MiB
-	// chunk  = 16 MiB → floor = 64 MiB
-	// fair < floor → resolveMemBudget returns 0, pool must not be allocated.
-	loadConfig(t, `
+func TestConfigure_AsyncBufferBudgetTelemetry(t *testing.T) {
+	const key = "dynamic_parameters.distributed_cache.async_buffer_bytes"
+	for _, tc := range []struct {
+		name        string
+		probeErr    error
+		bufferCount int
+	}{
+		{name: "calculated zero"},
+		{name: "fixed fallback", probeErr: errors.New("memory probe failed"), bufferCount: 4},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			loadConfig(t, `
 azstorage:
   account-name: myacct
   container: mycontainer
 block_cache:
-  mem-size-mb: 100
-  block-size-mb: 16
-  parallelism: 2
+  block-size-mb: 1
+  parallelism: 1
 distributed_cache:
   server-list: "localhost:9065"
 `)
+			results := make(chan map[string]string, 2)
+			receiver := telemetrytest.NewReceiver(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var batch []struct {
+					Data struct {
+						Base struct {
+							Name       string            `json:"name"`
+							Properties map[string]string `json:"properties"`
+						} `json:"baseData"`
+					} `json:"data"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&batch); err != nil {
+					t.Error(err)
+					w.WriteHeader(http.StatusBadRequest)
+					return
+				}
+				for _, item := range batch {
+					if item.Data.Base.Name == "blobfuse.mount.result" {
+						results <- item.Data.Base.Properties
+					}
+				}
+			}))
+			session, err := telemetry.Start(telemetry.Options{
+				ConnectionString: receiver.ConnectionString, HTTPClient: receiver.Client,
+			})
+			require.NoError(t, err)
+			require.NotNil(t, session)
+			defer session.Close()
 
-	dc := NewDistCacheComponent().(*DistCache)
-	err := dc.Configure(true)
-	require.NoError(t, err, "Configure must not fail just because the pool is disabled")
-	assert.Nil(t, dc.bufs, "tiny fair-share must leave the buffer pool unallocated")
+			dc := NewDistCacheComponent().(*DistCache)
+			// A 32 MiB probe result yields a share below the four-buffer floor.
+			require.NoError(t, dc.configure(func() (uint64, error) { return 32 * _1MiB, tc.probeErr }))
+			require.Len(t, dc.bufs, tc.bufferCount)
+			if tc.bufferCount == 0 {
+				require.Nil(t, dc.bufs)
+			}
+			telemetry.Ready(nil)
+			session.Close()
+
+			require.Len(t, results, 1)
+			properties := <-results
+			if tc.probeErr == nil {
+				require.Equal(t, "0", properties[key])
+			} else {
+				require.NotContains(t, properties, key)
+			}
+		})
+	}
 }
 
 // --- Tests for async-upload buffer pool: memory-budget & drop paths ---
@@ -1106,118 +1154,32 @@ func TestSchedulePopulate_BufferReturnedAfterUpload(t *testing.T) {
 	assert.Equal(t, 1, len(dc.bufs), "buffer must be returned again after second upload")
 }
 
-// --- Tests for resolveMemBudget ---
-//
-// resolveMemBudget picks min(fair-share, demand-ceiling) on top of a
-// reference budget (bcRef), but only if the fair-share signal covers at
-// least distCacheMinBuffers × chunkSize; below that it returns 0 to
-// disable async populate. bcRef is block_cache.mem-size-mb when set, else
-// block_cache.MemShareFraction × free RAM. The tests below fix
-// block_cache.mem-size-mb and block_cache.parallelism so the arithmetic is
-// deterministic; separate tests cover the free-RAM fallback path.
-
-// TestResolveMemBudget_MemSize_DemandCeilingBinds verifies that when
-// block_cache.mem-size-mb yields a fair share larger than the demand ceiling,
-// the demand ceiling wins.
-func TestResolveMemBudget_MemSize_DemandCeilingBinds(t *testing.T) {
-	loadConfig(t, `
-block_cache:
-  mem-size-mb: 10240
-  parallelism: 2
-`)
-
-	dc := &DistCache{chunkSize: 16 * _1MiB}
-	got, _ := dc.resolveMemBudget(common.GetAvailableMemoryBytes)
-
-	// bcRef  = 10240 MiB
-	// fair   = 10240 × 10%       = 1024 MiB (≥ floor 64 MiB, pool enabled)
-	// demand = 4 × 2 × 16 MiB    = 128 MiB
-	// budget = min(fair, demand) = 128 MiB
-	assert.Equal(t, int64(128)*_1MiB, got)
-}
-
-// TestResolveMemBudget_MemSize_FairShareBinds verifies that when the demand
-// ceiling is larger than the fair share, the fair share wins.
-func TestResolveMemBudget_MemSize_FairShareBinds(t *testing.T) {
-	loadConfig(t, `
-block_cache:
-  mem-size-mb: 100
-  parallelism: 100
-`)
-
-	dc := &DistCache{chunkSize: 1 * _1MiB}
-	got, _ := dc.resolveMemBudget(common.GetAvailableMemoryBytes)
-
-	// bcRef  = 100 MiB
-	// fair   = 100 × 10%         = 10 MiB (≥ floor 4 MiB, pool enabled)
-	// demand = 4 × 100 × 1 MiB   = 400 MiB
-	// budget = min(fair, demand) = 10 MiB
-	assert.Equal(t, int64(10)*_1MiB, got)
-}
-
-// TestResolveMemBudget_MemSize_FairShareBelowFloor_DisablesPool verifies
-// that when the fair-share signal cannot cover distCacheMinBuffers chunks,
-// resolveMemBudget returns 0 so Configure will skip pool allocation and
-// L2 populate stays disabled for the mount.
-func TestResolveMemBudget_MemSize_FairShareBelowFloor_DisablesPool(t *testing.T) {
-	loadConfig(t, `
-block_cache:
-  mem-size-mb: 100
-  parallelism: 2
-`)
-
-	dc := &DistCache{chunkSize: 16 * _1MiB}
-	got, _ := dc.resolveMemBudget(common.GetAvailableMemoryBytes)
-
-	// bcRef  = 100 MiB
-	// fair   = 100 × 10%         = 10 MiB
-	// floor  = 4 × 16 MiB        = 64 MiB
-	// fair < floor  → return 0 (async populate disabled).
-	assert.Equal(t, int64(0), got)
-}
-
-// TestResolveMemBudget_MemSizeUnset_UsesFreeRAM verifies that when
-// block_cache.mem-size-mb is absent, the reference budget is derived from
-// available system memory (which produces a fair share substantially larger
-// than the floor on any realistic host).
-func TestResolveMemBudget_MemSizeUnset_UsesFreeRAM(t *testing.T) {
-	loadConfig(t, `
-block_cache:
-  parallelism: 1000
-`)
-
-	dc := &DistCache{chunkSize: 1 * _1MiB}
-	got, _ := dc.resolveMemBudget(common.GetAvailableMemoryBytes)
-
-	// demand = 4 × 1000 × 1 MiB = 4000 MiB (deliberately large so demand does
-	// not clip the fair share on hosts with a few GiB of free RAM).
-	// fair from the free-RAM fallback path is bounded below by
-	// DefaultMemFallbackBytes × MemShareFraction × 10% ≈ 251 MiB even if
-	// /proc/meminfo cannot be read, which is well above the floor.
-	floor := int64(distCacheMinBuffers) * dc.chunkSize
-	assert.Greater(t, got, floor,
-		"free-RAM fallback should produce a fair share above the floor")
-}
-
-// TestResolveMemBudget_MemSizeZero_FallsBackToFreeRAM verifies that
-// block_cache.mem-size-mb=0 is treated the same as unset (guarded by the
-// n > 0 check inside resolveMemBudget), rather than pinning bcRef to zero
-// and collapsing the fair share.
-func TestResolveMemBudget_MemSizeZero_FallsBackToFreeRAM(t *testing.T) {
-	loadConfig(t, `
-block_cache:
-  mem-size-mb: 0
-  parallelism: 1000
-`)
-
-	dc := &DistCache{chunkSize: 1 * _1MiB}
-	got, _ := dc.resolveMemBudget(common.GetAvailableMemoryBytes)
-
-	// Same reasoning as the "unset" case: an explicit zero must not silently
-	// disable async populate.
-	floor := int64(distCacheMinBuffers) * dc.chunkSize
-	assert.Greater(t, got, floor,
-		"mem-size-mb=0 must fall back to the free-RAM path, not zero-out bcRef")
+func TestResolveMemBudget(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		config      string
+		chunkMiB    int64
+		wantMiB     int64
+		wantMemRead bool
+	}{
+		{"demand ceiling", "  parallelism: 2\n  mem-size-mb: 10240\n", 16, 128, false},
+		{"fair share", "  parallelism: 100\n  mem-size-mb: 100\n", 1, 10, false},
+		{"size unset uses available RAM", "  parallelism: 100\n", 1, 120, true},
+		{"size zero uses available RAM", "  parallelism: 100\n  mem-size-mb: 0\n", 1, 120, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			loadConfig(t, "block_cache:\n"+tc.config)
+			dc := &DistCache{chunkSize: tc.chunkMiB * _1MiB}
+			memRead := false
+			got, calculated := dc.resolveMemBudget(func() (uint64, error) {
+				memRead = true
+				return 2000 * _1MiB, nil
+			})
+			require.Equal(t, tc.wantMemRead, memRead)
+			require.True(t, calculated)
+			require.Equal(t, tc.wantMiB*_1MiB, got)
+		})
+	}
 }
 
 // --- Test: Stop() drains in-flight uploads before closing the dcache client ---

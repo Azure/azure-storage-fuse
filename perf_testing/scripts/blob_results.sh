@@ -85,7 +85,7 @@ export AZURE_STORAGE_ACCESS_KEY="$PERF_RESULTS_KEY"
   --output-file="$config_file"
 chmod 0600 "$config_file"
 
-"$binary" mount "$mount_dir" \
+BLOBFUSE_DISABLE_TELEMETRY=true "$binary" mount "$mount_dir" \
   --config-file="$config_file" \
   --log-file-path="$log_file" \
   --default-working-dir="$work_dir" \

@@ -582,7 +582,10 @@ class FioResultTests(unittest.TestCase):
             benchmark_runner.is_mounted = mock.Mock(return_value=True)
 
             command_result = mock.Mock(returncode=0, stdout="")
-            with mock.patch.object(runner, "run_command", return_value=command_result) as run:
+            with (
+                mock.patch.dict(os.environ, {"BLOBFUSE_DISABLE_TELEMETRY": "false", "BENCHMARK_TEST_ENV": "preserved"}),
+                mock.patch.object(runner, "run_command", return_value=command_result) as run,
+            ):
                 benchmark_runner.mount()
 
             command = run.call_args.args[0]
@@ -595,6 +598,9 @@ class FioResultTests(unittest.TestCase):
                 command,
             )
             self.assertEqual(run.call_args.kwargs["cwd"], benchmark_runner.output_dir)
+            self.assertNotIn("--disable-telemetry", command)
+            self.assertEqual(run.call_args.kwargs["env"]["BLOBFUSE_DISABLE_TELEMETRY"], "true")
+            self.assertEqual(run.call_args.kwargs["env"]["BENCHMARK_TEST_ENV"], "preserved")
 
     def test_wait_for_blobfuse_exit_waits_for_pid_file_removal(self):
         with tempfile.TemporaryDirectory() as temporary:

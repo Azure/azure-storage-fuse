@@ -503,6 +503,7 @@ class BenchmarkRunner:
                 f"--default-working-dir={self.blobfuse_work_dir}",
             ],
             cwd=self.output_dir,
+            env={**os.environ, "BLOBFUSE_DISABLE_TELEMETRY": "true"},
             timeout=120,
             check=False,
         )

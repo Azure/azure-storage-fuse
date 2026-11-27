@@ -17,7 +17,7 @@ do
                 rm -rf /mnt/ramdisk/*
 
                 echo "Mounting Blobfuse2"
-                ./blobfuse2 mount ~/blob_mnt2 --config-file=./config.yaml --file-cache-timeout=0 --telemetry="$line"
+                BLOBFUSE_DISABLE_TELEMETRY=true ./blobfuse2 mount ~/blob_mnt2 --config-file=./config.yaml --file-cache-timeout=0 --telemetry="$line"
                 sleep 2
 
                 echo "Blobfuse2 pid : " `pidof blobfuse2`

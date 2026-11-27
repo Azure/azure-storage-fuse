@@ -27,7 +27,7 @@ mount_blobfuse()
 mount_blobfuse2()
 {
     rm -rf $tmpPath/*
-    ./blobfuse2 mount $mntPath --config-file=$1 &
+    BLOBFUSE_DISABLE_TELEMETRY=true ./blobfuse2 mount $mntPath --config-file=$1 &
     sleep 3
     rm -rf $mntPath/*
 }

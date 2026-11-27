@@ -15,7 +15,7 @@ sed_line=3
 while IFS=, read -r thread count size; do
 
 	echo "Blobfuse2 | $cnt ($thread threads: $count files : $size MB) |"
-	./blobfuse2 mount $mntPath --config-file=$config &
+	BLOBFUSE_DISABLE_TELEMETRY=true ./blobfuse2 mount $mntPath --config-file=$config &
 	if [ $? -ne 0 ]; then
     	exit 1
 	fi

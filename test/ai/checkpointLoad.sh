@@ -109,7 +109,7 @@ for device in "${devices[@]}"; do
 			echo "--------------------------------------------------------------------" >> stats.log
 
 			echo "Mounting $subdir in $mode mode : ($MODE_ARGS) on $device" >> stats.log
-			./blobfuse2 mount $MOUNT_PATH $COMMON_ARGS $MODE_ARGS --subdirectory=$subdir
+			BLOBFUSE_DISABLE_TELEMETRY=true ./blobfuse2 mount $MOUNT_PATH $COMMON_ARGS $MODE_ARGS --subdirectory=$subdir
 
 			if [ $? -ne 0 ]; then
 				echo "Failed to mount $subdir"
