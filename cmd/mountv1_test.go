@@ -881,6 +881,48 @@ func (suite *generateConfigTestSuite) TestUndefinedLibfuseOption() {
 	suite.assert.Contains(op, "Invalid FUSE options")
 }
 
+func (suite *generateConfigTestSuite) TestDefaultPermissionsConversion() {
+	for _, tt := range []struct {
+		name    string
+		option  string
+		enabled bool
+		invalid bool
+	}{
+		{name: "omitted"},
+		{name: "enabled", option: "default_permissions", enabled: true},
+		{name: "explicit true", option: "default_permissions=true", enabled: true},
+		{name: "whitespace", option: " default_permissions ", enabled: true},
+		{name: "false", option: "default_permissions=false", invalid: true},
+		{name: "empty value", option: "default_permissions=", invalid: true},
+		{name: "invalid value", option: "default_permissions=invalid", invalid: true},
+		{name: "invalid suffix", option: "default_permissions_extra", invalid: true},
+	} {
+		suite.Run(tt.name, func() {
+			defer suite.cleanupTest()
+			libfuseOptions = []string{}
+			dir := suite.T().TempDir()
+			input := filepath.Join(dir, "config.cfg")
+			output := filepath.Join(dir, "config.yaml")
+			suite.Require().NoError(os.WriteFile(input, []byte("accountName syntheticAccount\n"), 0600))
+			args := []string{"mountv1", "--convert-config-only=true", "--config-file=" + input, "--output-file=" + output, "--disable-version-check"}
+			if tt.option != "" {
+				args = append(args, "-o", tt.option)
+			}
+			_, err := executeCommandC(rootCmd, args...)
+			if tt.invalid {
+				suite.Require().ErrorContains(err, "Invalid FUSE options")
+				return
+			}
+			suite.Require().NoError(err)
+			viper.SetConfigType("yaml")
+			suite.Require().NoError(config.ReadFromConfigFile(output))
+			var enabled bool
+			suite.Require().NoError(config.UnmarshalKey("libfuse.default-permissions", &enabled))
+			suite.Equal(tt.enabled, enabled)
+		})
+	}
+}
+
 // mountv1 failure test where umask value is invalid
 func (suite *generateConfigTestSuite) TestInvalidUmaskValue() {
 	defer suite.cleanupTest()

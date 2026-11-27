@@ -50,6 +50,7 @@ import (
 	"math"
 	"os"
 	"runtime"
+	"slices"
 	"strings"
 	"syscall"
 	"unsafe"
@@ -109,6 +110,19 @@ func (suite *libfuseTestSuite) setupTestHelper(config string) {
 func (suite *libfuseTestSuite) cleanupTest() {
 	// suite.libfuse.Stop()
 	suite.mockCtrl.Finish()
+}
+
+func testDefaultPermissionsArgs(suite *libfuseTestSuite, enabled bool) {
+	opts := suite.libfuse.convertConfig()
+	defer C.free(unsafe.Pointer(opts.mount_path))
+	args := C.fuse_args_t{}
+	ret := populateFuseArgs(opts, &args)
+	defer C.fuse_opt_free_args(&args)
+	suite.Require().Zero(ret)
+	suite.Require().Greater(int(args.argc), 3)
+	argv := unsafe.Slice(args.argv, int(args.argc))
+	suite.Require().Equal("-o", C.GoString(argv[2]))
+	suite.assert.Equal(enabled, slices.Contains(strings.Split(C.GoString(argv[3]), ","), "default_permissions"))
 }
 
 func testMkDir(suite *libfuseTestSuite) {

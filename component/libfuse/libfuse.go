@@ -29,6 +29,7 @@ type Libfuse struct {
 	mountPath               string
 	dirPermission           uint
 	filePermission          uint
+	defaultPermissions      bool
 	readOnly                bool
 	attributeExpiration     uint32
 	entryExpiration         uint32
@@ -55,6 +56,7 @@ type Libfuse struct {
 type LibfuseOptions struct {
 	mountPath               string
 	DefaultPermission       uint32 `config:"default-permission" yaml:"default-permission,omitempty"`
+	DefaultPermissions      bool   `config:"default-permissions" yaml:"default-permissions,omitempty"`
 	AttributeExpiration     uint32 `config:"attribute-expiration-sec" yaml:"attribute-expiration-sec,omitempty"`
 	EntryExpiration         uint32 `config:"entry-expiration-sec" yaml:"entry-expiration-sec,omitempty"`
 	NegativeEntryExpiration uint32 `config:"negative-entry-expiration-sec" yaml:"negative-entry-expiration-sec,omitempty"`
@@ -170,6 +172,7 @@ func (lf *Libfuse) Stop() error {
 func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 	lf.mountPath = opt.mountPath
 	lf.readOnly = opt.readOnly
+	lf.defaultPermissions = opt.DefaultPermissions
 	lf.traceEnable = opt.EnableFuseTrace
 	lf.allowOther = opt.allowOther
 	lf.allowRoot = opt.allowRoot
@@ -345,8 +348,8 @@ func (lf *Libfuse) Configure(_ bool) error {
 		lf.traceEnable = false
 	}
 
-	log.Crit("Libfuse::Configure : read-only %t, allow-other %t, allow-root %t, default-perm %d, entry-timeout %d, attr-time %d, negative-timeout %d, ignore-open-flags %t, nonempty %t, direct_io %t, max_background %d, fuse-trace %t, extension %s, disable-writeback-cache %t, dirPermission %v, mountPath %v, umask %v, disableKernelCache %v, kernelListCacheExpirationSec %v",
-		lf.readOnly, lf.allowOther, lf.allowRoot, lf.filePermission, lf.entryExpiration, lf.attributeExpiration, lf.negativeTimeout, lf.ignoreOpenFlags, lf.nonEmptyMount, lf.directIO, lf.maxBackground, lf.traceEnable, lf.extensionPath, lf.disableWritebackCache, lf.dirPermission, lf.mountPath, lf.umask, lf.disableKernelCache, lf.kernelListCacheTtlInSec)
+	log.Crit("Libfuse::Configure : read-only %t, allow-other %t, allow-root %t, default-perm %d, default-permissions %t, entry-timeout %d, attr-time %d, negative-timeout %d, ignore-open-flags %t, nonempty %t, direct_io %t, max_background %d, fuse-trace %t, extension %s, disable-writeback-cache %t, dirPermission %v, mountPath %v, umask %v, disableKernelCache %v, kernelListCacheExpirationSec %v",
+		lf.readOnly, lf.allowOther, lf.allowRoot, lf.filePermission, lf.defaultPermissions, lf.entryExpiration, lf.attributeExpiration, lf.negativeTimeout, lf.ignoreOpenFlags, lf.nonEmptyMount, lf.directIO, lf.maxBackground, lf.traceEnable, lf.extensionPath, lf.disableWritebackCache, lf.dirPermission, lf.mountPath, lf.umask, lf.disableKernelCache, lf.kernelListCacheTtlInSec)
 
 	return nil
 }

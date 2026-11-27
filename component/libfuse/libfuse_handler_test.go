@@ -69,6 +69,7 @@ func (suite *libfuseTestSuite) TestDefault() {
 	suite.assert.False(suite.libfuse.disableWritebackCache)
 	suite.assert.True(suite.libfuse.ignoreOpenFlags)
 	suite.assert.False(suite.libfuse.directIO)
+	testDefaultPermissionsArgs(suite, false)
 }
 
 func (suite *libfuseTestSuite) TestConfig() {
@@ -134,6 +135,22 @@ func (suite *libfuseTestSuite) TestConfigDefaultPermission() {
 	suite.assert.Equal(uint32(0), suite.libfuse.attributeExpiration)
 	suite.assert.Equal(uint32(0), suite.libfuse.negativeTimeout)
 	suite.assert.True(suite.libfuse.directIO)
+	testDefaultPermissionsArgs(suite, false)
+}
+
+func (suite *libfuseTestSuite) TestConfigDefaultPermissions() {
+	defer suite.cleanupTest()
+	suite.cleanupTest()
+	suite.setupTestHelper("libfuse:\n  default-permissions: true\n  default-permission: 0600\n")
+	suite.assert.Equal(uint(0600), suite.libfuse.filePermission)
+	testDefaultPermissionsArgs(suite, true)
+}
+
+func (suite *libfuseTestSuite) TestLegacyConfigDefaultPermissions() {
+	defer suite.cleanupTest()
+	suite.cleanupTest()
+	suite.setupTestHelper("libfuse:\n  default-permissions: false\nlfuse:\n  default-permissions: \"true\"\n")
+	testDefaultPermissionsArgs(suite, true)
 }
 
 func (suite *libfuseTestSuite) TestConfigDisableKernelCache() {
