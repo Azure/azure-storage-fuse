@@ -14,6 +14,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
+	"github.com/Azure/azure-storage-fuse/v2/internal/telemetry"
 )
 
 /* NOTES:
@@ -140,6 +141,7 @@ func (lf *Libfuse) Start(ctx context.Context) error {
 	}
 
 	// This starts the libfuse process and hence shall always be the last statement
+	telemetry.Stage("fuse_initialization")
 	err := lf.initFuse()
 	if err != nil {
 		log.Err("Libfuse::Start : Failed to init fuse [%s]", err.Error())

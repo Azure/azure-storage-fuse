@@ -10,6 +10,7 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal/telemetry"
 )
 
 // Pipeline: Base pipeline structure holding list of components deployed along with the head of pipeline
@@ -55,6 +56,7 @@ func NewPipeline(components []string, isParent bool) (*Pipeline, error) {
 			}
 
 			if comp.Priority() > lastPriority {
+				telemetry.Failure("pipeline_config_conflict")
 				log.Err("Pipeline::NewPipeline : Invalid Component order [priority of %s higher than above components]", comp.Name())
 				return nil, fmt.Errorf("config error in Pipeline [component %s is out of order]", name)
 			} else {
@@ -64,6 +66,7 @@ func NewPipeline(components []string, isParent bool) (*Pipeline, error) {
 			// store the configured object in list of components
 			comps = append(comps, comp)
 		} else {
+			telemetry.Failure("pipeline_config_conflict")
 			log.Err("Pipeline: error [component %s not registered]", name)
 			return nil, fmt.Errorf("config error in Pipeline [component %s not registered]", name)
 		}
@@ -96,6 +99,7 @@ func (p *Pipeline) Start(ctx context.Context) (err error) {
 
 	for i := len(p.components) - 1; i >= 0; i-- {
 		if err = p.components[i].Start(ctx); err != nil {
+			telemetry.PipelineStartFailed()
 			errs = append(errs, err)
 			// stop all the upstream components before returning, f.e., this would prevent the upstream components
 			// to use the logger after it is destroyed.

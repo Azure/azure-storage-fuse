@@ -257,6 +257,20 @@ func SetBool(key string, val bool) {
 	viper.Set(key, val)
 }
 
+// ExplicitInput reports which user input sources supplied this exact key.
+// Unlike IsSet, it does not count programmatic overrides, defaults or empty
+// environment variables.
+func ExplicitInput(key string) (yaml, env, cli bool) {
+	yaml = viper.InConfig(key)
+	if node := userOptions.envTree.GetSubTree(key); node != nil && node.value != nil {
+		env = os.Getenv(node.value.(string)) != ""
+	}
+	if node := userOptions.flagTree.GetSubTree(key); node != nil && node.value != nil {
+		cli = node.value.(*pflag.Flag).Changed
+	}
+	return
+}
+
 // IsSet reports whether a key or any descendant is explicitly configured.
 // CLI bindings live outside Viper, so parent keys must also inspect flagTree.
 func IsSet(key string) bool {

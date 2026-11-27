@@ -18,6 +18,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
+	"github.com/Azure/azure-storage-fuse/v2/internal/telemetry"
 )
 
 // defaultAttrCacheTimeout is the default TTL for cached attributes (seconds).
@@ -39,8 +40,8 @@ const (
 //
 // See TestNegativeEntryCapacityMatchesEstimate and TestPositiveEntryCapacityMatchesEstimate
 // in cache_item_test.go for exact accounting and how to recalculate for different path lengths.
-func defaultMaxSizeBytes() int64 {
-	totalMB := int64(common.TotalMemoryBytes() / (1024 * 1024))
+func defaultMaxSizeBytes(totalMemory uint64) int64 {
+	totalMB := int64(totalMemory / (1024 * 1024))
 	onePct := totalMB / 100
 	if onePct < defaultMaxSizeFloorMB {
 		onePct = defaultMaxSizeFloorMB
@@ -183,7 +184,7 @@ func (ac *AttrCache) GenConfig() string {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "\n%s:", ac.Name())
 	fmt.Fprintf(&sb, "\n  timeout-sec: %v", defaultAttrCacheTimeout)
-	fmt.Fprintf(&sb, "\n  max-size-mb: %v", defaultMaxSizeBytes()/(1024*1024))
+	fmt.Fprintf(&sb, "\n  max-size-mb: %v", defaultMaxSizeBytes(common.TotalMemoryBytes())/(1024*1024))
 
 	return sb.String()
 }
@@ -216,6 +217,7 @@ func (ac *AttrCache) Configure(_ bool) error {
 		ac.noCacheOnList = !conf.CacheOnList
 	}
 
+	var calculatedCap bool
 	if config.IsSet(compName+".max-size-mb") && conf.MaxSizeMB > 0 {
 		ac.maxSizeBytes = int64(conf.MaxSizeMB) * 1024 * 1024
 	} else if config.IsSet(compName+".max-files") && conf.MaxFiles > 0 {
@@ -226,7 +228,9 @@ func (ac *AttrCache) Configure(_ bool) error {
 			"Set 'max-size-mb' explicitly to silence this warning.",
 			ac.maxSizeBytes/(1024*1024), conf.MaxFiles)
 	} else {
-		ac.maxSizeBytes = defaultMaxSizeBytes()
+		totalMemory := common.TotalMemoryBytes()
+		ac.maxSizeBytes = defaultMaxSizeBytes(totalMemory)
+		calculatedCap = totalMemory != 0
 	}
 
 	// When timeout is zero entries are written but immediately considered expired,
@@ -239,6 +243,9 @@ func (ac *AttrCache) Configure(_ bool) error {
 	log.Crit("AttrCache::Configure : cache-timeout %v, no-symlinks %t, no-cache-on-list %t, max-size-mb %d",
 		ac.cacheTimeout, ac.noSymlinks, ac.noCacheOnList, effectiveMB)
 
+	if calculatedCap && !config.IsSet(compName+".max-size-mb") && !config.IsSet(compName+".max-files") {
+		telemetry.Current().DynamicParameter(compName, "max_size_bytes", uint64(ac.maxSizeBytes))
+	}
 	return nil
 }
 

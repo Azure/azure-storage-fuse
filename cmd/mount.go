@@ -26,6 +26,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/telemetry"
 
 	"github.com/sevlyar/go-daemon"
 	"github.com/spf13/cobra"
@@ -113,6 +114,7 @@ func (opt *mountOptions) validateWithWorkDir(skipNonEmptyMount, generatesConfigs
 			}
 		}
 	} else if !skipNonEmptyMount && !common.IsDirectoryEmpty(opt.MountPath) {
+		telemetry.Failure("mount_directory_not_empty")
 		return fmt.Errorf("mount directory is not empty")
 	}
 
@@ -271,6 +273,10 @@ var mountCmd = &cobra.Command{
 			}
 		}
 
+		mountTelemetry := beginMountTelemetry()
+		defer mountTelemetry.Close()
+		startupParameters := mountTelemetry.ReadCustomerParameters()
+
 		err := config.Unmarshal(&options)
 		if err != nil {
 			return fmt.Errorf("failed to unmarshal config [%s]", err.Error())
@@ -287,6 +293,7 @@ var mountCmd = &cobra.Command{
 		// tuning knobs onto block_cache. Runs before synthesis so it sees the
 		// user's original components list.
 		if err = normalizeDistCacheConfig(options.Components); err != nil {
+			telemetry.Failure("pipeline_config_conflict")
 			return err
 		}
 
@@ -324,6 +331,7 @@ var mountCmd = &cobra.Command{
 		}
 
 		if err = common.ValidatePipeline(options.Components); err != nil {
+			telemetry.Failure("pipeline_config_conflict")
 			// file-cache, block-cache and xload are mutually exclusive
 			log.Err("mount: invalid pipeline components [%s]", err.Error())
 			return fmt.Errorf("invalid pipeline components [%s]", err.Error())
@@ -355,10 +363,13 @@ var mountCmd = &cobra.Command{
 					config.Set("allow-other", "true")
 				} else if strings.HasPrefix(v, "attr_timeout=") {
 					config.Set("lfuse.attribute-expiration-sec", parameter[1])
+					startupParameters.RecordFuseOption("attribute-expiration-sec", parameter[1])
 				} else if strings.HasPrefix(v, "entry_timeout=") {
 					config.Set("lfuse.entry-expiration-sec", parameter[1])
+					startupParameters.RecordFuseOption("entry-expiration-sec", parameter[1])
 				} else if strings.HasPrefix(v, "negative_timeout=") {
 					config.Set("lfuse.negative-entry-expiration-sec", parameter[1])
+					startupParameters.RecordFuseOption("negative-entry-expiration-sec", parameter[1])
 				} else if isLibfuseReadOnlyOption(v) {
 					config.Set("read-only", "true")
 				} else if v == "allow_root" || v == "allow_root=true" {
@@ -391,6 +402,7 @@ var mountCmd = &cobra.Command{
 					config.Set("lfuse.direct-io", "true")
 					config.Set("direct-io", "true")
 					directIO = true
+					startupParameters.RecordFuseOption("direct-io", "true")
 				} else {
 					return errors.New(common.FuseAllowedFlags)
 				}
@@ -418,6 +430,7 @@ var mountCmd = &cobra.Command{
 			options.Logging.LogLevel = "LOG_WARNING"
 		}
 
+		telemetry.Stage("mount_path_validation")
 		err = options.validate(options.NonEmpty)
 		if err != nil {
 			return err
@@ -455,6 +468,7 @@ var mountCmd = &cobra.Command{
 		// It's best to destroy the logger before we return to the caller, as caller may abruptly exit on error and we
 		// might lose some logs in the channel which are not yet flushed to the file in case of not destroying the logger
 		defer func() {
+			mountTelemetry.Close()
 			_ = log.Destroy()
 		}()
 
@@ -519,6 +533,9 @@ var mountCmd = &cobra.Command{
 
 		common.ForegroundMount = options.Foreground
 
+		telemetry.Stage("pipeline_initialization")
+		telemetryPipeline(options.Components)
+		mountTelemetry.SetCustomerParameters(options.Components, startupParameters)
 		pipeline, err = internal.NewPipeline(options.Components, !daemon.WasReborn())
 		if err != nil {
 			log.Err("mount : failed to initialize new pipeline [%v]", err)
@@ -527,6 +544,10 @@ var mountCmd = &cobra.Command{
 
 		log.Info("mount: Mounting blobfuse2 on %s", options.MountPath)
 		if !options.Foreground {
+			telemetry.Stage("daemonization")
+			if mountTelemetry != nil && !daemon.WasReborn() {
+				mountTelemetry.Detach()
+			}
 			pidFile := strings.ReplaceAll(options.MountPath, "/", "_") + ".pid"
 			pidFileName := filepath.Join(os.ExpandEnv(common.DefaultWorkDir), pidFile)
 
@@ -561,12 +582,16 @@ var mountCmd = &cobra.Command{
 		retry:
 			// If the .pid file is locked and there no blobfuse process owning it then we need to try
 			// a cleanup of the .pid file. If cleanup goes through then retry the daemonization.
+			if !daemon.WasReborn() {
+				dmnCtx.Env = telemetryDaemonEnvironment(mountTelemetry, os.Environ())
+			}
 			child, err := dmnCtx.Reborn()
 			if err != nil {
 				log.Err("mount : failed to daemonize application [%s], trying auto cleanup", err.Error())
 				rmErr := os.Remove(pidFileName)
 				if rmErr != nil {
 					log.Err("mount : auto cleanup failed [%v]", rmErr.Error())
+					mountTelemetry.HandoffFailed()
 					return fmt.Errorf("failed to daemonize application [%s]", err.Error())
 				}
 				goto retry
@@ -603,7 +628,6 @@ var mountCmd = &cobra.Command{
 				}()
 
 			} else { // execute in parent only
-
 				childDone := make(chan struct{})
 
 				go monitorChild(child.Pid, childDone)
