@@ -9,12 +9,40 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
 )
 
-func ensurePrivateConfigDir(path string) error {
+func absoluteConfigPath(path string) (string, error) {
 	if path == "" {
-		return errors.New("work directory is empty")
+		return "", errors.New("config path is empty")
+	}
+	// Cleaning before validation can hide symlinks in paths containing "..".
+	for part := range strings.SplitSeq(path, string(os.PathSeparator)) {
+		if part == ".." {
+			return "", fmt.Errorf("config path %q must not contain a '..' component", path)
+		}
+	}
+	return filepath.Abs(path)
+}
+
+func expandConfigWorkDir(path string) (string, error) {
+	if strings.HasPrefix(path, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		path = home + path[1:]
+	}
+	return absoluteConfigPath(common.ExpandPathEnv(path))
+}
+
+func ensurePrivateConfigDir(path string) error {
+	path, err := expandConfigWorkDir(path)
+	if err != nil {
+		return err
 	}
 	info, err := checkConfigDir(path, true)
 	if err != nil {
@@ -56,7 +84,10 @@ func checkConfigDir(path string, create bool) (os.FileInfo, error) {
 }
 
 func writePrivateConfig(path string, write func(io.Writer) error) error {
-	path, err := filepath.Abs(path)
+	if name := path[strings.LastIndexByte(path, os.PathSeparator)+1:]; name == "" || name == "." {
+		return fmt.Errorf("config path %q must name a file", path)
+	}
+	path, err := absoluteConfigPath(path)
 	if err != nil {
 		return err
 	}
@@ -67,6 +98,9 @@ func writePrivateConfig(path string, write func(io.Writer) error) error {
 	if info, err := os.Lstat(path); err == nil {
 		if !info.Mode().IsRegular() || info.Sys().(*syscall.Stat_t).Uid != uint32(os.Geteuid()) {
 			return fmt.Errorf("refusing to replace %q: expected a regular file owned by the current user", path)
+		}
+		if info.Mode().Perm()&0200 == 0 {
+			return fmt.Errorf("refusing to replace %q: owner write permission is not set: %w", path, os.ErrPermission)
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err

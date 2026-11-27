@@ -100,6 +100,27 @@ func (suite *secureConfigTestSuite) TestSecureConfigEncrypt() {
 
 	_, err = executeCommandSecure(rootCmd, "secure", "encrypt", fmt.Sprintf("--config-file=%s", confFile.Name()), "--passphrase=123123123123123123123123", fmt.Sprintf("--output-file=%s", outFile.Name()))
 	suite.assert.NoError(err)
+	suite.assert.NoFileExists(confFile.Name())
+}
+
+func (suite *secureConfigTestSuite) TestSecureConfigEncryptRejectsParentComponent() {
+	defer suite.cleanupTest()
+	t := suite.T()
+	dir := privateTestDir(t)
+	source := filepath.Join(dir, "plain.yaml")
+	destination := filepath.Join(dir, "encrypted.azsec")
+	require.NoError(t, os.WriteFile(source, []byte(testPlainTextConfig), 0600))
+	require.NoError(t, os.WriteFile(destination, []byte("unchanged"), 0600))
+	require.NoError(t, os.Mkdir(filepath.Join(dir, "nested"), 0700))
+
+	_, err := executeCommandSecure(rootCmd, "secure", "encrypt", "--config-file="+source,
+		"--passphrase=123123123123123123123123", "--output-file="+dir+"/nested/../encrypted.azsec")
+	require.ErrorContains(t, err, "must not contain a '..' component")
+	for path, want := range map[string]string{source: testPlainTextConfig, destination: "unchanged"} {
+		data, err := os.ReadFile(path)
+		require.NoError(t, err)
+		assert.Equal(t, want, string(data))
+	}
 }
 
 func (suite *secureConfigTestSuite) TestSecureConfigEncryptNotExistent() {
@@ -252,4 +273,14 @@ func (suite *secureConfigTestSuite) TestSecureConfigSet() {
 
 	_, err = executeCommandSecure(rootCmd, "secure", "get", fmt.Sprintf("--config-file=%s", outFile.Name()), "--passphrase=123123123123123123123123", "--key=logging.level")
 	suite.assert.NoError(err)
+
+	t := suite.T()
+	before, err := os.ReadFile(outFile.Name())
+	require.NoError(t, err)
+	require.NoError(t, os.Chmod(outFile.Name(), 0400))
+	_, err = executeCommandSecure(rootCmd, "secure", "set", fmt.Sprintf("--config-file=%s", outFile.Name()), "--passphrase=123123123123123123123123", "--key=logging.level", "--value=log_debug")
+	require.ErrorContains(t, err, "owner write permission is not set")
+	after, err := os.ReadFile(outFile.Name())
+	require.NoError(t, err)
+	assert.Equal(t, before, after)
 }

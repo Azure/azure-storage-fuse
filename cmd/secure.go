@@ -123,12 +123,13 @@ func encryptConfigFile(saveConfig bool) ([]byte, error) {
 	}
 
 	if saveConfig {
-		outputFileName := ""
-		if secOpts.OutputFile == "" {
-			outputFileName = filepath.Join(common.ExpandPath(common.DefaultWorkDir), filepath.Base(secOpts.ConfigFile))
-			outputFileName += SecureConfigExtension
-		} else {
-			outputFileName = secOpts.OutputFile
+		outputFileName := secOpts.OutputFile
+		if outputFileName == "" {
+			workDir, err := expandConfigWorkDir(common.DefaultWorkDir)
+			if err != nil {
+				return nil, err
+			}
+			outputFileName = filepath.Join(workDir, filepath.Base(secOpts.ConfigFile)+SecureConfigExtension)
 		}
 
 		return cipherText, saveToFile(outputFileName, cipherText, true)
@@ -150,13 +151,15 @@ func decryptConfigFile(saveConfig bool) ([]byte, error) {
 	}
 
 	if saveConfig {
-		outputFileName := ""
-		if secOpts.OutputFile == "" {
-			outputFileName = filepath.Join(common.ExpandPath(common.DefaultWorkDir), filepath.Base(secOpts.ConfigFile))
+		outputFileName := secOpts.OutputFile
+		if outputFileName == "" {
+			workDir, err := expandConfigWorkDir(common.DefaultWorkDir)
+			if err != nil {
+				return nil, err
+			}
+			outputFileName = filepath.Join(workDir, filepath.Base(secOpts.ConfigFile))
 			extension := filepath.Ext(outputFileName)
 			outputFileName = outputFileName[0 : len(outputFileName)-len(extension)]
-		} else {
-			outputFileName = secOpts.OutputFile
 		}
 
 		return plainText, saveToFile(outputFileName, plainText, false)
@@ -171,19 +174,21 @@ func saveToFile(configFileName string, data []byte, deleteSource bool) error {
 		_, err := w.Write(data)
 		return err
 	})
-	if err != nil {
+	if err != nil || !deleteSource {
 		return err
 	}
 
-	if deleteSource {
-		// Delete the original file as we now have a encrypted config file
-		err = os.Remove(secOpts.ConfigFile)
-		if err != nil {
-			return err
-		}
+	// Persist the renamed output before removing the plaintext source.
+	outputDir := filepath.Dir(configFileName)
+	dir, err := os.Open(outputDir)
+	if err != nil {
+		return fmt.Errorf("cannot open config output directory %q for sync: %w", outputDir, err)
 	}
-
-	return nil
+	defer dir.Close()
+	if err := dir.Sync(); err != nil {
+		return fmt.Errorf("cannot sync config output directory %q: %w", outputDir, err)
+	}
+	return os.Remove(secOpts.ConfigFile)
 }
 
 func init() {

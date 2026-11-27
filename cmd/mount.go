@@ -132,16 +132,18 @@ func (opt *mountOptions) validateWithWorkDir(skipNonEmptyMount, generatesConfigs
 		common.DefaultLogFilePath = filepath.Join(common.DefaultWorkDir, "blobfuse2.log")
 	}
 
-	workDir := common.ExpandPath(common.DefaultWorkDir)
 	if generatesConfigs {
-		if err := ensurePrivateConfigDir(workDir); err != nil {
+		if err := ensurePrivateConfigDir(common.DefaultWorkDir); err != nil {
 			return fmt.Errorf("invalid work directory for generated configs: %w", err)
 		}
-	} else if f, err := os.Stat(workDir); err == nil && !f.IsDir() {
-		return fmt.Errorf("default work dir '%s' is not a directory", common.DefaultWorkDir)
-	} else if os.IsNotExist(err) {
-		if err := os.MkdirAll(workDir, 0777); err != nil {
-			return fmt.Errorf("failed to create default work dir [%s]", err.Error())
+	} else {
+		workDir := common.ExpandPath(common.DefaultWorkDir)
+		if f, err := os.Stat(workDir); err == nil && !f.IsDir() {
+			return fmt.Errorf("default work dir '%s' is not a directory", common.DefaultWorkDir)
+		} else if os.IsNotExist(err) {
+			if err := os.MkdirAll(workDir, 0777); err != nil {
+				return fmt.Errorf("failed to create default work dir [%s]", err.Error())
+			}
 		}
 	}
 

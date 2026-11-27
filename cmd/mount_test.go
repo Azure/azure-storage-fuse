@@ -653,6 +653,11 @@ func TestMountWorkDirPermissions(t *testing.T) {
 	opts.DefaultWorkingDir = link
 	require.NoError(t, opts.validate(false))
 	require.ErrorContains(t, opts.validateWithWorkDir(true, true), "not a symlink")
+
+	t.Setenv("BLOBFUSE_TEST_WORKDIR", dir+"/nested/../configs")
+	opts.DefaultWorkingDir = "$BLOBFUSE_TEST_WORKDIR"
+	require.NoError(t, opts.validate(false))
+	require.ErrorContains(t, opts.validateWithWorkDir(true, true), "must not contain a '..' component")
 }
 
 func (suite *mountTestSuite) TestCleanUpOnStartFlag() {

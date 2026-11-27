@@ -252,8 +252,14 @@ func mountAllContainers(containerList []string, configFile string, mountPath str
 	// During mount all some extra config were set, we need to reset those now
 	viper.Set("mount-all-containers", nil)
 
-	//configFileName := configFile[:(len(configFile) - len(ext))]
-	configFileName := filepath.Join(common.ExpandPath(common.DefaultWorkDir), "config")
+	var configFileName string
+	if configFileExists {
+		workDir, err := expandConfigWorkDir(common.DefaultWorkDir)
+		if err != nil {
+			return fmt.Errorf("invalid work directory for generated configs: %w", err)
+		}
+		configFileName = filepath.Join(workDir, "config")
+	}
 
 	failCount := 0
 	for _, container := range containerList {

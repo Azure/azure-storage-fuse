@@ -16,8 +16,10 @@ separately.
 
 When `mount all` reads a config file, it writes a separate `0600` config for
 each container. Use a work directory owned by the mounting user, not writable
-by group or others, and reachable without symlinks or untrusted parent
-directories. Use a dedicated `0700` directory if the existing path is rejected.
+by group or others, and reachable without symlinks, `..` components, or
+untrusted parent directories. Existing configs must have owner write
+permission to be replaced. Use a dedicated `0700` directory if the existing
+path is rejected.
 These requirements do not apply to ordinary `mount` or to `mount all` without
 an input config file.
 
