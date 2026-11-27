@@ -1,6 +1,26 @@
-## Unreleased
+## 2.5.7 (Unreleased)
+**Breaking Changes**
+- Remove obsolete Azure Data Lake Storage Gen1 support: the `mountgen1` command and the `mountv1 --enable-gen1` and `--required-free-space-mb` options. Azure Blob Storage and ADLS Gen2 mounts and v1 configuration conversion remain supported.
+
+**Features**
+
 **Bug Fixes**
-- Stop logging raw mount command-line arguments, which can contain secure-config passphrases or other credentials. Prefer `BLOBFUSE2_SECURE_CONFIG_PASSPHRASE` over `--passphrase` to avoid exposing the key in process arguments.
+- Replace raw mount command-line logging with a parsed CLI summary that retains reviewed operational values and redacts credentials and unclassified values. Proxy diagnostics and invalid-proxy errors no longer expose credentials. Prefer `BLOBFUSE2_SECURE_CONFIG_PASSPHRASE` over `--passphrase` to avoid exposing the key in process arguments.
+- Fix xload/preload writing outside its local path. Remote files and directories whose names contain `.` or `..` segments, repeated slashes or a leading `/` are now skipped, and all files are created, written and removed through a handle on the configured `xload.path` so that symlinks in it cannot redirect them elsewhere. ([PR #2480](https://github.com/Azure/azure-storage-fuse/pull/2480))
+- Fix blobfuse2 crashing when a rename cannot read the attributes of its source for a reason other than the source not existing, such as a permission error or a network failure. The rename now fails with that error (`EACCES`, `EINVAL` or `EIO`), also when the attributes of an existing destination cannot be read. ([PR #2450](https://github.com/Azure/azure-storage-fuse/pull/2450))
+- Fix directory listings of more than 5,000 entries that skipped entries or ended early after `rewinddir()` or `seekdir()`. Listing a directory again from its start no longer continues with the next page, and seeking back no longer ends the listing. ([PR #2451](https://github.com/Azure/azure-storage-fuse/pull/2451))
+- Apply `max-fuse-threads` even if the current user cannot be looked up at mount time, and show files as owned by the uid and gid of the blobfuse2 process instead of root in that case. ([PR #2452](https://github.com/Azure/azure-storage-fuse/pull/2452))
+- Return the error of a failed file operation instead of `EIO` when a component wraps or joins it, for example `EACCES` when creating a file on an HNS account fails to set its permissions. ([PR #2448](https://github.com/Azure/azure-storage-fuse/pull/2448))
+- Follow listing continuation tokens when checking whether a directory is empty. An empty page with more results must not allow removal of a non-empty directory, especially on ADLS accounts where directory deletion is recursive. ([PR #2440](https://github.com/Azure/azure-storage-fuse/pull/2440))
+- Free file handle on close even when upload fails, to prevent a memory leak, avoid pinning files in file_cache, and free pool buffers in block_cache. ([PR #2427](https://github.com/Azure/azure-storage-fuse/pull/2427))
+
+**Other Changes**
+- Defensively handle identical-path renames in FUSE2 and FUSE3 callbacks without invoking cache or storage renames, while preserving source errors and `RENAME_NOREPLACE` semantics. Linux normally handles these requests before FUSE; this protects direct callback invocations.
+- Build with Microsoft Go 1.26.11 to fix build-time code-execution and file-write vulnerabilities in the Go toolchain (CVE-2026-97033 through CVE-2026-97043). ([PR #2491](https://github.com/Azure/azure-storage-fuse/pull/2491))
+- libfuse no longer stores Go pointers in the file handles it gives libfuse, which broke cgo's pointer rules and made blobfuse2 builds with the Go race detector abort. ([PR #2449](https://github.com/Azure/azure-storage-fuse/pull/2449))
+- Test helpers of libfuse are no longer compiled into the blobfuse2 binary. ([PR #2447](https://github.com/Azure/azure-storage-fuse/pull/2447))
+- Publish stable releases to Azure Linux 4 production repositories for x86_64 and aarch64. Preview releases skip these production targets and retain existing distribution publishing. ([PR #2443](https://github.com/Azure/azure-storage-fuse/pull/2443))
+- Build with `golang.org/x/crypto` 0.59.0, `golang.org/x/net` 0.63.0, and `github.com/klauspost/compress` 1.20.4 to fix CVE-2026-116591 in the `zstd` decoder of `github.com/klauspost/compress` and to clear reports of GO-2026-5932 in `golang.org/x/crypto`, whose affected `openpgp` packages blobfuse2 doesn't use. ([PR #2485](https://github.com/Azure/azure-storage-fuse/pull/2485))
 
 ## 2.5.6 (2026-10-23)
 **Breaking Changes**

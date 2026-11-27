@@ -1,38 +1,8 @@
 //go:build !authtest
 // +build !authtest
 
-/*
-    _____           _____   _____   ____          ______  _____  ------
-   |     |  |      |     | |     | |     |     | |       |            |
-   |     |  |      |     | |     | |     |     | |       |            |
-   | --- |  |      |     | |-----| |---- |     | |-----| |-----  ------
-   |     |  |      |     | |     | |     |     |       | |       |
-   | ____|  |_____ | ____| | ____| |     |_____|  _____| |_____  |_____
-
-
-   Licensed under the MIT License <http://opensource.org/licenses/MIT>.
-
-   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
-   Author : <blobfusedev@microsoft.com>
-
-   Permission is hereby granted, free of charge, to any person obtaining a copy
-   of this software and associated documentation files (the "Software"), to deal
-   in the Software without restriction, including without limitation the rights
-   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-   copies of the Software, and to permit persons to whom the Software is
-   furnished to do so, subject to the following conditions:
-
-   The above copyright notice and this permission notice shall be included in all
-   copies or substantial portions of the Software.
-
-   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-   SOFTWARE
-*/
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 
 package azstorage
 
@@ -48,9 +18,12 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -68,10 +41,43 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
 
 var ctx = context.Background()
+
+func TestReadToFileKeepsSharedDownloadOptions(t *testing.T) {
+	require.NoError(t, log.SetDefaultLogger("silent", common.LogConfig{}))
+	monitoring, disabled := common.EnableMonitoring, common.BfsDisabled
+	common.EnableMonitoring, common.BfsDisabled = true, false
+	t.Cleanup(func() {
+		common.EnableMonitoring, common.BfsDisabled = monitoring, disabled
+	})
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("x-ms-error-code", "BlobNotFound")
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	t.Cleanup(server.Close)
+	client, err := container.NewClientWithNoCredential(server.URL+"/container", nil)
+	require.NoError(t, err)
+	options := &blob.DownloadFileOptions{}
+	backend := &BlockBlob{Container: client, downloadOptions: options}
+	var group sync.WaitGroup
+	for index := range 16 {
+		file, err := os.CreateTemp(t.TempDir(), "download-")
+		require.NoError(t, err)
+		group.Go(func() {
+			defer file.Close()
+			if err := backend.ReadToFile(fmt.Sprintf("file-%d", index), 0, 1, file); err != syscall.ENOENT {
+				t.Errorf("download error = %v, want ENOENT", err)
+			}
+		})
+	}
+	group.Wait()
+	assert.Nil(t, options.Progress, "request callbacks must not modify shared download options")
+}
 
 const MB = 1024 * 1024
 const GB = 1024 * MB
@@ -845,6 +851,116 @@ func TestProcessBlobPrefixesSinglePageSkipsMarkerLookups(t *testing.T) {
 	for _, attr := range blobList {
 		assert.True(t, attr.IsDir())
 		assert.NotEqual(t, "directory-with-marker", attr.Path)
+	}
+}
+
+// listPage is one page of a List Blobs response served by listPagesServer.
+type listPage struct {
+	nextMarker string
+	child      bool // the page lists a child of the directory
+	fail       bool // the request fails instead of returning the page
+}
+
+// listPagesServer serves List Blobs pages in order. It checks that each request lists the expected prefix
+// one result at a time and continues from the marker of the previous page.
+type listPagesServer struct {
+	t        *testing.T
+	prefix   string
+	pages    []listPage
+	requests int
+}
+
+func (s *listPagesServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query()
+	assert.Equal(s.t, http.MethodGet, r.Method)
+	assert.Equal(s.t, "/container", r.URL.Path)
+	assert.Equal(s.t, "list", query.Get("comp"))
+	assert.Equal(s.t, "1", query.Get("maxresults"))
+	assert.Equal(s.t, s.prefix, query.Get("prefix"))
+	if s.requests == len(s.pages) {
+		s.t.Error("unexpected list request after the last page")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	marker := ""
+	if s.requests > 0 {
+		marker = s.pages[s.requests-1].nextMarker
+	}
+	assert.Equal(s.t, marker, query.Get("marker"))
+
+	page := s.pages[s.requests]
+	s.requests++
+	if page.fail {
+		w.Header().Set("x-ms-error-code", "AuthorizationPermissionMismatch")
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+	child := ""
+	if page.child {
+		child = `<Blob><Name>mounted/parent/child</Name><Properties>` +
+			`<Last-Modified>Wed, 21 Oct 2026 00:00:00 GMT</Last-Modified><Etag>"child"</Etag>` +
+			`<Content-Length>0</Content-Length><BlobType>BlockBlob</BlobType></Properties>` +
+			`<Metadata><hdi_isfolder>true</hdi_isfolder></Metadata></Blob>`
+	}
+	w.Header().Set("Content-Type", "application/xml")
+	_, _ = fmt.Fprintf(w, "<EnumerationResults><Blobs>%s</Blobs><NextMarker>%s</NextMarker></EnumerationResults>",
+		child, page.nextMarker)
+}
+
+// An empty page with a continuation token is not the end of a listing. IsDirEmpty must keep listing until it
+// finds a child or reaches the last page, or rmdir can delete a non-empty directory, recursively on ADLS.
+func TestIsDirEmptyPagination(t *testing.T) {
+	// Storage test suites destroy their base logger, and logging through a destroyed base logger panics.
+	require.NoError(t, log.SetDefaultLogger("silent", common.LogConfig{Level: common.ELogLevel.LOG_DEBUG()}))
+
+	tests := []struct {
+		name  string
+		pages []listPage
+		empty bool
+	}{
+		{name: "empty directory", pages: []listPage{{}}, empty: true},
+		{name: "child on first page", pages: []listPage{{child: true}}},
+		{name: "stop at first child", pages: []listPage{{child: true, nextMarker: "more"}}},
+		{name: "child after empty page", pages: []listPage{{nextMarker: "second"}, {child: true}}},
+		{name: "child after multiple empty pages", pages: []listPage{{nextMarker: "second"}, {nextMarker: "third"}, {child: true}}},
+		{name: "all pages empty", pages: []listPage{{nextMarker: "second"}, {}}, empty: true},
+		{name: "first page error", pages: []listPage{{fail: true}}},
+		{name: "error after empty page", pages: []listPage{{nextMarker: "second"}, {fail: true}}},
+	}
+	dirs := []struct{ name, path, prefix string }{
+		{name: "directory", path: "parent", prefix: "mounted/parent/"},
+		{name: "directory with trailing slash", path: "parent/", prefix: "mounted/parent/"},
+		{name: "root", path: "", prefix: "mounted/"},
+		{name: "root slash", path: "/", prefix: "mounted/"},
+	}
+
+	// Blob and ADLS both list directories through BlockBlob.List.
+	for _, backend := range []string{"blob", "adls"} {
+		for _, dir := range dirs {
+			for _, tt := range tests {
+				t.Run(backend+"/"+dir.name+"/"+tt.name, func(t *testing.T) {
+					pages := &listPagesServer{t: t, prefix: dir.prefix, pages: tt.pages}
+					server := httptest.NewServer(pages)
+					defer server.Close()
+
+					client, err := container.NewClientWithNoCredential(server.URL+"/container", nil)
+					require.NoError(t, err)
+					dl := &Datalake{BlockBlob: BlockBlob{
+						AzStorageConnection: AzStorageConnection{Config: AzStorageConfig{prefixPath: "mounted"}},
+						Container:           client,
+						listDetails:         container.ListBlobsInclude{Metadata: true},
+					}}
+					var storage AzConnection = &dl.BlockBlob
+					if backend == "adls" {
+						storage = dl
+					}
+					az := &AzStorage{storage: storage}
+
+					assert.Equal(t, tt.empty, az.IsDirEmpty(internal.IsDirEmptyOptions{Name: dir.path}))
+					assert.Equal(t, len(tt.pages), pages.requests)
+				})
+			}
+		}
 	}
 }
 

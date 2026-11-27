@@ -9,4 +9,16 @@ updates:
   - package-ecosystem: "gomod"
     directory: "/"
     schedule:
-      interval: "daily"
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    # Version updates cover direct modules only. Vulnerable indirect modules
+    # are handled by Dependabot security updates (enabled in repo settings).
+    groups:
+      azure-sdk:
+        patterns:
+          - "github.com/Azure/*"
+          - "github.com/AzureAD/*"
+      go-deps:
+        patterns:
+          - "*"

@@ -1,35 +1,5 @@
-/*
-    _____           _____   _____   ____          ______  _____  ------
-   |     |  |      |     | |     | |     |     | |       |            |
-   |     |  |      |     | |     | |     |     | |       |            |
-   | --- |  |      |     | |-----| |---- |     | |-----| |-----  ------
-   |     |  |      |     | |     | |     |     |       | |       |
-   | ____|  |_____ | ____| | ____| |     |_____|  _____| |_____  |_____
-
-
-   Licensed under the MIT License <http://opensource.org/licenses/MIT>.
-
-   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
-   Author : <blobfusedev@microsoft.com>
-
-   Permission is hereby granted, free of charge, to any person obtaining a copy
-   of this software and associated documentation files (the "Software"), to deal
-   in the Software without restriction, including without limitation the rights
-   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-   copies of the Software, and to permit persons to whom the Software is
-   furnished to do so, subject to the following conditions:
-
-   The above copyright notice and this permission notice shall be included in all
-   copies or substantial portions of the Software.
-
-   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-   SOFTWARE
-*/
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 
 package cmd
 
@@ -40,12 +10,15 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -436,8 +409,67 @@ func (suite *mountTestSuite) TestDirectIODisableKernelCacheCombo() {
 	suite.assert.Contains(op, "direct-io and disable-kernel-cache cannot be enabled together")
 }
 
-func (suite *mountTestSuite) TestMountDoesNotLogPassphrase() {
+func TestMountCLIFlagsRedaction(t *testing.T) {
+	for _, form := range []string{"equals", "separate"} {
+		t.Run(form, func(t *testing.T) {
+			flags := pflag.NewFlagSet("mount", pflag.ContinueOnError)
+			flags.BoolP("foreground", "f", false, "")
+			flags.Bool("read-only", false, "")
+			flags.Duration("wait-for-mount", time.Second, "")
+			flags.Uint16("max-concurrency", 0, "")
+			flags.Float64("block-cache-block-size", 0, "")
+			flags.String("log-type", "", "")
+			flags.String("log-level", "", "")
+			flags.String("unused-secret", "unused-secret-value", "")
+			flags.Uint64("numeric-credential", 0, "")
+			args := []string{"-f", "--read-only", "--wait-for-mount=7s", "--max-concurrency=9",
+				"--block-cache-block-size=1.5", "--log-type=base", "--log-level=log_info", "--numeric-credential=123456789"}
+			secretFlags := []string{"passphrase", "http-proxy", "https-proxy", "account-key", "sas",
+				"clientsecret", "cpk-encryption-key", "workload-identity-token", "endpoint",
+				"telemetry", "filter", "future-credential", "config-file"}
+			for _, name := range secretFlags {
+				flags.String(name, "", "")
+				secret := name + "-synthetic-secret"
+				if form == "equals" {
+					args = append(args, "--"+name+"="+secret)
+				} else {
+					args = append(args, "--"+name, secret)
+				}
+			}
+			args = append(args, "--passphrase=last-passphrase-secret")
+			require.NoError(t, flags.Parse(args))
+			summary := mountCLIFlagsForLog(flags)
+			for _, name := range secretFlags {
+				assert.Contains(t, summary, "--"+name+"=\"[REDACTED]\"")
+				assert.NotContains(t, summary, name+"-synthetic-secret")
+			}
+			assert.NotContains(t, summary, "last-passphrase-secret")
+			assert.NotContains(t, summary, "123456789")
+			assert.NotContains(t, summary, "unused-secret")
+			for _, option := range []string{`--foreground="true"`, `--read-only="true"`,
+				`--wait-for-mount="7s"`, `--max-concurrency="9"`, `--block-cache-block-size="1.5"`,
+				`--log-type="base"`, `--log-level="LOG_INFO"`} {
+				assert.Contains(t, summary, option)
+			}
+		})
+	}
+
+	t.Run("unreviewed types and logging enum values", func(t *testing.T) {
+		flags := pflag.NewFlagSet("mount", pflag.ContinueOnError)
+		for _, name := range []string{"read-only", "max-concurrency", "log-type", "log-level"} {
+			flags.String(name, "", "")
+			require.NoError(t, flags.Set(name, "synthetic-secret\nforged log line"))
+		}
+		summary := mountCLIFlagsForLog(flags)
+		assert.NotContains(t, summary, "synthetic-secret")
+		assert.NotContains(t, summary, "\n")
+		assert.Equal(t, `--log-level="[REDACTED]" --log-type="[REDACTED]" --max-concurrency="[REDACTED]" --read-only="[REDACTED]"`, summary)
+	})
+}
+
+func (suite *mountTestSuite) TestMountCLISecretsAreRedacted() {
 	const passphrase = "synthetic-key-01"
+	const proxySecret = "synthetic-proxy-secret"
 	for _, level := range []string{"LOG_INFO", "LOG_DEBUG", "LOG_WARNING"} {
 		for _, form := range []string{"equals", "separate", "environment"} {
 			suite.Run(level+"/"+form, func() {
@@ -455,15 +487,22 @@ func (suite *mountTestSuite) TestMountDoesNotLogPassphrase() {
 					"mount", mountDir, "--config-file=" + configFile,
 					"--log-type=base", "--log-level=" + level,
 					"--log-file-path=" + logFile, "--default-working-dir=" + dir,
-					"--disable-version-check",
+					"--disable-version-check", "--read-only", "--wait-for-mount=7s",
+					"--max-concurrency=9",
 				}
 				switch form {
 				case "equals":
-					args = append(args, "--passphrase="+passphrase)
+					args = append(args, "--passphrase="+passphrase,
+						"--http-proxy=http://user:"+proxySecret+"@proxy.invalid:8080",
+						"--https-proxy=http://user:"+proxySecret+"@proxy.invalid:8080")
 				case "separate":
-					args = append(args, "--passphrase", passphrase)
+					args = append(args, "--passphrase", passphrase,
+						"--http-proxy", "http://user:"+proxySecret+"@proxy.invalid:8080",
+						"--https-proxy", "http://user:"+proxySecret+"@proxy.invalid:8080")
 				case "environment":
 					suite.T().Setenv(SecureConfigEnvName, passphrase)
+					suite.T().Setenv("HTTP_PROXY", "http://user:"+proxySecret+"@proxy.invalid:8080")
+					suite.T().Setenv("HTTPS_PROXY", "http://user:"+proxySecret+"@proxy.invalid:8080")
 				}
 				oldArgs := os.Args
 				os.Args = append([]string{"blobfuse2"}, args...)
@@ -471,12 +510,25 @@ func (suite *mountTestSuite) TestMountDoesNotLogPassphrase() {
 
 				out, err := executeCommandC(rootCmd, args...)
 				suite.Require().ErrorContains(err, "component log_test_missing_component not registered")
-				suite.Assert().NotContains(out, passphrase)
+				suite.NotContains(out, passphrase)
 				logged, err := os.ReadFile(logFile)
 				suite.Require().NoError(err)
-				suite.Assert().Contains(string(logged), "Starting Blobfuse2 Mount")
-				suite.Assert().NotContains(string(logged), passphrase)
-				suite.Assert().NotContains(string(logged), "Mount Command:")
+				suite.Contains(string(logged), "Starting Blobfuse2 Mount")
+				suite.NotContains(string(logged), passphrase)
+				suite.NotContains(string(logged), proxySecret)
+				suite.NotContains(string(logged), "Mount Command:")
+				if level == "LOG_WARNING" {
+					suite.NotContains(string(logged), "Mount CLI options:")
+				} else {
+					suite.Contains(string(logged), "Mount CLI options:")
+					suite.Contains(string(logged), `--wait-for-mount="7s"`)
+					suite.Contains(string(logged), `--max-concurrency="9"`)
+					if form != "environment" {
+						suite.Contains(string(logged), `--passphrase="[REDACTED]"`)
+						suite.Contains(string(logged), `--http-proxy="[REDACTED]"`)
+						suite.Contains(string(logged), `--https-proxy="[REDACTED]"`)
+					}
+				}
 			})
 		}
 	}
@@ -653,6 +705,7 @@ func (suite *mountTestSuite) TestUpdateCliParams() {
 
 func (suite *mountTestSuite) TestMountOptionVaildate() {
 	defer suite.cleanupTest()
+	suite.T().Setenv("HOME", suite.T().TempDir())
 	opts := &mountOptions{}
 
 	err := opts.validate(true)
@@ -686,6 +739,52 @@ func (suite *mountTestSuite) TestMountOptionVaildate() {
 	suite.assert.Contains(opts.Logging.LogFilePath, opts.DefaultWorkingDir)
 	suite.assert.Equal(common.DefaultWorkDir, opts.DefaultWorkingDir)
 	suite.assert.Equal(common.DefaultLogFilePath, opts.Logging.LogFilePath)
+}
+
+func privateTestDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	require.NoError(t, os.Chmod(dir, 0700))
+	return dir
+}
+
+func TestMountWorkDirPermissions(t *testing.T) {
+	oldWorkDir, oldLogPath := common.DefaultWorkDir, common.DefaultLogFilePath
+	t.Cleanup(func() { common.DefaultWorkDir, common.DefaultLogFilePath = oldWorkDir, oldLogPath })
+
+	dir := privateTestDir(t)
+	opts := mountOptions{
+		MountPath:         t.TempDir(),
+		DefaultWorkingDir: filepath.Join(dir, "nested", "work"),
+		Logging:           LogOptions{LogLevel: "LOG_WARNING"},
+	}
+	require.NoError(t, opts.validateWithWorkDir(true, true))
+	info, err := os.Stat(opts.DefaultWorkingDir)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0700), info.Mode().Perm())
+
+	require.NoError(t, os.Chmod(opts.DefaultWorkingDir, 0755))
+	require.NoError(t, opts.validateWithWorkDir(true, true))
+
+	require.NoError(t, os.Chmod(opts.DefaultWorkingDir, 0775))
+	require.NoError(t, opts.validate(false))
+	require.ErrorContains(t, opts.validateWithWorkDir(true, true), "not writable by group or others")
+
+	require.NoError(t, os.Chmod(opts.DefaultWorkingDir, 0755))
+	require.NoError(t, os.Chmod(filepath.Dir(opts.DefaultWorkingDir), 0775))
+	require.NoError(t, opts.validate(false))
+	require.ErrorContains(t, opts.validateWithWorkDir(true, true), "not writable by group or others")
+
+	link := filepath.Join(dir, "work-link")
+	require.NoError(t, os.Symlink(opts.DefaultWorkingDir, link))
+	opts.DefaultWorkingDir = link
+	require.NoError(t, opts.validate(false))
+	require.ErrorContains(t, opts.validateWithWorkDir(true, true), "not a symlink")
+
+	t.Setenv("BLOBFUSE_TEST_WORKDIR", dir+"/nested/../configs")
+	opts.DefaultWorkingDir = "$BLOBFUSE_TEST_WORKDIR"
+	require.NoError(t, opts.validate(false))
+	require.ErrorContains(t, opts.validateWithWorkDir(true, true), "must not contain a '..' component")
 }
 
 func (suite *mountTestSuite) TestCleanUpOnStartFlag() {

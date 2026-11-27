@@ -1,35 +1,5 @@
-/*
-    _____           _____   _____   ____          ______  _____  ------
-   |     |  |      |     | |     | |     |     | |       |            |
-   |     |  |      |     | |     | |     |     | |       |            |
-   | --- |  |      |     | |-----| |---- |     | |-----| |-----  ------
-   |     |  |      |     | |     | |     |     | |       | |       |
-   | ____|  |_____ | ____| | ____| |     |_____|  _____| |_____  |_____
-
-
-   Licensed under the MIT License <http://opensource.org/licenses/MIT>.
-
-   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
-   Author : <blobfusedev@microsoft.com>
-
-   Permission is hereby granted, free of charge, to any person obtaining a copy
-   of this software and associated documentation files (the "Software"), to deal
-   in the Software without restriction, including without limitation the rights
-   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-   copies of the Software, and to permit persons to whom the Software is
-   furnished to do so, subject to the following conditions:
-
-   The above copyright notice and this permission notice shall be included in all
-   copies or substantial portions of the Software.
-
-   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-   SOFTWARE
-*/
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 
 package cmd
 
@@ -133,12 +103,13 @@ func TestMountAllRejectsDistributedCache(t *testing.T) {
 
 func TestMountAllContainersFileCacheChildConfiguration(t *testing.T) {
 	tests := []struct {
-		name       string
-		configFile bool
-		secure     bool
+		name   string
+		ext    string
+		secure bool
 	}{
-		{name: "config file", configFile: true},
-		{name: "encrypted config file", configFile: true, secure: true},
+		{name: "config file", ext: ".yaml"},
+		{name: "JSON config file", ext: ".json"},
+		{name: "encrypted config file", ext: ".yaml", secure: true},
 		{name: "CLI only"},
 	}
 	for _, tc := range tests {
@@ -152,7 +123,7 @@ func TestMountAllContainersFileCacheChildConfiguration(t *testing.T) {
 				os.Args, common.DefaultWorkDir = oldArgs, oldWorkDir
 			})
 
-			workDir := t.TempDir()
+			workDir := privateTestDir(t)
 			common.DefaultWorkDir = workDir
 			t.Setenv("BLOBFUSE_MOUNT_ALL_TEST_ARGS", workDir)
 			executable := filepath.Join(workDir, "capture-mount")
@@ -162,15 +133,21 @@ func TestMountAllContainersFileCacheChildConfiguration(t *testing.T) {
 			mountPath := filepath.Join(workDir, "mounts")
 			os.Args = []string{"blobfuse2", "mount", "all", mountPath}
 			configFile := ""
-			if tc.configFile {
-				configFile = "input.yaml"
+			if tc.ext != "" {
+				configFile = "input" + tc.ext
 				viper.Set("file_cache.path", "/user-cache")
+				legacy := filepath.Join(workDir, "config_photos"+tc.ext)
+				if tc.secure {
+					legacy += SecureConfigExtension
+				}
+				require.NoError(t, os.WriteFile(legacy, []byte("old contents"), 0600))
+				require.NoError(t, os.Chmod(legacy, 0644))
 			} else {
 				require.NoError(t, mountCmd.PersistentFlags().Parse([]string{"--tmp-path=/user-cache"}))
 				os.Args = append(os.Args, "--tmp-path=/user-cache")
 			}
 			containers := []string{"photos", "videos"}
-			require.NoError(t, mountAllContainers(containers, configFile, mountPath, tc.configFile))
+			require.NoError(t, mountAllContainers(containers, configFile, mountPath, configFile != ""))
 
 			for _, container := range containers {
 				data, err := os.ReadFile(filepath.Join(workDir, container))
@@ -182,12 +159,15 @@ func TestMountAllContainersFileCacheChildConfiguration(t *testing.T) {
 				assert.DirExists(t, args[1])
 				assert.Contains(t, args, "--disable-version-check=true")
 
-				if tc.configFile {
-					childPath := filepath.Join(workDir, "config_"+container+".yaml")
+				if configFile != "" {
+					childPath := filepath.Join(workDir, "config_"+container+tc.ext)
 					if tc.secure {
 						childPath += SecureConfigExtension
 					}
 					assert.Equal(t, "--config-file="+childPath, args[2])
+					info, err := os.Stat(childPath)
+					require.NoError(t, err)
+					assert.Equal(t, os.FileMode(0600), info.Mode().Perm())
 					data, err := os.ReadFile(childPath)
 					require.NoError(t, err)
 					if tc.secure {
@@ -195,7 +175,7 @@ func TestMountAllContainersFileCacheChildConfiguration(t *testing.T) {
 						require.NoError(t, err)
 					}
 					childConfig := viper.New()
-					childConfig.SetConfigType("yaml")
+					childConfig.SetConfigType(tc.ext[1:])
 					require.NoError(t, childConfig.ReadConfig(strings.NewReader(string(data))))
 					assert.Equal(t, args[1], childConfig.GetString("mount-path"))
 					assert.Equal(t, container, childConfig.GetString("azstorage.container"))
@@ -209,4 +189,21 @@ func TestMountAllContainersFileCacheChildConfiguration(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestWriteConfigFileRejectsSymlink(t *testing.T) {
+	oldOptions := options
+	t.Cleanup(func() { options = oldOptions })
+	options = mountOptions{}
+
+	dir := privateTestDir(t)
+	target := filepath.Join(dir, "original")
+	require.NoError(t, os.WriteFile(target, []byte("unchanged"), 0600))
+	output := filepath.Join(dir, "config_photos.yaml")
+	require.NoError(t, os.Symlink(target, output))
+
+	require.ErrorContains(t, writeConfigFile(output), "expected a regular file owned by the current user")
+	data, err := os.ReadFile(target)
+	require.NoError(t, err)
+	assert.Equal(t, "unchanged", string(data))
 }

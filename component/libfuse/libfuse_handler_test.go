@@ -1,46 +1,56 @@
-/*
-    _____           _____   _____   ____          ______  _____  ------
-   |     |  |      |     | |     | |     |     | |       |            |
-   |     |  |      |     | |     | |     |     | |       |            |
-   | --- |  |      |     | |-----| |---- |     | |-----| |-----  ------
-   |     |  |      |     | |     | |     |     |       | |       |
-   | ____|  |_____ | ____| | ____| |     |_____|  _____| |_____  |_____
+//go:build unittest
 
-
-   Licensed under the MIT License <http://opensource.org/licenses/MIT>.
-
-   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
-   Author : <blobfusedev@microsoft.com>
-
-   Permission is hereby granted, free of charge, to any person obtaining a copy
-   of this software and associated documentation files (the "Software"), to deal
-   in the Software without restriction, including without limitation the rights
-   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-   copies of the Software, and to permit persons to whom the Software is
-   furnished to do so, subject to the following conditions:
-
-   The above copyright notice and this permission notice shall be included in all
-   copies or substantial portions of the Software.
-
-   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-   SOFTWARE
-*/
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 
 package libfuse
 
 import (
+	"errors"
+	"fmt"
 	"io/fs"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/config"
 
 	"github.com/stretchr/testify/suite"
 )
+
+func (suite *libfuseTestSuite) TestRootOwnership() {
+	defer suite.cleanupTest()
+	originalUID, originalGID := rootOwnership(suite)
+	mountPath := filepath.Join(suite.T().TempDir(), "missing")
+	configure := func(configuration string) {
+		suite.Require().NoError(config.ReadConfigFromReader(strings.NewReader(fmt.Sprintf("mount-path: %s\n%s", mountPath, configuration))))
+		suite.Require().NoError(suite.libfuse.Configure(true))
+		// A missing mountpoint exercises production initialization without mounting
+		// or requiring /dev/fuse. Ownership must be ready before start_fuse runs.
+		suite.Require().ErrorContains(suite.libfuse.initFuse(), "failed to mount fuse")
+	}
+	defer configure(fmt.Sprintf("libfuse:\n  uid: %d\n  gid: %d\n", originalUID, originalGID))
+	suite.stubCurrentUser(4321, 8765, nil)
+	for _, test := range []struct {
+		name          string
+		configuration string
+		uid           uint32
+		gid           uint32
+	}{
+		{"configured", "libfuse:\n  uid: 1234\n  gid: 5678\n", 1234, 5678},
+		{"current-user", "", 4321, 8765},
+		{"explicit-root", "libfuse:\n  uid: 0\n  gid: 0\n", 0, 0},
+	} {
+		suite.Run(test.name, func() {
+			configure(test.configuration)
+			uid, gid := rootOwnership(suite)
+			suite.Require().Equal(test.uid, uid)
+			suite.Require().Equal(test.gid, gid)
+		})
+	}
+}
 
 // Tests the default configuration of libfuse
 func (suite *libfuseTestSuite) TestDefault() {
@@ -140,6 +150,50 @@ func (suite *libfuseTestSuite) TestConfigDisableKernelCache() {
 	suite.assert.True(suite.libfuse.directIO)
 }
 
+// stubCurrentUser makes the lookup of the current user return uid, gid and err until the test ends
+func (suite *libfuseTestSuite) stubCurrentUser(uid, gid uint32, err error) {
+	saved := getCurrentUser
+	getCurrentUser = func() (uint32, uint32, error) { return uid, gid, err }
+	suite.T().Cleanup(func() { getCurrentUser = saved })
+}
+
+// TestConfigCurrentUser verifies that files are owned by the current user unless uid or gid is configured
+func (suite *libfuseTestSuite) TestConfigCurrentUser() {
+	defer suite.cleanupTest()
+	suite.cleanupTest()
+	suite.stubCurrentUser(1234, 5678, nil)
+	suite.setupTestHelper(emptyConfig)
+	suite.assert.Equal(uint32(1234), suite.libfuse.ownerUID)
+	suite.assert.Equal(uint32(5678), suite.libfuse.ownerGID)
+
+	suite.cleanupTest()
+	suite.stubCurrentUser(0, 0, errors.New("the lookup must not be needed"))
+	suite.setupTestHelper("libfuse:\n  uid: 42\n  gid: 43\n")
+	suite.assert.Equal(uint32(42), suite.libfuse.ownerUID)
+	suite.assert.Equal(uint32(43), suite.libfuse.ownerGID)
+}
+
+// TestConfigCurrentUserLookupFails verifies that a failed lookup of the current user falls back to the uid and gid of
+// the process, and that the rest of the configuration is still applied
+func (suite *libfuseTestSuite) TestConfigCurrentUserLookupFails() {
+	for _, tc := range []struct {
+		config        string
+		maxBackground uint32
+	}{
+		{emptyConfig, defaultMaxBackground},
+		{"libfuse:\n  max-fuse-threads: 64\n", 64},
+	} {
+		suite.cleanupTest()
+		suite.stubCurrentUser(1234, 5678, errors.New("user: unknown userid"))
+		suite.setupTestHelper(tc.config)
+
+		suite.assert.Equal(uint32(os.Getuid()), suite.libfuse.ownerUID, tc.config)
+		suite.assert.Equal(uint32(os.Getgid()), suite.libfuse.ownerGID, tc.config)
+		suite.assert.Equal(tc.maxBackground, suite.libfuse.maxBackground, tc.config)
+	}
+	suite.cleanupTest()
+}
+
 func (suite *libfuseTestSuite) TestConfigFuseTraceEnable() {
 	defer suite.cleanupTest()
 	suite.cleanupTest() // clean up the default libfuse generated
@@ -199,6 +253,14 @@ func (suite *libfuseTestSuite) TestMkDirError() {
 
 // readdir
 
+func (suite *libfuseTestSuite) TestReaddir() {
+	testReaddir(suite)
+}
+
+func (suite *libfuseTestSuite) TestReaddirError() {
+	testReaddirError(suite)
+}
+
 func (suite *libfuseTestSuite) TestRmDir() {
 	testRmDir(suite)
 }
@@ -237,6 +299,10 @@ func (suite *libfuseTestSuite) TestFlushNativeWriteDuringUpload() {
 
 func (suite *libfuseTestSuite) TestFsyncNativeWrite() {
 	testFsyncNativeWrite(suite)
+}
+
+func (suite *libfuseTestSuite) TestReleaseError() {
+	testReleaseError(suite)
 }
 
 func (suite *libfuseTestSuite) TestNativeDirtyHandOver() {
@@ -295,9 +361,11 @@ func (suite *libfuseTestSuite) TestOpenError() {
 	testOpenError(suite)
 }
 
-// read
+// read, write
 
-// write
+func (suite *libfuseTestSuite) TestPipelineReadWrite() {
+	testPipelineReadWrite(suite)
+}
 
 // flush
 
@@ -343,6 +411,18 @@ func (suite *libfuseTestSuite) TestRenameInvalidPath() {
 
 func (suite *libfuseTestSuite) TestRenameBackslashName() {
 	testRenameBackslashName(suite)
+}
+
+func (suite *libfuseTestSuite) TestRenameAttrError() {
+	testRenameAttrError(suite)
+}
+
+func (suite *libfuseTestSuite) TestRenameChecks() {
+	testRenameChecks(suite)
+}
+
+func (suite *libfuseTestSuite) TestRenameSamePath() {
+	testRenameSamePath(suite)
 }
 
 func (suite *libfuseTestSuite) TestBackslashNameRejected() {

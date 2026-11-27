@@ -1,35 +1,5 @@
-/*
-    _____           _____   _____   ____          ______  _____  ------
-   |     |  |      |     | |     | |     |     | |       |            |
-   |     |  |      |     | |     | |     |     | |       |            |
-   | --- |  |      |     | |-----| |---- |     | |-----| |-----  ------
-   |     |  |      |     | |     | |     |     |       | |       |
-   | ____|  |_____ | ____| | ____| |     |_____|  _____| |_____  |_____
-
-
-   Licensed under the MIT License <http://opensource.org/licenses/MIT>.
-
-   Copyright © 2020-2026 Microsoft Corporation. All rights reserved.
-   Author : <blobfusedev@microsoft.com>
-
-   Permission is hereby granted, free of charge, to any person obtaining a copy
-   of this software and associated documentation files (the "Software"), to deal
-   in the Software without restriction, including without limitation the rights
-   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-   copies of the Software, and to permit persons to whom the Software is
-   furnished to do so, subject to the following conditions:
-
-   The above copyright notice and this permission notice shall be included in all
-   copies or substantial portions of the Software.
-
-   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-   SOFTWARE
-*/
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 
 package cmd
 
@@ -59,6 +29,7 @@ import (
 
 	"github.com/sevlyar/go-daemon"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 type LogOptions struct {
@@ -118,6 +89,10 @@ type mountOptions struct {
 var options mountOptions
 
 func (opt *mountOptions) validate(skipNonEmptyMount bool) error {
+	return opt.validateWithWorkDir(skipNonEmptyMount, false)
+}
+
+func (opt *mountOptions) validateWithWorkDir(skipNonEmptyMount, generatesConfigs bool) error {
 	if opt.MountPath == "" {
 		return fmt.Errorf("mount path not provided")
 	}
@@ -158,15 +133,18 @@ func (opt *mountOptions) validate(skipNonEmptyMount bool) error {
 		common.DefaultLogFilePath = filepath.Join(common.DefaultWorkDir, "blobfuse2.log")
 	}
 
-	f, err := os.Stat(common.ExpandPath(common.DefaultWorkDir))
-	if err == nil && !f.IsDir() {
-		return fmt.Errorf("default work dir '%s' is not a directory", common.DefaultWorkDir)
-	}
-
-	if err != nil && os.IsNotExist(err) {
-		// create the default work dir
-		if err = os.MkdirAll(common.ExpandPath(common.DefaultWorkDir), 0777); err != nil {
-			return fmt.Errorf("failed to create default work dir [%s]", err.Error())
+	if generatesConfigs {
+		if err := ensurePrivateConfigDir(common.DefaultWorkDir); err != nil {
+			return fmt.Errorf("invalid work directory for generated configs: %w", err)
+		}
+	} else {
+		workDir := common.ExpandPath(common.DefaultWorkDir)
+		if f, err := os.Stat(workDir); err == nil && !f.IsDir() {
+			return fmt.Errorf("default work dir '%s' is not a directory", common.DefaultWorkDir)
+		} else if os.IsNotExist(err) {
+			if err := os.MkdirAll(workDir, 0777); err != nil {
+				return fmt.Errorf("failed to create default work dir [%s]", err.Error())
+			}
 		}
 	}
 
@@ -266,7 +244,7 @@ var mountCmd = &cobra.Command{
 	Long:       "Mounts the azure container as a filesystem",
 	SuggestFor: []string{"mnt", "mout"},
 	Args:       cobra.ExactArgs(1),
-	RunE: func(_ *cobra.Command, args []string) error {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		options.inputMountPath = args[0]
 		options.MountPath = common.ExpandPath(args[0])
 		common.MountPath = options.MountPath
@@ -510,6 +488,7 @@ var mountCmd = &cobra.Command{
 		var pipeline *internal.Pipeline
 
 		log.Crit("Starting Blobfuse2 Mount : %s on [%s]", common.Blobfuse2Version, common.GetCurrentDistro())
+		log.Info("Mount CLI options: %s", mountCLIFlagsForLog(cmd.Flags()))
 		log.Crit("Logging level set to : %s", logLevel.String())
 		log.Crit("Log options: %+v", options.Logging)
 		log.Debug("Mount allowed on nonempty path : %v", options.NonEmpty)
@@ -723,6 +702,65 @@ func monitorChild(pid int, done chan struct{}) {
 			}
 		}
 	}
+}
+
+func mountCLIFlagsForLog(flags *pflag.FlagSet) string {
+	var summary strings.Builder
+	flags.Visit(func(flag *pflag.Flag) {
+		// Newly added flags must be reviewed before their values can be logged.
+		value := "[REDACTED]"
+		safeType := ""
+		switch flag.Name {
+		case "foreground", "read-only", "secure-config", "cleanup-on-start",
+			"block-cache", "streaming", "preload", "use-attr-cache",
+			"disable-kernel-cache", "allow-other", "disable-writeback-cache",
+			"ignore-open-flags", "d", "lazy-write", "disable-version-check",
+			"log-goroutine-id", "log-compress", "empty-dir-check", "background-download",
+			"upload-modified-only", "sync-to-flush", "ignore-sync", "hard-limit",
+			"block-cache-prefetch-on-open", "block-cache-strong-consistency",
+			"no-symlinks", "cache-on-list", "use-https", "use-adls",
+			"set-content-type", "virtual-directory", "disable-compression",
+			"honour-acl", "cpk-enabled", "preserve-acl", "skip-mount-validation":
+			safeType = "bool"
+		case "wait-for-mount":
+			safeType = "duration"
+		case "max-concurrency", "max-retry", "max-retry-interval-in-seconds", "retry-delay-factor":
+			safeType = "uint16"
+		case "attr-timeout", "entry-timeout", "negative-timeout", "kernel-list-cache-timeout",
+			"attr-cache-timeout", "attr-cache-max-size-mb", "file-cache-timeout",
+			"file-cache-timeout-in-seconds", "cache-size-mb", "high-disk-threshold",
+			"low-disk-threshold", "max-eviction", "block-cache-disk-timeout",
+			"block-cache-prefetch", "block-cache-parallelism", "distributed-cache-ttl",
+			"distributed-cache-block-size", "distributed-cache-node-memory",
+			"distributed-cache-prefetch", "distributed-cache-parallelism":
+			safeType = "uint32"
+		case "block-cache-pool-size", "block-cache-disk-size", "cache-poll-timeout-msec":
+			safeType = "uint64"
+		case "block-cache-block-size":
+			safeType = "float64"
+		case "cancel-list-on-mount-seconds":
+			safeType = "int32"
+		case "cap-mbps-read", "cap-iops":
+			safeType = "int64"
+		case "log-type":
+			if flag.Value.Type() == "string" && slices.Contains([]string{"base", "syslog", "silent"}, flag.Value.String()) {
+				value = flag.Value.String()
+			}
+		case "log-level":
+			var level common.LogLevel
+			if flag.Value.Type() == "string" && level.Parse(flag.Value.String()) == nil {
+				value = level.String()
+			}
+		}
+		if safeType != "" && flag.Value.Type() == safeType {
+			value = flag.Value.String()
+		}
+		if summary.Len() != 0 {
+			summary.WriteByte(' ')
+		}
+		fmt.Fprintf(&summary, "--%s=%q", flag.Name, value)
+	})
+	return summary.String()
 }
 
 func ignoreFuseOptions(opt string) bool {
