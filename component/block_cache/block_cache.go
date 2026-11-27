@@ -23,8 +23,10 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/cachefs"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 	"github.com/vibhansa-msft/tlru"
+	"golang.org/x/sys/unix"
 )
 
 /* NOTES:
@@ -42,6 +44,7 @@ type BlockCache struct {
 	memSize         uint64          // Mem size to be used for caching at the startup
 	mntPath         string          // Mount path
 	tmpPath         string          // Disk path where these blocks will be cached
+	root            *os.Root        // Confines all disk cache IO to tmpPath
 	diskSize        uint64          // Size of disk space allocated for the caching
 	diskTimeout     uint32          // Timeout for which disk blocks will be cached
 	workers         uint32          // Number of threads working to fetch the blocks
@@ -152,6 +155,7 @@ func (bc *BlockCache) Stop() error {
 	if bc.tmpPath != "" {
 		_ = bc.diskPolicy.Stop()
 		_ = common.TempCacheCleanup(bc.tmpPath)
+		_ = bc.root.Close()
 	}
 
 	return nil
@@ -274,7 +278,7 @@ func (bc *BlockCache) Configure(_ bool) error {
 		_, err = os.Stat(bc.tmpPath)
 		if os.IsNotExist(err) {
 			log.Info("BlockCache: config error [tmp-path does not exist. attempting to create tmp-path.]")
-			err := os.Mkdir(bc.tmpPath, os.FileMode(0755))
+			err := os.Mkdir(bc.tmpPath, cachefs.DirPerm)
 			if err != nil {
 				log.Err("BlockCache: config error creating directory of temp path after clean [%s]", err.Error())
 				return fmt.Errorf("config error in %s [%s]", bc.Name(), err.Error())
@@ -298,6 +302,12 @@ func (bc *BlockCache) Configure(_ bool) error {
 	}
 
 	if bc.tmpPath != "" {
+		bc.root, err = cachefs.OpenRoot(bc.tmpPath)
+		if err != nil {
+			log.Err("BlockCache::Configure : fail to open cache root [%s]", err.Error())
+			return fmt.Errorf("config error in %s [%s]", bc.Name(), err.Error())
+		}
+
 		bc.diskPolicy, err = tlru.New(uint32((bc.diskSize)/bc.blockSize), bc.diskTimeout, bc.diskEvict, 60, bc.checkDiskUsage)
 		if err != nil {
 			log.Err("BlockCache::Configure : fail to create LRU for memory nodes [%s]", err.Error())
@@ -979,42 +989,42 @@ func (bc *BlockCache) download(item *workItem) {
 
 		// Check local file exists for this offset and file combination or not
 		localPath = filepath.Join(bc.tmpPath, fileName)
-		_, err := os.Stat(localPath)
 
-		if err == nil {
-			// If file exists then read the block from the local file
-			f, err := os.Open(localPath)
-			if err != nil {
+		// The open is the existence check: it never follows a symlink and validates the file with
+		// fstat, so there is no separate stat that could disagree with what gets opened.
+		f, err := cachefs.Open(bc.root, bc.rootPath(localPath))
+		if err != nil {
+			if !os.IsNotExist(err) {
 				// On any disk failure we do not fail the download flow
 				log.Err("BlockCache::download : Failed to open file %s [%s]", fileName, err.Error())
-				_ = os.Remove(localPath)
-			} else {
-				var successfulRead = true
-				numberOfBytes, err := f.Read(item.block.data)
-				if err != nil {
-					log.Err("BlockCache::download : Failed to read data from disk cache %s [%s]", fileName, err.Error())
-					successfulRead = false
-					_ = os.Remove(localPath)
-				}
+				_ = cachefs.Remove(bc.root, bc.rootPath(localPath))
+			}
+		} else {
+			var successfulRead = true
+			numberOfBytes, err := f.Read(item.block.data)
+			if err != nil {
+				log.Err("BlockCache::download : Failed to read data from disk cache %s [%s]", fileName, err.Error())
+				successfulRead = false
+				_ = cachefs.Remove(bc.root, bc.rootPath(localPath))
+			}
 
-				if numberOfBytes != int(bc.blockSize) && item.block.offset+uint64(numberOfBytes) != uint64(item.handle.Size) {
-					log.Err("BlockCache::download : Local data retrieved from disk size mismatch, Expected %v, OnDisk %v, fileSize %v", bc.getBlockSize(uint64(item.handle.Size), item.block), numberOfBytes, item.handle.Size)
-					successfulRead = false
-					_ = os.Remove(localPath)
-				}
+			if numberOfBytes != int(bc.blockSize) && item.block.offset+uint64(numberOfBytes) != uint64(item.handle.Size) {
+				log.Err("BlockCache::download : Local data retrieved from disk size mismatch, Expected %v, OnDisk %v, fileSize %v", bc.getBlockSize(uint64(item.handle.Size), item.block), numberOfBytes, item.handle.Size)
+				successfulRead = false
+				_ = cachefs.Remove(bc.root, bc.rootPath(localPath))
+			}
 
-				f.Close()
+			f.Close()
 
+			if successfulRead {
+				// If user has enabled consistency check then compute the md5sum and match it in xattr
+				successfulRead = checkBlockConsistency(bc, item, numberOfBytes, localPath, fileName)
+
+				// We have read the data from disk so there is no need to go over network
+				// Just mark the block that download is complete
 				if successfulRead {
-					// If user has enabled consistency check then compute the md5sum and match it in xattr
-					successfulRead = checkBlockConsistency(bc, item, numberOfBytes, localPath, fileName)
-
-					// We have read the data from disk so there is no need to go over network
-					// Just mark the block that download is complete
-					if successfulRead {
-						item.block.Ready(BlockStatusDownloaded)
-						return
-					}
+					item.block.Ready(BlockStatusDownloaded)
+					return
 				}
 			}
 		}
@@ -1061,30 +1071,29 @@ func (bc *BlockCache) download(item *workItem) {
 	}
 
 	if bc.tmpPath != "" {
-		err := os.MkdirAll(filepath.Dir(localPath), 0777)
-		if err != nil {
+		if err := cachefs.MkdirAll(bc.root, bc.rootPath(filepath.Dir(localPath))); err != nil {
+			// The block is still served from memory, so only the disk copy is skipped.
 			log.Err("BlockCache::download : error creating directory structure for file %s [%s]", localPath, err.Error())
-			return
-		}
-
-		// Dump this block to local disk cache
-		f, err := os.Create(localPath)
-		if err == nil {
-			_, err := f.Write(item.block.data[:n])
-			if err != nil {
-				log.Err("BlockCache::download : Failed to write %s to disk [%v]", localPath, err.Error())
-				_ = os.Remove(localPath)
-			}
-
-			f.Close()
-			bc.diskPolicy.Refresh(diskNode.(*list.Element))
-
-			// If user has enabled consistency check then compute the md5sum and save it in xattr
-			if bc.consistency {
-				hash := common.GetCRC64(item.block.data, n)
-				err = syscall.Setxattr(localPath, "user.md5sum", hash, 0)
+		} else {
+			// Dump this block to local disk cache
+			f, err := cachefs.Create(bc.root, bc.rootPath(localPath))
+			if err == nil {
+				_, err := f.Write(item.block.data[:n])
 				if err != nil {
-					log.Err("BlockCache::download : Failed to set md5sum for file %s [%v]", localPath, err.Error())
+					log.Err("BlockCache::download : Failed to write %s to disk [%v]", localPath, err.Error())
+					_ = cachefs.Remove(bc.root, bc.rootPath(localPath))
+				}
+
+				f.Close()
+				bc.diskPolicy.Refresh(diskNode.(*list.Element))
+
+				// If user has enabled consistency check then compute the md5sum and save it in xattr
+				if bc.consistency {
+					hash := common.GetCRC64(item.block.data, n)
+					err = bc.setMd5sum(localPath, hash)
+					if err != nil {
+						log.Err("BlockCache::download : Failed to set md5sum for file %s [%v]", localPath, err.Error())
+					}
 				}
 			}
 		}
@@ -1092,6 +1101,32 @@ func (bc *BlockCache) download(item *workItem) {
 
 	// Just mark the block that download is complete
 	item.block.Ready(BlockStatusDownloaded)
+}
+
+// rootPath returns localPath relative to bc.root, the form cachefs functions take.
+func (bc *BlockCache) rootPath(localPath string) string {
+	return cachefs.RelPath(bc.root, localPath)
+}
+
+// setMd5sum stores the checksum in the user.md5sum xattr of a cache file. The file is opened through
+// cachefs and the xattr is set on the fd, so a symlink in the cache cannot redirect the write.
+func (bc *BlockCache) setMd5sum(localPath string, hash []byte) error {
+	f, err := cachefs.Open(bc.root, bc.rootPath(localPath))
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return unix.Fsetxattr(int(f.Fd()), "user.md5sum", hash, 0)
+}
+
+// getMd5sum reads the user.md5sum xattr of a cache file, opened through cachefs as in setMd5sum.
+func (bc *BlockCache) getMd5sum(localPath string, buf []byte) (int, error) {
+	f, err := cachefs.Open(bc.root, bc.rootPath(localPath))
+	if err != nil {
+		return 0, err
+	}
+	defer f.Close()
+	return unix.Fgetxattr(int(f.Fd()), "user.md5sum", buf)
 }
 
 func checkBlockConsistency(blockCache *BlockCache, item *workItem, numberOfBytes int, localPath, fileName string) bool {
@@ -1103,14 +1138,14 @@ func checkBlockConsistency(blockCache *BlockCache, item *workItem, numberOfBytes
 
 	// Retrieve MD5 checksum from xattr
 	xattrHash := make([]byte, 8)
-	_, err := syscall.Getxattr(localPath, "user.md5sum", xattrHash)
+	_, err := blockCache.getMd5sum(localPath, xattrHash)
 	if err != nil {
 		log.Err("BlockCache::download : Failed to get md5sum for file %s [%v]", fileName, err.Error())
 	} else {
 		// Compare checksums
 		if !bytes.Equal(actualHash, xattrHash) {
 			log.Err("BlockCache::download : MD5 checksum mismatch for file %s, expected %v, got %v", fileName, xattrHash, actualHash)
-			_ = os.Remove(localPath)
+			_ = cachefs.Remove(blockCache.root, blockCache.rootPath(localPath))
 			return false
 		}
 	}
@@ -1480,19 +1515,19 @@ func (bc *BlockCache) upload(item *workItem) {
 	if bc.tmpPath != "" {
 		localPath := filepath.Join(bc.tmpPath, fileName)
 
-		err := os.MkdirAll(filepath.Dir(localPath), 0777)
+		err := cachefs.MkdirAll(bc.root, bc.rootPath(filepath.Dir(localPath)))
 		if err != nil {
 			log.Err("BlockCache::upload : error creating directory structure for file %s [%s]", localPath, err.Error())
 			goto return_safe
 		}
 
 		// Dump this block to local disk cache
-		f, err := os.Create(localPath)
+		f, err := cachefs.Create(bc.root, bc.rootPath(localPath))
 		if err == nil {
 			_, err := f.Write(item.block.data[0:blockSize])
 			if err != nil {
 				log.Err("BlockCache::upload : Failed to write %s to disk [%v]", localPath, err.Error())
-				_ = os.Remove(localPath)
+				_ = cachefs.Remove(bc.root, bc.rootPath(localPath))
 				goto return_safe
 			}
 
@@ -1508,7 +1543,7 @@ func (bc *BlockCache) upload(item *workItem) {
 			// If user has enabled consistency check then compute the md5sum and save it in xattr
 			if bc.consistency {
 				hash := common.GetCRC64(item.block.data, int(blockSize))
-				err = syscall.Setxattr(localPath, "user.md5sum", hash, 0)
+				err = bc.setMd5sum(localPath, hash)
 				if err != nil {
 					log.Err("BlockCache::download : Failed to set md5sum for file %s [%v]", localPath, err.Error())
 				}
@@ -1752,7 +1787,7 @@ func (bc *BlockCache) diskEvict(node *list.Element) {
 	bc.fileNodeMap.Delete(fileName)
 
 	localPath := filepath.Join(bc.tmpPath, fileName)
-	_ = os.Remove(localPath)
+	_ = cachefs.Remove(bc.root, bc.rootPath(localPath))
 }
 
 // checkDiskUsage : Callback to check usage of disk and decide whether eviction is needed
@@ -1786,7 +1821,7 @@ func (bc *BlockCache) invalidateDirectory(name string) {
 	}
 
 	localPath := filepath.Join(bc.tmpPath, name)
-	_ = os.RemoveAll(localPath)
+	_ = cachefs.RemoveAll(bc.root, bc.rootPath(localPath))
 }
 
 // DeleteDir: Recursively invalidate the directory and its children
@@ -1831,11 +1866,16 @@ func (bc *BlockCache) DeleteFile(options internal.DeleteFileOptions) error {
 		return err
 	}
 
+	// Without a temp path there is no local cache, and globbing the working directory must not happen.
+	if bc.tmpPath == "" {
+		return nil
+	}
+
 	localPath := filepath.Join(bc.tmpPath, options.Name)
 	files, err := filepath.Glob(localPath + "*")
 	if err == nil {
 		for _, f := range files {
-			if err := os.Remove(f); err != nil {
+			if err := cachefs.Remove(bc.root, bc.rootPath(f)); err != nil {
 				break
 			}
 		}
@@ -1862,13 +1902,18 @@ func (bc *BlockCache) RenameFile(options internal.RenameFileOptions) error {
 		return err
 	}
 
+	// Without a temp path there is no local cache, and globbing the working directory must not happen.
+	if bc.tmpPath == "" {
+		return nil
+	}
+
 	localSrcPath := filepath.Join(bc.tmpPath, options.Src)
 	localDstPath := filepath.Join(bc.tmpPath, options.Dst)
 
 	files, err := filepath.Glob(localSrcPath + "*")
 	if err == nil {
 		for _, f := range files {
-			err = os.Rename(f, strings.Replace(f, localSrcPath, localDstPath, 1))
+			err = cachefs.Rename(bc.root, bc.rootPath(f), bc.rootPath(strings.Replace(f, localSrcPath, localDstPath, 1)))
 			if err != nil {
 				break
 			}
