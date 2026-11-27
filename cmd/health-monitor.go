@@ -25,6 +25,7 @@ type monitorOptions struct {
 }
 
 var pid string
+var configFile string
 var cacheMonitorOptions file_cache.FileCacheOptions
 
 func resetMonitorOptions() {
