@@ -83,7 +83,7 @@ func checkConfigDir(path string, create bool) (os.FileInfo, error) {
 	return info, nil
 }
 
-func writePrivateConfig(path string, write func(io.Writer) error) error {
+func writePrivateConfig(path string, syncDirectory bool, write func(io.Writer) error) error {
 	if name := path[strings.LastIndexByte(path, os.PathSeparator)+1:]; name == "" || name == "." {
 		return fmt.Errorf("config path %q must name a file", path)
 	}
@@ -106,6 +106,16 @@ func writePrivateConfig(path string, write func(io.Writer) error) error {
 		return err
 	}
 
+	var outputDir *os.File
+	if syncDirectory {
+		// Check that we can open the directory before replacing the destination.
+		outputDir, err = os.Open(dir)
+		if err != nil {
+			return fmt.Errorf("cannot open config output directory %q for sync: %w", dir, err)
+		}
+		defer outputDir.Close()
+	}
+
 	// CreateTemp opens a new file with mode 0600. Rename replaces the old inode
 	// without writing into a symlink, hard link, or legacy world-readable file.
 	file, err := os.CreateTemp(dir, ".blobfuse-config-*")
@@ -125,5 +135,13 @@ func writePrivateConfig(path string, write func(io.Writer) error) error {
 	if closeErr != nil {
 		return closeErr
 	}
-	return os.Rename(file.Name(), path)
+	if err := os.Rename(file.Name(), path); err != nil {
+		return err
+	}
+	if outputDir != nil {
+		if err := outputDir.Sync(); err != nil {
+			return fmt.Errorf("cannot sync config output directory %q: %w", dir, err)
+		}
+	}
+	return nil
 }

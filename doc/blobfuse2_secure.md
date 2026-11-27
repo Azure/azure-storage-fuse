@@ -21,8 +21,10 @@ directories must have the sticky bit set (for example, `/tmp`).
 An existing destination must be a regular file owned by the invoking user
 with owner write permission. New and rewritten configs have owner-only
 permissions (`0600`), so services that relied on group-read access will lose
-that access. `secure encrypt` removes the plaintext source only after the
-encrypted output and its directory have been synced.
+that access. `secure encrypt` requires read access to the output directory so
+it can sync the directory after replacing the output. It removes the
+plaintext source only after the encrypted output and its directory have
+been synced.
 
 ### Examples
 

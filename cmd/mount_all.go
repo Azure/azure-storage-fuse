@@ -341,7 +341,7 @@ func writeConfigFile(contConfigFile string) error {
 			return fmt.Errorf("failed to encrypt yaml content [%s]", err.Error())
 		}
 
-		err = writePrivateConfig(contConfigFile, func(w io.Writer) error {
+		err = writePrivateConfig(contConfigFile, false, func(w io.Writer) error {
 			_, err := w.Write(cipherText)
 			return err
 		})
@@ -349,7 +349,7 @@ func writeConfigFile(contConfigFile string) error {
 			return fmt.Errorf("failed to write encrypted file: %w", err)
 		}
 	} else {
-		err := writePrivateConfig(contConfigFile, func(w io.Writer) error {
+		err := writePrivateConfig(contConfigFile, false, func(w io.Writer) error {
 			// Match WriteConfigAs's use of the output extension to select the format.
 			if ext := filepath.Ext(contConfigFile); ext != "" {
 				viper.SetConfigType(ext[1:])

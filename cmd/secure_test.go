@@ -123,6 +123,32 @@ func (suite *secureConfigTestSuite) TestSecureConfigEncryptRejectsParentComponen
 	}
 }
 
+func (suite *secureConfigTestSuite) TestSecureConfigEncryptPreservesFilesWhenOutputDirCannotBeOpened() {
+	defer suite.cleanupTest()
+	if os.Geteuid() == 0 {
+		suite.T().Skip("requires an unprivileged user")
+	}
+
+	dir := privateTestDir(suite.T())
+	outputDir := filepath.Join(dir, "output")
+	source := filepath.Join(dir, "plain.yaml")
+	destination := filepath.Join(outputDir, "encrypted.azsec")
+	suite.Require().NoError(os.Mkdir(outputDir, 0700))
+	suite.Require().NoError(os.WriteFile(source, []byte(testPlainTextConfig), 0600))
+	suite.Require().NoError(os.WriteFile(destination, []byte("previous output"), 0600))
+	suite.Require().NoError(os.Chmod(outputDir, 0300))
+	suite.T().Cleanup(func() { suite.NoError(os.Chmod(outputDir, 0700)) })
+
+	_, err := executeCommandSecure(rootCmd, "secure", "encrypt", "--config-file="+source,
+		"--passphrase=123123123123123123123123", "--output-file="+destination)
+	suite.Require().ErrorContains(err, "cannot open config output directory")
+	for path, want := range map[string]string{source: testPlainTextConfig, destination: "previous output"} {
+		data, err := os.ReadFile(path)
+		suite.Require().NoError(err)
+		suite.Equal(want, string(data))
+	}
+}
+
 func (suite *secureConfigTestSuite) TestSecureConfigEncryptNotExistent() {
 	defer suite.cleanupTest()
 	confFile := "abcd.yaml"

@@ -170,7 +170,8 @@ func decryptConfigFile(saveConfig bool) ([]byte, error) {
 
 // saveToFile: Save the newly generated config file and delete the source if requested
 func saveToFile(configFileName string, data []byte, deleteSource bool) error {
-	err := writePrivateConfig(configFileName, func(w io.Writer) error {
+	// Persist the renamed output before removing the plaintext source.
+	err := writePrivateConfig(configFileName, deleteSource, func(w io.Writer) error {
 		_, err := w.Write(data)
 		return err
 	})
@@ -178,16 +179,6 @@ func saveToFile(configFileName string, data []byte, deleteSource bool) error {
 		return err
 	}
 
-	// Persist the renamed output before removing the plaintext source.
-	outputDir := filepath.Dir(configFileName)
-	dir, err := os.Open(outputDir)
-	if err != nil {
-		return fmt.Errorf("cannot open config output directory %q for sync: %w", outputDir, err)
-	}
-	defer dir.Close()
-	if err := dir.Sync(); err != nil {
-		return fmt.Errorf("cannot sync config output directory %q: %w", outputDir, err)
-	}
 	return os.Remove(secOpts.ConfigFile)
 }
 
