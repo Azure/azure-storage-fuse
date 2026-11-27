@@ -184,7 +184,7 @@ func (suite *secureConfigTestSuite) TestSecureConfigDecrypt() {
 	suite.assert.NoError(err)
 
 	info, err := os.Stat(decrypted)
-	require.NoError(suite.T(), err)
+	suite.Require().NoError(err)
 	suite.assert.Equal(os.FileMode(0600), info.Mode().Perm())
 
 	data, err := os.ReadFile(decrypted)
